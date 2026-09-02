@@ -25,10 +25,12 @@ const nameFontFamily =
 
 const YOUR_NAME = "Your Name";
 
-// ART's resting (unscaled) size. Kept small enough to leave clear
-// space above the name block at 0% scroll — ART's scale animation
-// grows it from here, so raise the max if you want a bigger start.
-const ART_FONT_SIZE = "clamp(2.5rem, 6vw, 5.5rem)";
+// ART's resting (unscaled) size. Kept small enough that ART's bounding
+// box has real clearance from the tagline row at 0% scroll (checked
+// with a Playwright assertion, not just eyeballed) — ART's scale
+// animation grows it from here, so raise the max if you want a bigger
+// start, but re-check the clearance/overlap assertions after.
+const ART_FONT_SIZE = "clamp(2rem, 3.5vw, 3rem)";
 
 const SCROLL_VH_PER_BEAT = 100;
 const TOTAL_BEATS = 3;
@@ -42,8 +44,14 @@ const SCRUB_SMOOTHING = 0.5;
 // viewport width (letters crop at the edges) — verified with a
 // Playwright assertion, see the tune log for measured values.
 const NAME_SCALE_TO = 1.15;
-const ART_SCALE_RATIO = 60;
+const ART_SCALE_RATIO = 100;
 const ART_SCALE_TO = 1 + (NAME_SCALE_TO - 1) * ART_SCALE_RATIO;
+
+// ART's growth is eased (progress^ART_GROWTH_EASE_POWER) instead of
+// linear, so it stays near scale 1 — clear of the tagline row — through
+// the tagline's whole fade in/out, then grows sharply in the back half
+// of the pin. Higher power = flatter start, steeper finish.
+const ART_GROWTH_EASE_POWER = 5;
 
 // Contact info shown in the corner. Fades to 0 opacity over the same
 // scroll range as the name block's scale animation (the whole pin).
@@ -63,13 +71,15 @@ const GLOW_OPACITY_TO = 0;
 const GLOW_FADE_START_BEAT = 0;
 const GLOW_FADE_END_BEAT = TOTAL_BEATS;
 
-// The sentence line fades in over this beat window, then fades back out
-// to 0 opacity by SENTENCE_FADE_OUT_END_BEAT (as ART grows to fill the
-// screen, the sentence has to get out of the way). All in beats, where
-// 0 = pin start and TOTAL_BEATS = pin end.
-const SENTENCE_FADE_IN_START_BEAT = 1.1;
-const SENTENCE_FADE_IN_END_BEAT = 1.9;
-const SENTENCE_FADE_OUT_END_BEAT = TOTAL_BEATS;
+// The sentence line fades in, then back out to 0, entirely within this
+// early window — front-loaded well before ART's bounding box grows out
+// to reach the sentence's position (checked with a Playwright assertion:
+// ART's bbox must not overlap the sentence's bbox while the sentence
+// still has non-zero opacity). All in beats, where 0 = pin start and
+// TOTAL_BEATS = pin end.
+const SENTENCE_FADE_IN_START_BEAT = 0.3;
+const SENTENCE_FADE_IN_END_BEAT = 0.75;
+const SENTENCE_FADE_OUT_END_BEAT = 1.2;
 
 /* ============================================================ */
 
@@ -130,8 +140,14 @@ export default function HeroTestPage() {
             return `drop-shadow(0 0 ${blur}px rgba(255,255,255,${opacity}))`;
           }).join(" ");
 
-          // 2. Scale: ART scales up faster than the name block.
-          const artScale = gsap.utils.interpolate(1, ART_SCALE_TO, p);
+          // 2. Scale: ART scales up faster than the name block, eased so
+          // it stays clear of the tagline row early on (see
+          // ART_GROWTH_EASE_POWER above).
+          const artScale = gsap.utils.interpolate(
+            1,
+            ART_SCALE_TO,
+            Math.pow(p, ART_GROWTH_EASE_POWER)
+          );
           const nameScale = gsap.utils.interpolate(1, NAME_SCALE_TO, p);
           art.style.transform = `scale(${artScale})`;
           name.style.transform = `scale(${nameScale})`;
@@ -173,7 +189,7 @@ export default function HeroTestPage() {
         <span
           ref={artRef}
           className={`${artFont.className} pointer-events-none absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 select-none text-white`}
-          style={{ fontSize: ART_FONT_SIZE }}
+          style={{ fontSize: ART_FONT_SIZE, lineHeight: 1 }}
         >
           ART
         </span>
