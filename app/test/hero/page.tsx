@@ -39,8 +39,13 @@ const SCRUB_SMOOTHING = 0.5;
 // ART grows ART_SCALE_RATIO times faster than the name block, both
 // starting at scale 1 and reaching their target by the end of the pin.
 const NAME_SCALE_TO = 1.15;
-const ART_SCALE_RATIO = 6;
+const ART_SCALE_RATIO = 5;
 const ART_SCALE_TO = 1 + (NAME_SCALE_TO - 1) * ART_SCALE_RATIO;
+
+// Contact info shown in the corner. Fades to 0 opacity over the same
+// scroll range as the name block's scale animation (the whole pin).
+const CONTACT_INFO = "hello@yourdomain.com";
+const CONTACT_OPACITY_FROM = 0.7;
 
 // Stacked drop-shadow glow behind "ART". Each layer's blur and the
 // shared opacity interpolate down to 0 (flat white) over the beat
@@ -67,6 +72,7 @@ export default function HeroTestPage() {
   const artRef = useRef<HTMLSpanElement>(null);
   const nameRef = useRef<HTMLDivElement>(null);
   const sentenceRef = useRef<HTMLParagraphElement>(null);
+  const contactRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     gsap.registerPlugin(ScrollTrigger);
@@ -75,7 +81,8 @@ export default function HeroTestPage() {
     const art = artRef.current;
     const name = nameRef.current;
     const sentence = sentenceRef.current;
-    if (!section || !art || !name || !sentence) return;
+    const contact = contactRef.current;
+    if (!section || !art || !name || !sentence || !contact) return;
 
     const ctx = gsap.context(() => {
       const state = { p: 0 };
@@ -121,6 +128,9 @@ export default function HeroTestPage() {
           const nameScale = gsap.utils.interpolate(1, NAME_SCALE_TO, p);
           art.style.transform = `scale(${artScale})`;
           name.style.transform = `scale(${nameScale})`;
+          contact.style.opacity = String(
+            gsap.utils.interpolate(CONTACT_OPACITY_FROM, 0, p)
+          );
 
           // 3. Sentence fades in partway through the pin.
           const sentenceP = gsap.utils.clamp(
@@ -172,11 +182,25 @@ export default function HeroTestPage() {
 
           <p
             ref={sentenceRef}
-            className="mt-4 max-w-sm text-sm text-white/70"
-            style={{ fontFamily: nameFontFamily, opacity: 0 }}
+            className="max-w-sm text-sm text-white/70"
+            style={{ fontFamily: nameFontFamily, opacity: 0, marginTop: "0.5rem" }}
           >
             is just a name. What actually makes me is my—
           </p>
+        </div>
+
+        <div
+          ref={contactRef}
+          className="pointer-events-none absolute z-10 text-white"
+          style={{
+            bottom: "3rem",
+            right: "3rem",
+            fontSize: "0.875rem",
+            opacity: CONTACT_OPACITY_FROM,
+            fontFamily: nameFontFamily,
+          }}
+        >
+          {CONTACT_INFO}
         </div>
       </div>
     </div>
