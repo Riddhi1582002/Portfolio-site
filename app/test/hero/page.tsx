@@ -25,6 +25,11 @@ const nameFontFamily =
 
 const YOUR_NAME = "Your Name";
 
+// ART's resting (unscaled) size. Kept small enough to leave clear
+// space above the name block at 0% scroll — ART's scale animation
+// grows it from here, so raise the max if you want a bigger start.
+const ART_FONT_SIZE = "clamp(2.5rem, 6vw, 5.5rem)";
+
 const SCROLL_VH_PER_BEAT = 100;
 const TOTAL_BEATS = 3;
 
@@ -143,7 +148,7 @@ export default function HeroTestPage() {
         <span
           ref={artRef}
           className={`${artFont.className} pointer-events-none absolute left-1/2 top-1/2 z-0 -translate-x-1/2 -translate-y-1/2 select-none text-white`}
-          style={{ fontSize: "clamp(4rem, 16vw, 14rem)" }}
+          style={{ fontSize: ART_FONT_SIZE }}
         >
           ART
         </span>
