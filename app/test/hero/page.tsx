@@ -38,8 +38,11 @@ const SCRUB_SMOOTHING = 0.5;
 
 // ART grows ART_SCALE_RATIO times faster than the name block, both
 // starting at scale 1 and reaching their target by the end of the pin.
+// ART_SCALE_RATIO is set so ART's final rendered width exceeds the
+// viewport width (letters crop at the edges) — verified with a
+// Playwright assertion, see the tune log for measured values.
 const NAME_SCALE_TO = 1.15;
-const ART_SCALE_RATIO = 5;
+const ART_SCALE_RATIO = 60;
 const ART_SCALE_TO = 1 + (NAME_SCALE_TO - 1) * ART_SCALE_RATIO;
 
 // Contact info shown in the corner. Fades to 0 opacity over the same
@@ -60,10 +63,13 @@ const GLOW_OPACITY_TO = 0;
 const GLOW_FADE_START_BEAT = 0;
 const GLOW_FADE_END_BEAT = TOTAL_BEATS;
 
-// The sentence line fades in over this beat window (0 = pin start,
-// TOTAL_BEATS = pin end). Defaults to appearing partway through.
-const SENTENCE_FADE_START_BEAT = 1.1;
-const SENTENCE_FADE_END_BEAT = 1.9;
+// The sentence line fades in over this beat window, then fades back out
+// to 0 opacity by SENTENCE_FADE_OUT_END_BEAT (as ART grows to fill the
+// screen, the sentence has to get out of the way). All in beats, where
+// 0 = pin start and TOTAL_BEATS = pin end.
+const SENTENCE_FADE_IN_START_BEAT = 1.1;
+const SENTENCE_FADE_IN_END_BEAT = 1.9;
+const SENTENCE_FADE_OUT_END_BEAT = TOTAL_BEATS;
 
 /* ============================================================ */
 
@@ -89,8 +95,9 @@ export default function HeroTestPage() {
 
       const glowStart = GLOW_FADE_START_BEAT / TOTAL_BEATS;
       const glowEnd = GLOW_FADE_END_BEAT / TOTAL_BEATS;
-      const sentenceStart = SENTENCE_FADE_START_BEAT / TOTAL_BEATS;
-      const sentenceEnd = SENTENCE_FADE_END_BEAT / TOTAL_BEATS;
+      const sentenceInStart = SENTENCE_FADE_IN_START_BEAT / TOTAL_BEATS;
+      const sentenceInEnd = SENTENCE_FADE_IN_END_BEAT / TOTAL_BEATS;
+      const sentenceOutEnd = SENTENCE_FADE_OUT_END_BEAT / TOTAL_BEATS;
 
       gsap.to(state, {
         p: 1,
@@ -132,12 +139,20 @@ export default function HeroTestPage() {
             gsap.utils.interpolate(CONTACT_OPACITY_FROM, 0, p)
           );
 
-          // 3. Sentence fades in partway through the pin.
-          const sentenceP = gsap.utils.clamp(
-            0,
-            1,
-            gsap.utils.mapRange(sentenceStart, sentenceEnd, 0, 1, p)
-          );
+          // 3. Sentence fades in partway through the pin, then back out
+          // to 0 by the end as ART grows to fill the screen.
+          const sentenceP =
+            p <= sentenceInEnd
+              ? gsap.utils.clamp(
+                  0,
+                  1,
+                  gsap.utils.mapRange(sentenceInStart, sentenceInEnd, 0, 1, p)
+                )
+              : gsap.utils.clamp(
+                  0,
+                  1,
+                  gsap.utils.mapRange(sentenceInEnd, sentenceOutEnd, 1, 0, p)
+                );
           sentence.style.opacity = String(sentenceP);
         },
       });
