@@ -34,7 +34,7 @@ const SCRUB_SMOOTHING = 0.5;
 // ART grows ART_SCALE_RATIO times faster than the name block, both
 // starting at scale 1 and reaching their target by the end of the pin.
 const NAME_SCALE_TO = 1.15;
-const ART_SCALE_RATIO = 3;
+const ART_SCALE_RATIO = 6;
 const ART_SCALE_TO = 1 + (NAME_SCALE_TO - 1) * ART_SCALE_RATIO;
 
 // Stacked drop-shadow glow behind "ART". Each layer's blur and the
