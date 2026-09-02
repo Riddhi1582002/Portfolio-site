@@ -17,3 +17,14 @@ Before marking any visual/UI task complete:
 3. Only report the task complete once both checks pass. Show what was
    checked (checkpoints measured, findings, and how they were resolved) in
    the response.
+
+# Spec-to-assertion rule
+
+Whenever a spec describes a size, position, or visibility requirement (e.g.
+"should exceed viewport," "should not overlap," "should fade to 0
+opacity"), write an actual Playwright assertion that measures it —
+`getBoundingClientRect()`, computed `opacity`, etc. — and confirms pass or
+fail. Never just report that a constant was changed or describe what
+should happen; run the measurement and show the real numbers against the
+requirement (e.g. "width 1539px > viewport 1280px: pass", not "increased
+the scale factor").
