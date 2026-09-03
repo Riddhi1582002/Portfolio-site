@@ -9,8 +9,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import gsap from "gsap";
+import { SplitText } from "gsap/SplitText";
 import "./hero-fonts.css";
 import "./hero-hint.css";
+
+gsap.registerPlugin(SplitText);
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 const DIDONE = "'Juana', Georgia, serif";
@@ -93,6 +97,18 @@ export default function HeroSection() {
   const artRef = useRef<HTMLDivElement>(null);
   const [scrollP, setScrollP] = useState(0); // 0..1 raw scroll fraction through the track
   const [t, setT] = useState(0); // seconds elapsed, for the idle breathing/drift motion
+
+  // Narration text (name, tag1, tag2) reveals per-line via a SplitText
+  // clip-mask, scrubbed by this component's own scroll-progress value —
+  // not autoplay, not IntersectionObserver. *TextRef is the element
+  // SplitText splits; *SplitRef holds the resulting SplitText instance
+  // (its .lines) so the reveal-sync effects below can drive it.
+  const nameTextRef = useRef<HTMLAnchorElement>(null);
+  const tag1TextRef = useRef<HTMLDivElement>(null);
+  const tag2TextRef = useRef<HTMLDivElement>(null);
+  const nameSplitRef = useRef<SplitText | null>(null);
+  const tag1SplitRef = useRef<SplitText | null>(null);
+  const tag2SplitRef = useRef<SplitText | null>(null);
 
   // "Scroll to continue" hint state. clickStateRef tracks an in-progress
   // double-click window; lastScrollTimeRef timestamps the most recent
@@ -278,6 +294,72 @@ export default function HeroSection() {
   const artBottomY = 540 + artY + ((462 * 0.86) / 2) * artScale;
   const hintY = artBottomY + 40;
 
+  // Split each narration line into a SplitText clip-mask once on mount.
+  // Because the stage is a fixed 1920x1080 canvas that's scaled as a
+  // whole (see stageScale below) rather than reflowed per viewport, line
+  // wrapping is identical at every screen size — one split at mount is
+  // enough, no resize re-split needed. Reverted on unmount.
+  useEffect(() => {
+    const splits: SplitText[] = [];
+    if (nameTextRef.current) {
+      const s = SplitText.create(nameTextRef.current, {
+        type: "lines",
+        mask: "lines",
+      });
+      gsap.set(s.lines, { yPercent: 100 });
+      nameSplitRef.current = s;
+      splits.push(s);
+    }
+    if (tag1TextRef.current) {
+      const s = SplitText.create(tag1TextRef.current, {
+        type: "lines",
+        mask: "lines",
+      });
+      gsap.set(s.lines, { yPercent: 100 });
+      tag1SplitRef.current = s;
+      splits.push(s);
+    }
+    if (tag2TextRef.current) {
+      const s = SplitText.create(tag2TextRef.current, {
+        type: "lines",
+        mask: "lines",
+      });
+      gsap.set(s.lines, { yPercent: 100 });
+      tag2SplitRef.current = s;
+      splits.push(s);
+    }
+    return () => {
+      splits.forEach((s) => s.revert());
+      nameSplitRef.current = null;
+      tag1SplitRef.current = null;
+      tag2SplitRef.current = null;
+    };
+  }, []);
+
+  // Keep each split's line reveal in sync with the same scroll-driven
+  // opacity values the rest of the component already uses — line-level
+  // only (no word/char stagger), scrubbed by scroll, not autoplaying and
+  // not IntersectionObserver-triggered. The opacity fade stays on the
+  // wrapping divs too (see JSX below) as a FOUC guard for the instant
+  // before this effect's first run, and to keep every scroll checkpoint
+  // this page has already been verified against unchanged; the mask
+  // reveal is layered motion on top of it, not a replacement.
+  useEffect(() => {
+    if (nameSplitRef.current) {
+      gsap.set(nameSplitRef.current.lines, { yPercent: (1 - nameOpacity) * 100 });
+    }
+  }, [nameOpacity]);
+  useEffect(() => {
+    if (tag1SplitRef.current) {
+      gsap.set(tag1SplitRef.current.lines, { yPercent: (1 - tag1Opacity) * 100 });
+    }
+  }, [tag1Opacity]);
+  useEffect(() => {
+    if (tag2SplitRef.current) {
+      gsap.set(tag2SplitRef.current.lines, { yPercent: (1 - tag2Opacity) * 100 });
+    }
+  }, [tag2Opacity]);
+
   // Fit the 1920x1080 authored stage into the viewport like `object-fit:
   // contain` (matches how the prototype's CompositionStage scaled its SVG),
   // so every position/size above stays pixel-perfect at any screen size.
@@ -377,6 +459,7 @@ export default function HeroSection() {
                 above it — a swipe-in from the right on hover/focus,
                 written directly in Tailwind (no external component). */}
             <Link
+              ref={nameTextRef}
               href="/about"
               className="relative inline-block before:absolute before:bottom-0 before:left-0 before:h-px before:w-full before:origin-right before:scale-x-0 before:bg-white before:transition-transform before:duration-200 before:ease-[cubic-bezier(0.4,0,0.2,1)] before:content-[''] hover:before:origin-left hover:before:scale-x-100 focus:before:origin-left focus:before:scale-x-100"
               style={{
@@ -394,6 +477,7 @@ export default function HeroSection() {
           </div>
 
           <div
+            ref={tag1TextRef}
             style={{
               position: "absolute",
               left: 0,
@@ -413,6 +497,7 @@ export default function HeroSection() {
           </div>
 
           <div
+            ref={tag2TextRef}
             style={{
               position: "absolute",
               left: 0,
