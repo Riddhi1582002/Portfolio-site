@@ -36,6 +36,76 @@ const CURSOR_GLOW_RADIUS = 500;
 const HINT_CLICK_WINDOW_MS = 4000;
 const HINT_DISMISSED_KEY = "heroScrollHintDismissed";
 
+// Pulled out of the interpolate() calls below (which still reference
+// these directly) because the name-to-tagline gap formula further down
+// needs the rest/mid breakpoints on their own, not just baked into a
+// curve.
+const TAG1_FONT_SIZE = 40;
+const TAG1_Y_REST = 320;
+const TAG1_Y_MID = 300;
+const NAME_SIZE_REST = 46;
+const NAME_SIZE_MID = 60;
+const ART_Y_REST = 66;
+const ART_Y_MID = 72;
+const ART_Y_DEEP = -60;
+const ART_SCALE_REST = 1;
+const ART_SCALE_MID = 1.36;
+const ART_SCALE_DEEP = 1.94;
+
+// Font metrics for "Neue Montreal", measured via canvas TextMetrics
+// against the real webfont (cap-height isn't queryable any other way
+// from JS/CSS) — cap-height as a fraction of font-size, and this
+// element's own rendered line-box height as a multiple of font-size
+// (name and tag1 share the font; the browser's default line-height for
+// it measured out to 1.5x at both sizes tested).
+const NAME_CAP_HEIGHT_RATIO = 0.71875;
+const NARRATION_LINE_HEIGHT_RATIO = 1.5;
+
+// Name-to-tagline gap = 0.6x the name's cap-height, clamped so it never
+// exceeds the tagline-to-ART gap — i.e. name-to-tagline stays <=
+// tagline-to-ART — evaluated independently at rest and at mid (the two
+// stages where name + tag1 appear together), since both the cap-height
+// and the tagline-ART gap itself differ between them (the latter is
+// already negative/overlapping at mid, carried over unchanged from the
+// earlier tag1/tag2-to-ART equalization fix). Only the name moves to
+// make room; tag1Y/tag2Y/artY stay exactly as they were.
+const NAME_TAG_GAP_RATIO = 0.6;
+
+function artTopY(artYAt: number, artScaleAt: number): number {
+  return 540 + artYAt - ((462 * 0.86) / 2) * artScaleAt;
+}
+
+function computeNameYForStage(
+  nameSizeAt: number,
+  tag1YAt: number,
+  artYAt: number,
+  artScaleAt: number
+): number {
+  const tag1Bottom = tag1YAt + TAG1_FONT_SIZE * NARRATION_LINE_HEIGHT_RATIO;
+  const tagArtGap = artTopY(artYAt, artScaleAt) - tag1Bottom;
+  const nameCapHeight = nameSizeAt * NAME_CAP_HEIGHT_RATIO;
+  const nameTagGap = Math.min(NAME_TAG_GAP_RATIO * nameCapHeight, tagArtGap);
+  const nameBottomTarget = tag1YAt - nameTagGap;
+  return nameBottomTarget - nameSizeAt * NARRATION_LINE_HEIGHT_RATIO;
+}
+
+const NAME_Y_REST = computeNameYForStage(
+  NAME_SIZE_REST,
+  TAG1_Y_REST,
+  ART_Y_REST,
+  ART_SCALE_REST
+);
+const NAME_Y_MID = computeNameYForStage(
+  NAME_SIZE_MID,
+  TAG1_Y_MID,
+  ART_Y_MID,
+  ART_SCALE_MID
+);
+// The name is fully faded out by the deep stage (nameOpacity hits 0 at
+// p=1.32) and never appears alongside tag2, so its deep-stage Y is
+// unaffected by any of this — kept as the original authored value.
+const NAME_Y_DEEP = 200;
+
 // Design was authored on a 1920x1080 canvas; all coordinates below are in
 // that space and get scaled to fit the viewport (see `stageScale` below) so
 // proportions/positions stay pixel-perfect at any screen size.
@@ -261,8 +331,14 @@ export default function HeroSection() {
   const breath = Math.sin(t * 0.055 * Math.PI * 2) * 0.014;
   const drift = Math.sin(t * 0.04 * Math.PI * 2) * 10;
 
-  const artScale = interpolate([0, 1, 2], [1, 1.36, 1.94])(p) * (1 + breath);
-  const artY = interpolate([0, 1, 2], [66, 72, -60])(p) + drift * 0.6;
+  const artScale =
+    interpolate(
+      [0, 1, 2],
+      [ART_SCALE_REST, ART_SCALE_MID, ART_SCALE_DEEP]
+    )(p) * (1 + breath);
+  const artY =
+    interpolate([0, 1, 2], [ART_Y_REST, ART_Y_MID, ART_Y_DEEP])(p) +
+    drift * 0.6;
   const g =
     interpolate([0, 1, 2], [1.15, 0.5, 0.5])(p) *
     (1 + breath * 1.5) *
@@ -271,12 +347,15 @@ export default function HeroSection() {
   // term) — it intensifies the glow, never dims or masks the glyph.
   const gWithCursor = g * (1 + cursorProximity * CURSOR_GLOW_BOOST);
 
-  const nameY = interpolate([0, 1, 2], [320, 250, 200])(p) + drift * 0.35;
-  const nameSize = interpolate([0, 1], [46, 60])(p);
+  const nameY =
+    interpolate([0, 1, 2], [NAME_Y_REST, NAME_Y_MID, NAME_Y_DEEP])(p) +
+    drift * 0.35;
+  const nameSize = interpolate([0, 1], [NAME_SIZE_REST, NAME_SIZE_MID])(p);
   const nameOpacity = interpolate([0, 1, 1.32], [1, 1, 0])(p);
 
   const tag1Opacity = interpolate([0.42, 0.95, 1.28], [0, 1, 0])(p);
-  const tag1Y = interpolate([0.42, 1], [320, 300])(p) + drift * 0.35;
+  const tag1Y =
+    interpolate([0.42, 1], [TAG1_Y_REST, TAG1_Y_MID])(p) + drift * 0.35;
 
   const tag2Opacity = interpolate([1.42, 1.95], [0, 1])(p);
   const tag2Y = interpolate([1.42, 2], [925, 859])(p) - drift * 0.3;
@@ -486,7 +565,7 @@ export default function HeroSection() {
               textAlign: "center",
               fontFamily: SANS,
               fontWeight: 300,
-              fontSize: 40,
+              fontSize: TAG1_FONT_SIZE,
               letterSpacing: "0.01em",
               color: "rgba(255,255,255,0.82)",
               opacity: tag1Opacity,
