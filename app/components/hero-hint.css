@@ -1,0 +1,16 @@
+/* Slow vertical bob for the "scroll to continue" hint, started only
+   after its opacity fade-in has completed (see hintBobActive in
+   HeroSection.tsx). */
+@keyframes heroHintBob {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.hero-hint-bob {
+  animation: heroHintBob 1.8s ease-in-out infinite;
+}

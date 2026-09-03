@@ -8,7 +8,9 @@
 // (rest -> mid -> deep) off actual page scroll instead.
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import "./hero-fonts.css";
+import "./hero-hint.css";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 const DIDONE = "'Juana', Georgia, serif";
@@ -16,6 +18,19 @@ const DIDONE = "'Juana', Georgia, serif";
 // Fixed glow strength baked in from the prototype's tuned default
 // (was a 0.3-1.8 dev slider in the Tweaks panel; 0.75 is where it landed).
 const GLOW_STRENGTH = 0.75;
+
+// Cursor-reactive glow on ART: ramps UP toward this fraction of extra
+// intensity as the cursor approaches ART's center, at zero distance;
+// never goes below the scroll-driven baseline (it's a multiplier > 1,
+// applied on top of `g`, not a replacement for it). CURSOR_GLOW_RADIUS
+// is the distance (px) beyond which the cursor stops affecting it.
+const CURSOR_GLOW_BOOST = 0.6;
+const CURSOR_GLOW_RADIUS = 500;
+
+// "Scroll to continue" hint: two clicks on ART within this window, with
+// no real scroll in between, trigger it.
+const HINT_CLICK_WINDOW_MS = 4000;
+const HINT_DISMISSED_KEY = "heroScrollHintDismissed";
 
 // Design was authored on a 1920x1080 canvas; all coordinates below are in
 // that space and get scaled to fit the viewport (see `stageScale` below) so
@@ -75,11 +90,46 @@ function glowShadow(g: number) {
 
 export default function HeroSection() {
   const trackRef = useRef<HTMLDivElement>(null);
+  const artRef = useRef<HTMLDivElement>(null);
   const [scrollP, setScrollP] = useState(0); // 0..1 raw scroll fraction through the track
   const [t, setT] = useState(0); // seconds elapsed, for the idle breathing/drift motion
 
+  // "Scroll to continue" hint state. clickStateRef tracks an in-progress
+  // double-click window; lastScrollTimeRef timestamps the most recent
+  // real scroll (window 'scroll' only fires on actual movement, so any
+  // firing of it counts). hintDismissedRef, once true (this click or a
+  // prior page load via sessionStorage), permanently suppresses the hint.
+  const [hintVisible, setHintVisible] = useState(false);
+  const [hintBobActive, setHintBobActive] = useState(false);
+  const hintVisibleRef = useRef(false);
+  const hintDismissedRef = useRef(false);
+  const clickStateRef = useRef<{ count: number; firstClickTime: number }>({
+    count: 0,
+    firstClickTime: 0,
+  });
+  const lastScrollTimeRef = useRef(0);
+
+  useEffect(() => {
+    hintVisibleRef.current = hintVisible;
+  }, [hintVisible]);
+
+  useEffect(() => {
+    try {
+      hintDismissedRef.current =
+        sessionStorage.getItem(HINT_DISMISSED_KEY) === "1";
+    } catch {
+      // sessionStorage unavailable (e.g. privacy mode) — hint just won't
+      // persist its dismissal across reloads, which is an acceptable
+      // degradation, not a crash.
+    }
+  }, []);
+
   // Scroll progress: how far we are through the tall scroll track, clamped
-  // to [0,1]. rAF-throttled scroll handler avoids layout thrash.
+  // to [0,1]. rAF-throttled scroll handler avoids layout thrash. Also
+  // where "a real scroll happened" is detected for the hint: any fire of
+  // the native 'scroll' event is real movement, so it resets the
+  // double-click window and, if the hint is currently showing, fades it
+  // out and permanently dismisses it for this session.
   useEffect(() => {
     let raf: number | null = null;
     const measure = () => {
@@ -92,6 +142,17 @@ export default function HeroSection() {
       setScrollP(total > 0 ? clamp01(scrolled / total) : 0);
     };
     const onScroll = () => {
+      lastScrollTimeRef.current = performance.now();
+      clickStateRef.current = { count: 0, firstClickTime: 0 };
+      if (hintVisibleRef.current) {
+        setHintVisible(false);
+        hintDismissedRef.current = true;
+        try {
+          sessionStorage.setItem(HINT_DISMISSED_KEY, "1");
+        } catch {
+          // Nothing to do if storage is unavailable — see above.
+        }
+      }
       if (raf == null) raf = requestAnimationFrame(measure);
     };
     measure();
@@ -100,6 +161,68 @@ export default function HeroSection() {
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
+      if (raf != null) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  // Bob starts only once the fade-in transition has finished, not at the
+  // moment opacity starts changing. hintBobActive resets in the cleanup
+  // (runs when hintVisible flips back to false, or on unmount) rather
+  // than synchronously in the effect body.
+  useEffect(() => {
+    if (!hintVisible) return;
+    const timer = setTimeout(() => setHintBobActive(true), 650);
+    return () => {
+      clearTimeout(timer);
+      setHintBobActive(false);
+    };
+  }, [hintVisible]);
+
+  const handleArtClick = () => {
+    if (hintDismissedRef.current) return;
+    const now = performance.now();
+    const cs = clickStateRef.current;
+    if (cs.count === 0) {
+      clickStateRef.current = { count: 1, firstClickTime: now };
+      return;
+    }
+    const withinWindow = now - cs.firstClickTime <= HINT_CLICK_WINDOW_MS;
+    const noScrollBetween = lastScrollTimeRef.current < cs.firstClickTime;
+    if (withinWindow && noScrollBetween) {
+      setHintVisible(true);
+      clickStateRef.current = { count: 0, firstClickTime: 0 };
+    } else {
+      // Either the window lapsed or a scroll happened in between — this
+      // click starts a fresh window rather than counting toward a stale one.
+      clickStateRef.current = { count: 1, firstClickTime: now };
+    }
+  };
+
+  // Cursor-reactive glow: distance from pointer to ART's current
+  // on-screen center, rAF-throttled like the scroll handler above.
+  const [cursorProximity, setCursorProximity] = useState(0);
+  useEffect(() => {
+    let raf: number | null = null;
+    let lastX = 0;
+    let lastY = 0;
+    const compute = () => {
+      raf = null;
+      const el = artRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dist = Math.hypot(lastX - cx, lastY - cy);
+      setCursorProximity(clamp01(1 - dist / CURSOR_GLOW_RADIUS));
+    };
+    const onMove = (e: MouseEvent) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      if (raf == null) raf = requestAnimationFrame(compute);
+    };
+    window.addEventListener("mousemove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("mousemove", onMove);
       if (raf != null) cancelAnimationFrame(raf);
     };
   }, []);
@@ -128,20 +251,32 @@ export default function HeroSection() {
     interpolate([0, 1, 2], [1.15, 0.5, 0.5])(p) *
     (1 + breath * 1.5) *
     GLOW_STRENGTH;
+  // Cursor proximity only ever multiplies g upward (1 + a non-negative
+  // term) — it intensifies the glow, never dims or masks the glyph.
+  const gWithCursor = g * (1 + cursorProximity * CURSOR_GLOW_BOOST);
 
   const nameY = interpolate([0, 1, 2], [320, 250, 200])(p) + drift * 0.35;
   const nameSize = interpolate([0, 1], [46, 60])(p);
   const nameOpacity = interpolate([0, 1, 1.32], [1, 1, 0])(p);
 
   const tag1Opacity = interpolate([0.42, 0.95, 1.28], [0, 1, 0])(p);
-  const tag1Y = interpolate([0.42, 1], [342, 322])(p) + drift * 0.35;
+  const tag1Y = interpolate([0.42, 1], [320, 300])(p) + drift * 0.35;
 
   const tag2Opacity = interpolate([1.42, 1.95], [0, 1])(p);
-  const tag2Y = interpolate([1.42, 2], [968, 902])(p) - drift * 0.3;
+  const tag2Y = interpolate([1.42, 2], [925, 859])(p) - drift * 0.3;
 
   const contactOpacity = interpolate([0, 0.5], [0.38, 0])(p);
 
   const haloSize = 1500 * artScale;
+
+  // "Scroll to continue" hint sits just below ART's current bottom edge,
+  // tracking ART's own scale/position rather than a fixed Y, since the
+  // click-triggered hint can appear at whatever scroll position the user
+  // is paused at (462 * 0.86 is ART's unscaled line-box height; halved
+  // and scaled gives its current half-height at rest, translateY(-50%)
+  // centered like ART itself).
+  const artBottomY = 540 + artY + ((462 * 0.86) / 2) * artScale;
+  const hintY = artBottomY + 40;
 
   // Fit the 1920x1080 authored stage into the viewport like `object-fit:
   // contain` (matches how the prototype's CompositionStage scaled its SVG),
@@ -200,6 +335,8 @@ export default function HeroSection() {
           />
 
           <div
+            ref={artRef}
+            onClick={handleArtClick}
             style={{
               position: "absolute",
               left: 0,
@@ -213,8 +350,10 @@ export default function HeroSection() {
               lineHeight: 0.86,
               letterSpacing: "0.005em",
               color: "#fff",
-              textShadow: glowShadow(g),
+              textShadow: glowShadow(gWithCursor),
               willChange: "transform",
+              userSelect: "none",
+              WebkitUserSelect: "none",
             }}
           >
             ART
@@ -227,16 +366,31 @@ export default function HeroSection() {
               right: 0,
               top: nameY,
               textAlign: "center",
-              fontFamily: SANS,
-              fontWeight: 500,
-              fontSize: nameSize,
-              letterSpacing: "0.005em",
-              color: "#fff",
               opacity: nameOpacity,
-              textShadow: "0 0 26px rgba(255,255,255,0.35)",
+              // Once faded out at the deep stage, don't leave an
+              // invisible-but-clickable link sitting over ART.
+              pointerEvents: nameOpacity < 0.05 ? "none" : "auto",
             }}
           >
-            Riddhi Thakkar
+            {/* Inline-block + relative so the before:* underline is
+                scoped to the text's own width, not the full-width row
+                above it — a swipe-in from the right on hover/focus,
+                written directly in Tailwind (no external component). */}
+            <Link
+              href="/about"
+              className="relative inline-block before:absolute before:bottom-0 before:left-0 before:h-px before:w-full before:origin-right before:scale-x-0 before:bg-white before:transition-transform before:duration-200 before:ease-[cubic-bezier(0.4,0,0.2,1)] before:content-[''] hover:before:origin-left hover:before:scale-x-100 focus:before:origin-left focus:before:scale-x-100"
+              style={{
+                fontFamily: SANS,
+                fontWeight: 500,
+                fontSize: nameSize,
+                letterSpacing: "0.005em",
+                color: "#fff",
+                textDecoration: "none",
+                textShadow: "0 0 26px rgba(255,255,255,0.35)",
+              }}
+            >
+              Riddhi Thakkar
+            </Link>
           </div>
 
           <div
@@ -252,6 +406,7 @@ export default function HeroSection() {
               letterSpacing: "0.01em",
               color: "rgba(255,255,255,0.82)",
               opacity: tag1Opacity,
+              pointerEvents: "none",
             }}
           >
             is just a name. What actually makes me is my
@@ -271,6 +426,7 @@ export default function HeroSection() {
               letterSpacing: "0.01em",
               color: "rgba(255,255,255,0.85)",
               opacity: tag2Opacity,
+              pointerEvents: "none",
             }}
           >
             is my peace.
@@ -291,9 +447,33 @@ export default function HeroSection() {
               whiteSpace: "nowrap",
               color: "#fff",
               opacity: contactOpacity,
+              pointerEvents: "none",
             }}
           >
             Contact info
+          </div>
+
+          {/* Easter-egg hint: two clicks on ART within 4s, no scroll in
+              between. Text only, fades in, then bobs once fully visible. */}
+          <div
+            className={hintBobActive ? "hero-hint-bob" : undefined}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: hintY,
+              textAlign: "center",
+              fontFamily: SANS,
+              fontWeight: 400,
+              fontSize: 28,
+              letterSpacing: "0.02em",
+              color: "#fff",
+              opacity: hintVisible ? 0.55 : 0,
+              transition: "opacity 600ms ease",
+              pointerEvents: "none",
+            }}
+          >
+            Scroll to continue
           </div>
         </div>
       </div>
