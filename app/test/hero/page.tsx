@@ -33,7 +33,17 @@ const YOUR_NAME = "Your Name";
 // tagline for its *entire* visible window at 375x812 and 1920x600
 // (caught by sweeping multiple viewport shapes, not just one). vh
 // keeps the clearance, as a fraction of scroll, viewport-shape-stable.
-const ART_FONT_SIZE = "clamp(2rem, 4.5vh, 3rem)";
+// This CSS value is a starting point, not the final word: on genuinely
+// extreme viewports (740x360) it's corrected further at runtime — see
+// ART_MIN_FONT_SIZE below.
+const ART_FONT_SIZE = "clamp(1.5rem, 4.5vh, 3rem)";
+
+// True legibility floor for ART's rest size — below this it stops
+// reading as a headline at all. Only reached on truly extreme
+// viewports where even shrinking to this size still doesn't clear the
+// tagline row (the degenerate-case guard below hides the tagline then,
+// rather than let ART render smaller than this).
+const ART_MIN_FONT_SIZE = 8;
 
 const SCROLL_VH_PER_BEAT = 100;
 const TOTAL_BEATS = 3;
@@ -98,7 +108,20 @@ const SENTENCE_FADE_OUT_END_FRAC = 0.85;
 const SENTENCE_SAFETY_MARGIN = 0.85;
 
 // Minimum pixel gap to keep between ART's box and the tagline's box.
-const SAFETY_BUFFER_PX = 12;
+const SAFETY_BUFFER_PX = 8;
+
+// Tagline + name font size and gap, responsive via vmin (the smaller of
+// vw/vh) so they shrink on BOTH narrow-portrait (320x568) and
+// short-landscape (740x360) viewports — a vw-only clamp shrinks for
+// narrow-but-tall phones but does nothing for short-but-wide ones,
+// which was still suppressing the tagline there. Smaller name+tagline
+// text and gap means less of the vertical headroom near ART's center
+// gets eaten before ART even starts growing. (Before this, several
+// viewports had no safe window at all and the tagline stayed hidden
+// for the whole scroll — see SENTENCE_FADE_* above.)
+const SENTENCE_FONT_SIZE = "clamp(0.4rem, 2.8vmin, 0.875rem)";
+const NAME_FONT_SIZE = "clamp(0.45rem, 2.2vmin, 0.8rem)";
+const NAME_TAGLINE_GAP = "clamp(0.1rem, 1vmin, 0.5rem)";
 
 /* ============================================================ */
 
@@ -128,26 +151,45 @@ export default function HeroTestPage() {
       // us recompute ART's natural (unscaled) width at any viewport
       // size from a single live getComputedStyle read instead of a
       // hardcoded pixel value.
-      const artRestFontSize = parseFloat(getComputedStyle(art).fontSize);
       const artWidthToFontSizeRatio =
-        art.getBoundingClientRect().width / artRestFontSize;
+        art.getBoundingClientRect().width /
+        parseFloat(getComputedStyle(art).fontSize);
+
+      const artCenterY = window.innerHeight / 2;
+      const sentenceRect = sentence.getBoundingClientRect();
+      const maxSafeArtHalfHeight =
+        artCenterY - sentenceRect.bottom - SAFETY_BUFFER_PX;
+
+      // ART's CSS rest size (the clamp() above) is tuned to look right
+      // on typical viewports, but on extreme ones (740x360 landscape)
+      // it can itself already exceed the safe half-height before ART
+      // even starts growing — no growth-curve or timing fix can help
+      // once the REST state is already unsafe. So: if that's what the
+      // measured geometry says, shrink ART's rest size in JS to just
+      // fit (down to ART_MIN_FONT_SIZE, below which "ART" stops being
+      // legible — only past that true floor do we give up and let the
+      // degenerate-case guard below suppress the tagline).
+      let artRestFontSize = parseFloat(getComputedStyle(art).fontSize);
+      if (artRestFontSize / 2 > maxSafeArtHalfHeight) {
+        artRestFontSize = Math.max(
+          ART_MIN_FONT_SIZE,
+          maxSafeArtHalfHeight * 2 * SENTENCE_SAFETY_MARGIN
+        );
+        art.style.fontSize = `${artRestFontSize}px`;
+      }
       const artRestHalfHeight = artRestFontSize / 2; // lineHeight: 1
       const artRestWidth = artRestFontSize * artWidthToFontSizeRatio;
       const artScaleTarget =
         (ART_FINAL_WIDTH_VS_VIEWPORT * window.innerWidth) / artRestWidth;
 
-      // Work out, from the ACTUAL measured geometry of this viewport,
-      // the largest ART scale that still keeps a SAFETY_BUFFER_PX gap
-      // above the tagline's box — then the largest tween progress p at
-      // which the eased growth curve reaches that scale. The sentence's
-      // whole fade in/out cycle has to finish before that point (with
-      // SENTENCE_SAFETY_MARGIN of margin), whatever it turns out to be
-      // for this viewport's shape, rather than a beat range tuned by
-      // hand against one screen size.
-      const artCenterY = window.innerHeight / 2;
-      const sentenceRect = sentence.getBoundingClientRect();
-      const maxSafeArtHalfHeight =
-        artCenterY - sentenceRect.bottom - SAFETY_BUFFER_PX;
+      // Now work out, from the ACTUAL measured geometry of this
+      // viewport, the largest ART scale that still keeps a
+      // SAFETY_BUFFER_PX gap above the tagline's box — then the largest
+      // tween progress p at which the eased growth curve reaches that
+      // scale. The sentence's whole fade in/out cycle has to finish
+      // before that point (with SENTENCE_SAFETY_MARGIN of margin),
+      // whatever it turns out to be for this viewport's shape, rather
+      // than a beat range tuned by hand against one screen size.
       const maxSafeScale = maxSafeArtHalfHeight / artRestHalfHeight;
       const pSafe =
         maxSafeScale > 1
@@ -270,7 +312,8 @@ export default function HeroTestPage() {
             className="text-white/90"
             style={{
               fontFamily: nameFontFamily,
-              fontSize: "0.8rem",
+              fontSize: NAME_FONT_SIZE,
+              lineHeight: 1.1,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
             }}
@@ -280,8 +323,14 @@ export default function HeroTestPage() {
 
           <p
             ref={sentenceRef}
-            className="max-w-sm text-sm text-white/70"
-            style={{ fontFamily: nameFontFamily, opacity: 0, marginTop: "0.5rem" }}
+            className="max-w-sm text-white/70"
+            style={{
+              fontFamily: nameFontFamily,
+              fontSize: SENTENCE_FONT_SIZE,
+              lineHeight: 1.15,
+              opacity: 0,
+              marginTop: NAME_TAGLINE_GAP,
+            }}
           >
             is just a name. What actually makes me is my—
           </p>
