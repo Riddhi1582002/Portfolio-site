@@ -18,7 +18,7 @@
 // (ART_Y_DEEP/ART_SCALE_DEEP) since this section picks up where the hero
 // leaves off.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import ScrollTrigger from "gsap/ScrollTrigger";
 import {
@@ -92,6 +92,26 @@ export default function FilmstripEntry() {
   const artRef = useRef<HTMLDivElement>(null);
   const boxRowRef = useRef<SVGSVGElement>(null);
 
+  // The crossbar box-row's position/size is computed from Dream Avenue
+  // Regular's real glyph metrics — it only lines up with "ART" once that
+  // (next/font/local, display:'swap') webfont has actually swapped in.
+  // Before that, the browser paints ART in its fallback (Juana/Georgia),
+  // whose "A" has entirely different proportions, so the box-row would
+  // sit wherever Dream Avenue's crossbar is while the visible glyph is a
+  // different shape underneath it — exactly "off-position, overlapping
+  // the letterforms incorrectly". Hold the whole scene at rest, box-row
+  // hidden, until fonts.ready confirms the swap happened.
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    document.fonts.ready.then(() => {
+      if (!cancelled) setFontsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     const fit = () => {
       const scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
@@ -103,53 +123,67 @@ export default function FilmstripEntry() {
   }, []);
 
   useEffect(() => {
-    if (!wrapperRef.current || !artRef.current || !boxRowRef.current) return;
+    if (!fontsReady || !wrapperRef.current || !artRef.current || !boxRowRef.current) return;
 
-    gsap.set(boxRowRef.current, {
-      scale: REST_SCALE,
-      opacity: REST_OPACITY,
-      transformOrigin: "50% 50%",
+    // gsap.context() (GreenSock's documented React integration pattern)
+    // instead of a bare timeline + manual kill(): under React StrictMode
+    // (on by default in `next dev`, off in a production build), effects
+    // mount -> cleanup -> mount once on initial render. ScrollTrigger's
+    // pin mutates the DOM (position:fixed, an inserted pin-spacer sized
+    // from geometry measured at creation time); a bare `.kill()` doesn't
+    // reliably revert that synchronously before the second mount measures
+    // geometry again, so the *second* (real) instance can end up pinning
+    // against an already-perturbed layout — which reads exactly like "the
+    // box-row is off-position/wrong-scale/overlapping the letterforms",
+    // despite the anchor math itself (transform-origin locked to the
+    // crossbar's own screen rect, see the <svg>'s left/top/width/height
+    // below) being unchanged. ctx.revert() fully undoes pinning and every
+    // gsap.set()/tween's inline styles before the real mount runs.
+    const ctx = gsap.context(() => {
+      gsap.set(boxRowRef.current, {
+        scale: REST_SCALE,
+        opacity: REST_OPACITY,
+        transformOrigin: "50% 50%",
+      });
+      gsap.set(artRef.current, { opacity: 1 });
+
+      // trigger = the tall (SCROLL_LENGTH_VH-vh) wrapper, whose own height
+      // is the scroll distance ('bottom bottom' = one-to-one, no extra
+      // multiplication); pin targets only the 100vh inner viewport, not
+      // the tall wrapper itself.
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: wrapperRef.current,
+          start: "top top",
+          end: "bottom bottom",
+          scrub: true,
+          pin: pinRef.current,
+        },
+      });
+
+      // 0-15%: held at rest (small scale, low opacity, "ART" fully visible).
+      tl.to(boxRowRef.current, { scale: REST_SCALE, opacity: REST_OPACITY, duration: 0.15 }, 0);
+      // 15-30%: box-row scales up from its own fixed center (crossbar's
+      // screen position, set via transform-origin above) while ART's
+      // strokes crossfade out.
+      tl.to(
+        boxRowRef.current,
+        { scale: FILMSTRIP_SCALE, opacity: 1, duration: 0.15, ease: "power2.inOut" },
+        0.15
+      );
+      tl.to(artRef.current, { opacity: 0, duration: 0.15, ease: "power2.inOut" }, 0.15);
+      // 30%+: holds filled — reserved for the (not yet built) horizontal
+      // filmstrip scroll-scrub. Also extends the timeline's own total
+      // duration to exactly 1 (0.15 + 0.15 + 0.70), which is what makes
+      // the scrub's 0-1 scroll progress line up with the 0/0.15/0.30
+      // positions above as fractions rather than raw timeline-seconds —
+      // without this hold the timeline's natural duration is only 0.30,
+      // silently compressing every beat above into the first 30% of scroll.
+      tl.to(boxRowRef.current, { scale: FILMSTRIP_SCALE, opacity: 1, duration: 0.7 }, 0.3);
     });
-    gsap.set(artRef.current, { opacity: 1 });
 
-    // trigger = the tall (SCROLL_LENGTH_VH-vh) wrapper, whose own height
-    // is the scroll distance ('bottom bottom' = one-to-one, no extra
-    // multiplication); pin targets only the 100vh inner viewport, not
-    // the tall wrapper itself.
-    const tl = gsap.timeline({
-      scrollTrigger: {
-        trigger: wrapperRef.current,
-        start: "top top",
-        end: "bottom bottom",
-        scrub: true,
-        pin: pinRef.current,
-      },
-    });
-
-    // 0-15%: held at rest (small scale, low opacity, "ART" fully visible).
-    tl.to(boxRowRef.current, { scale: REST_SCALE, opacity: REST_OPACITY, duration: 0.15 }, 0);
-    // 15-30%: box-row scales up from its own fixed center (crossbar's
-    // screen position) while ART's strokes crossfade out.
-    tl.to(
-      boxRowRef.current,
-      { scale: FILMSTRIP_SCALE, opacity: 1, duration: 0.15, ease: "power2.inOut" },
-      0.15
-    );
-    tl.to(artRef.current, { opacity: 0, duration: 0.15, ease: "power2.inOut" }, 0.15);
-    // 30%+: holds filled — reserved for the (not yet built) horizontal
-    // filmstrip scroll-scrub. Also extends the timeline's own total
-    // duration to exactly 1 (0.15 + 0.15 + 0.70), which is what makes
-    // the scrub's 0-1 scroll progress line up with the 0/0.15/0.30
-    // positions above as fractions rather than raw timeline-seconds —
-    // without this hold the timeline's natural duration is only 0.30,
-    // silently compressing every beat above into the first 30% of scroll.
-    tl.to(boxRowRef.current, { scale: FILMSTRIP_SCALE, opacity: 1, duration: 0.7 }, 0.3);
-
-    return () => {
-      tl.scrollTrigger?.kill();
-      tl.kill();
-    };
-  }, []);
+    return () => ctx.revert();
+  }, [fontsReady]);
 
   const boxWidth = (CROSSBAR_WIDTH - (BOX_COUNT - 1) * BOX_GAP) / BOX_COUNT;
   const rx = CROSSBAR_THICKNESS * 0.28;
@@ -203,6 +237,11 @@ export default function FilmstripEntry() {
               top: CROSSBAR_CENTER_Y - CROSSBAR_THICKNESS / 2,
               width: CROSSBAR_WIDTH,
               height: CROSSBAR_THICKNESS,
+              // Matches REST_SCALE/REST_OPACITY once gsap.set() takes
+              // over post-fonts-ready; opacity 0 (not those values) for
+              // the wait itself so a fallback-font-shaped "A" is never
+              // visible with the crossbar row sitting on top of it.
+              opacity: fontsReady ? undefined : 0,
             }}
             viewBox={`0 0 ${CROSSBAR_WIDTH} ${CROSSBAR_THICKNESS}`}
           >
