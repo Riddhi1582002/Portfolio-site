@@ -8,14 +8,24 @@
 // (rest -> mid -> deep) off actual page scroll instead.
 
 import { useEffect, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import localFont from "next/font/local";
 import gsap from "gsap";
 import { SplitText } from "gsap/SplitText";
+import { Flip } from "gsap/Flip";
+import { setPendingNameFlip } from "../lib/nameFlip";
 import "./hero-fonts.css";
 import "./hero-hint.css";
 
-gsap.registerPlugin(SplitText);
+gsap.registerPlugin(SplitText, Flip);
+
+// Name-click exit: ART and contact info fade/translate out on this one
+// timeline while the name's Flip state is captured, then navigation
+// fires on completion — see AboutHeader for the matching Flip.from().
+const NAME_CLICK_EXIT_DURATION = 0.6;
+const NAME_CLICK_EXIT_Y = 40;
 
 const dreamAvenue = localFont({
   src: "../fonts/DreamAvenue-Regular.otf",
@@ -159,20 +169,25 @@ const SCROLL_TO_P = interpolate(
   [0, 0, 1, 1, 2, 2]
 );
 
+// Layered stack (sharp core -> progressively wider, fainter halos) given
+// directly by the design review, replacing the old single-blur-reading
+// formula. g=1 renders it at the given numbers exactly; g scales all four
+// layers together so scroll/cursor reactivity still works the same way.
 function glowShadow(g: number) {
   const a = (v: number) => Math.min(1, Math.max(0, v * g));
   return [
-    `0 0 ${8 * g + 2}px rgba(255,255,255,${a(0.95)})`,
-    `0 0 ${34 * g + 6}px rgba(240,246,255,${a(0.8)})`,
-    `0 0 ${90 * g + 12}px rgba(220,232,255,${a(0.55)})`,
-    `0 0 ${190 * g + 20}px rgba(200,220,255,${a(0.38)})`,
-    `0 0 ${340 * g + 30}px rgba(180,205,255,${a(0.22)})`,
+    `0 0 ${2 * g}px rgba(255,255,255,${a(0.9)})`,
+    `0 0 ${8 * g}px rgba(255,255,255,${a(0.6)})`,
+    `0 0 ${20 * g}px rgba(255,255,255,${a(0.35)})`,
+    `0 0 ${40 * g}px rgba(255,255,255,${a(0.15)})`,
   ].join(", ");
 }
 
 export default function HeroSection() {
+  const router = useRouter();
   const trackRef = useRef<HTMLDivElement>(null);
   const artRef = useRef<HTMLDivElement>(null);
+  const contactRef = useRef<HTMLDivElement>(null);
   const [scrollP, setScrollP] = useState(0); // 0..1 raw scroll fraction through the track
   const [t, setT] = useState(0); // seconds elapsed, for the idle breathing/drift motion
 
@@ -289,6 +304,35 @@ export default function HeroSection() {
       // Either the window lapsed or a scroll happened in between — this
       // click starts a fresh window rather than counting toward a stale one.
       clickStateRef.current = { count: 1, firstClickTime: now };
+    }
+  };
+
+  // Name click: captures the name link's Flip state, then runs ART +
+  // contact info fade/translate-down on one timeline (not staggered),
+  // and only navigates once that timeline completes. A modified click
+  // (new tab, etc.) falls through to the real <Link> instead.
+  const handleNameClick = (e: ReactMouseEvent<HTMLAnchorElement>) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+      return;
+    }
+    e.preventDefault();
+    if (nameTextRef.current) {
+      setPendingNameFlip(Flip.getState(nameTextRef.current));
+    }
+    const tl = gsap.timeline({ onComplete: () => router.push("/about") });
+    if (artRef.current) {
+      tl.to(
+        artRef.current,
+        { opacity: 0, y: NAME_CLICK_EXIT_Y, duration: NAME_CLICK_EXIT_DURATION, ease: "power2.inOut" },
+        0
+      );
+    }
+    if (contactRef.current) {
+      tl.to(
+        contactRef.current,
+        { opacity: 0, y: NAME_CLICK_EXIT_Y, duration: NAME_CLICK_EXIT_DURATION, ease: "power2.inOut" },
+        0
+      );
     }
   };
 
@@ -548,6 +592,7 @@ export default function HeroSection() {
             <Link
               ref={nameTextRef}
               href="/about"
+              onClick={handleNameClick}
               className="relative inline-block before:absolute before:bottom-0 before:left-0 before:h-px before:w-full before:origin-right before:scale-x-0 before:bg-white before:transition-transform before:duration-200 before:ease-[cubic-bezier(0.4,0,0.2,1)] before:content-[''] hover:before:origin-left hover:before:scale-x-100 focus:before:origin-left focus:before:scale-x-100"
               style={{
                 fontFamily: SANS,
@@ -608,6 +653,7 @@ export default function HeroSection() {
           </div>
 
           <div
+            ref={contactRef}
             style={{
               position: "absolute",
               right: 80,
