@@ -35,11 +35,11 @@ const dreamAvenue = localFont({
 });
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
-const ART_FONT = `${dreamAvenue.style.fontFamily}, 'Juana', Georgia, serif`;
+export const ART_FONT = `${dreamAvenue.style.fontFamily}, 'Juana', Georgia, serif`;
 
 // Fixed glow strength baked in from the prototype's tuned default
 // (was a 0.3-1.8 dev slider in the Tweaks panel; 0.75 is where it landed).
-const GLOW_STRENGTH = 0.75;
+export const GLOW_STRENGTH = 0.75;
 
 // Cursor-reactive glow on ART: ramps UP toward this fraction of extra
 // intensity as the cursor approaches ART's center, at zero distance;
@@ -65,10 +65,10 @@ const NAME_SIZE_REST = 46;
 const NAME_SIZE_MID = 60;
 const ART_Y_REST = 66;
 const ART_Y_MID = 72;
-const ART_Y_DEEP = -60;
+export const ART_Y_DEEP = -60;
 const ART_SCALE_REST = 1;
 const ART_SCALE_MID = 1.36;
-const ART_SCALE_DEEP = 1.94;
+export const ART_SCALE_DEEP = 1.94;
 
 // Font metrics for "Neue Montreal", measured via canvas TextMetrics
 // against the real webfont (cap-height isn't queryable any other way
@@ -127,8 +127,8 @@ const NAME_Y_DEEP = 200;
 // Design was authored on a 1920x1080 canvas; all coordinates below are in
 // that space and get scaled to fit the viewport (see `stageScale` below) so
 // proportions/positions stay pixel-perfect at any screen size.
-const STAGE_W = 1920;
-const STAGE_H = 1080;
+export const STAGE_W = 1920;
+export const STAGE_H = 1080;
 
 // How many viewport-heights of scroll it takes to play rest -> mid -> deep.
 // Raise this to slow the scroll-scrub down (more scrolling per frame of
@@ -173,7 +173,7 @@ const SCROLL_TO_P = interpolate(
 // directly by the design review, replacing the old single-blur-reading
 // formula. g=1 renders it at the given numbers exactly; g scales all four
 // layers together so scroll/cursor reactivity still works the same way.
-function glowShadow(g: number) {
+export function glowShadow(g: number) {
   const a = (v: number) => Math.min(1, Math.max(0, v * g));
   return [
     `0 0 ${2 * g}px rgba(255,255,255,${a(0.9)})`,
