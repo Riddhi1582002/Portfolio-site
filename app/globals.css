@@ -24,3 +24,24 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Shared glow-edge frame treatment, extracted from the hero's ART glow
+   (see glowShadow() in HeroSection.tsx) so cards elsewhere in the site
+   can reuse the same white-glow language instead of inventing a new one. */
+:root {
+  --glow-rgb: 255, 255, 255;
+  --glow-border-opacity: 0.16;
+  --glow-shadow-opacity: 0.22;
+  --glow-blur: 22px;
+}
+
+.frame-glow {
+  border: 1px solid rgba(var(--glow-rgb), var(--glow-border-opacity));
+  box-shadow: 0 0 var(--glow-blur) rgba(var(--glow-rgb), var(--glow-shadow-opacity));
+  transition: border-color 300ms ease, box-shadow 300ms ease;
+}
+
+.frame-glow.frame-glow--active {
+  --glow-border-opacity: 0.4;
+  --glow-shadow-opacity: 0.5;
+}

@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import localFont from "next/font/local";
 import gsap from "gsap";
 import { SplitText } from "gsap/SplitText";
 import "./hero-fonts.css";
@@ -16,8 +17,15 @@ import "./hero-hint.css";
 
 gsap.registerPlugin(SplitText);
 
+const dreamAvenue = localFont({
+  src: "../fonts/DreamAvenue-Regular.otf",
+  weight: "400",
+  style: "normal",
+  display: "swap",
+});
+
 const SANS = "'Neue Montreal', system-ui, sans-serif";
-const DIDONE = "'Juana', Georgia, serif";
+const ART_FONT = `${dreamAvenue.style.fontFamily}, 'Juana', Georgia, serif`;
 
 // Fixed glow strength baked in from the prototype's tuned default
 // (was a 0.3-1.8 dev slider in the Tweaks panel; 0.75 is where it landed).
@@ -505,7 +513,7 @@ export default function HeroSection() {
               top: 540 + artY,
               transform: `translateY(-50%) scale(${artScale})`,
               textAlign: "center",
-              fontFamily: DIDONE,
+              fontFamily: ART_FONT,
               fontWeight: 400,
               fontSize: 462,
               lineHeight: 0.86,
