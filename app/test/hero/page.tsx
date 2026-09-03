@@ -25,12 +25,15 @@ const nameFontFamily =
 
 const YOUR_NAME = "Your Name";
 
-// ART's resting (unscaled) size. Kept small enough that ART's bounding
-// box has real clearance from the tagline row at 0% scroll (checked
-// with a Playwright assertion, not just eyeballed) — ART's scale
-// animation grows it from here, so raise the max if you want a bigger
-// start, but re-check the clearance/overlap assertions after.
-const ART_FONT_SIZE = "clamp(2rem, 3.5vw, 3rem)";
+// ART's resting (unscaled) size, in vh so it scales with the same
+// vertical reference as the name/tagline block (top: 40vh) instead of
+// vw. Mixing axes was the actual bug: a vw-based size made ART's rest
+// size (and thus its clearance from the tagline) swing wildly with
+// viewport aspect ratio — fine at 1280x800, but overlapping the
+// tagline for its *entire* visible window at 375x812 and 1920x600
+// (caught by sweeping multiple viewport shapes, not just one). vh
+// keeps the clearance, as a fraction of scroll, viewport-shape-stable.
+const ART_FONT_SIZE = "clamp(2rem, 4.5vh, 3rem)";
 
 const SCROLL_VH_PER_BEAT = 100;
 const TOTAL_BEATS = 3;
@@ -38,14 +41,20 @@ const TOTAL_BEATS = 3;
 // Seconds of lag gsap smooths the scrub over (0 = tracks scroll 1:1).
 const SCRUB_SMOOTHING = 0.5;
 
-// ART grows ART_SCALE_RATIO times faster than the name block, both
-// starting at scale 1 and reaching their target by the end of the pin.
-// ART_SCALE_RATIO is set so ART's final rendered width exceeds the
-// viewport width (letters crop at the edges) — verified with a
-// Playwright assertion, see the tune log for measured values.
+// ART's final scale is computed at runtime (see
+// ART_FINAL_WIDTH_VS_VIEWPORT below), not a fixed multiplier — a fixed
+// ART_SCALE_TO tuned to one viewport (1280x800) passed there but
+// FAILED the "exceeds viewport width" requirement at 1920x1080
+// (1539px final width < 1920px viewport). Computing the scale from a
+// live measurement of ART's own rest width and the current
+// window.innerWidth guarantees the requirement holds at any viewport
+// size.
 const NAME_SCALE_TO = 1.15;
-const ART_SCALE_RATIO = 100;
-const ART_SCALE_TO = 1 + (NAME_SCALE_TO - 1) * ART_SCALE_RATIO;
+
+// ART's final rendered width targets this fraction of the viewport
+// width — comfortably past 1 so it visibly crops at both edges rather
+// than just barely clearing it.
+const ART_FINAL_WIDTH_VS_VIEWPORT = 1.15;
 
 // ART's growth is eased (progress^ART_GROWTH_EASE_POWER) instead of
 // linear, so it stays near scale 1 — clear of the tagline row — through
@@ -71,15 +80,25 @@ const GLOW_OPACITY_TO = 0;
 const GLOW_FADE_START_BEAT = 0;
 const GLOW_FADE_END_BEAT = TOTAL_BEATS;
 
-// The sentence line fades in, then back out to 0, entirely within this
-// early window — front-loaded well before ART's bounding box grows out
-// to reach the sentence's position (checked with a Playwright assertion:
-// ART's bbox must not overlap the sentence's bbox while the sentence
-// still has non-zero opacity). All in beats, where 0 = pin start and
-// TOTAL_BEATS = pin end.
-const SENTENCE_FADE_IN_START_BEAT = 0.3;
-const SENTENCE_FADE_IN_END_BEAT = 0.75;
-const SENTENCE_FADE_OUT_END_BEAT = 1.2;
+// The sentence's fade in/out window is NOT a fixed beat range — fixed
+// beats (tried first: 0.3-1.2) passed at normal aspect ratios but broke
+// at extreme ones (375x812 portrait, 1920x600 short-and-wide), because
+// how much scroll ART can safely take before its box reaches the
+// tagline's row depends on the live geometry of both, not a constant.
+// Instead the safe window is computed at runtime from actual measured
+// positions (see SENTENCE_SAFETY_MARGIN below) and the in/out points
+// below are fractions of that computed safe window, not of TOTAL_BEATS.
+const SENTENCE_FADE_IN_START_FRAC = 0.2;
+const SENTENCE_FADE_IN_END_FRAC = 0.55;
+const SENTENCE_FADE_OUT_END_FRAC = 0.85;
+
+// Extra shrink applied to the geometrically-safe scroll point before
+// the tagline must have finished fading out — a margin of safety on
+// top of "just barely doesn't overlap".
+const SENTENCE_SAFETY_MARGIN = 0.85;
+
+// Minimum pixel gap to keep between ART's box and the tagline's box.
+const SAFETY_BUFFER_PX = 12;
 
 /* ============================================================ */
 
@@ -103,11 +122,50 @@ export default function HeroTestPage() {
     const ctx = gsap.context(() => {
       const state = { p: 0 };
 
+      // Measured once, at rest (scale 1, before the tween has run):
+      // ART's own width-to-font-size ratio. This is an intrinsic
+      // property of the glyphs/font, stable across sizes, so it lets
+      // us recompute ART's natural (unscaled) width at any viewport
+      // size from a single live getComputedStyle read instead of a
+      // hardcoded pixel value.
+      const artRestFontSize = parseFloat(getComputedStyle(art).fontSize);
+      const artWidthToFontSizeRatio =
+        art.getBoundingClientRect().width / artRestFontSize;
+      const artRestHalfHeight = artRestFontSize / 2; // lineHeight: 1
+      const artRestWidth = artRestFontSize * artWidthToFontSizeRatio;
+      const artScaleTarget =
+        (ART_FINAL_WIDTH_VS_VIEWPORT * window.innerWidth) / artRestWidth;
+
+      // Work out, from the ACTUAL measured geometry of this viewport,
+      // the largest ART scale that still keeps a SAFETY_BUFFER_PX gap
+      // above the tagline's box — then the largest tween progress p at
+      // which the eased growth curve reaches that scale. The sentence's
+      // whole fade in/out cycle has to finish before that point (with
+      // SENTENCE_SAFETY_MARGIN of margin), whatever it turns out to be
+      // for this viewport's shape, rather than a beat range tuned by
+      // hand against one screen size.
+      const artCenterY = window.innerHeight / 2;
+      const sentenceRect = sentence.getBoundingClientRect();
+      const maxSafeArtHalfHeight =
+        artCenterY - sentenceRect.bottom - SAFETY_BUFFER_PX;
+      const maxSafeScale = maxSafeArtHalfHeight / artRestHalfHeight;
+      const pSafe =
+        maxSafeScale > 1
+          ? Math.min(
+              1,
+              Math.pow(
+                (maxSafeScale - 1) / (artScaleTarget - 1),
+                1 / ART_GROWTH_EASE_POWER
+              )
+            )
+          : 0;
+      const safeWindowEnd = Math.max(0, pSafe * SENTENCE_SAFETY_MARGIN);
+
       const glowStart = GLOW_FADE_START_BEAT / TOTAL_BEATS;
       const glowEnd = GLOW_FADE_END_BEAT / TOTAL_BEATS;
-      const sentenceInStart = SENTENCE_FADE_IN_START_BEAT / TOTAL_BEATS;
-      const sentenceInEnd = SENTENCE_FADE_IN_END_BEAT / TOTAL_BEATS;
-      const sentenceOutEnd = SENTENCE_FADE_OUT_END_BEAT / TOTAL_BEATS;
+      const sentenceInStart = safeWindowEnd * SENTENCE_FADE_IN_START_FRAC;
+      const sentenceInEnd = safeWindowEnd * SENTENCE_FADE_IN_END_FRAC;
+      const sentenceOutEnd = safeWindowEnd * SENTENCE_FADE_OUT_END_FRAC;
 
       gsap.to(state, {
         p: 1,
@@ -142,10 +200,13 @@ export default function HeroTestPage() {
 
           // 2. Scale: ART scales up faster than the name block, eased so
           // it stays clear of the tagline row early on (see
-          // ART_GROWTH_EASE_POWER above).
+          // ART_GROWTH_EASE_POWER above). artScaleTarget was computed
+          // once above from live geometry, so "exceeds the viewport"
+          // holds at this viewport's actual size, not just the one it
+          // was tuned against.
           const artScale = gsap.utils.interpolate(
             1,
-            ART_SCALE_TO,
+            artScaleTarget,
             Math.pow(p, ART_GROWTH_EASE_POWER)
           );
           const nameScale = gsap.utils.interpolate(1, NAME_SCALE_TO, p);
@@ -156,19 +217,25 @@ export default function HeroTestPage() {
           );
 
           // 3. Sentence fades in partway through the pin, then back out
-          // to 0 by the end as ART grows to fill the screen.
+          // to 0 by the end as ART grows to fill the screen. Degenerate
+          // case: safeWindowEnd computed as ~0 means this viewport's
+          // geometry leaves no scroll room where ART is guaranteed clear
+          // of the tagline row at all — the tagline just stays hidden
+          // rather than risk it.
           const sentenceP =
-            p <= sentenceInEnd
-              ? gsap.utils.clamp(
-                  0,
-                  1,
-                  gsap.utils.mapRange(sentenceInStart, sentenceInEnd, 0, 1, p)
-                )
-              : gsap.utils.clamp(
-                  0,
-                  1,
-                  gsap.utils.mapRange(sentenceInEnd, sentenceOutEnd, 1, 0, p)
-                );
+            safeWindowEnd < 0.01
+              ? 0
+              : p <= sentenceInEnd
+                ? gsap.utils.clamp(
+                    0,
+                    1,
+                    gsap.utils.mapRange(sentenceInStart, sentenceInEnd, 0, 1, p)
+                  )
+                : gsap.utils.clamp(
+                    0,
+                    1,
+                    gsap.utils.mapRange(sentenceInEnd, sentenceOutEnd, 1, 0, p)
+                  );
           sentence.style.opacity = String(sentenceP);
         },
       });
