@@ -11,7 +11,7 @@ import "../components/hero-fonts.css";
 gsap.registerPlugin(Flip);
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
-const NAME_FLIP_DURATION = 0.6;
+const NAME_FLIP_DURATION = 0.75;
 // Deliberately well above the hero name's 46px rest size so the Flip reads
 // as a grow, not just a reposition; clamped so it still fits at 320px.
 const ABOUT_HEADER_SIZE = "clamp(34px, 7vw, 72px)";
@@ -38,18 +38,39 @@ function AboutHeader() {
     }
     gsap.set(headerWeightRef.current, { opacity: 0 });
     gsap.set(heroWeightRef.current, { opacity: 1 });
-    const tl = gsap.timeline();
-    tl.add(
-      Flip.from(state, {
-        targets: wrapRef.current,
-        duration: NAME_FLIP_DURATION,
-        ease: "power2.inOut",
-        scale: true,
-      }),
-      0
-    );
-    tl.to(heroWeightRef.current, { opacity: 0, duration: NAME_FLIP_DURATION, ease: "power2.inOut" }, 0);
-    tl.to(headerWeightRef.current, { opacity: 1, duration: NAME_FLIP_DURATION, ease: "power2.inOut" }, 0);
+
+    // Wait for fonts before measuring. The header is Neue Montreal at
+    // clamp(34px,7vw,72px); if it is still in the fallback when Flip
+    // measures the landing geometry, the webfont swapping mid-flight
+    // changes the target box underneath the animation, which is the
+    // single biggest source of jank here.
+    let ctx: gsap.Context | null = null;
+    let cancelled = false;
+    document.fonts.ready.then(() => {
+      if (cancelled || !wrapRef.current) return;
+      ctx = gsap.context(() => {
+        const tl = gsap.timeline();
+        tl.add(
+          Flip.from(state, {
+            targets: wrapRef.current,
+            duration: NAME_FLIP_DURATION,
+            // Decelerating arrival rather than in-out: power2.inOut eases
+            // at both ends, which on a long travel reads as a hesitation
+            // in the middle.
+            ease: "power3.out",
+            scale: true,
+          }),
+          0
+        );
+        tl.to(heroWeightRef.current, { opacity: 0, duration: NAME_FLIP_DURATION, ease: "power1.inOut" }, 0);
+        tl.to(headerWeightRef.current, { opacity: 1, duration: NAME_FLIP_DURATION, ease: "power1.inOut" }, 0);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      ctx?.revert();
+    };
   }, []);
 
   const shared = {
@@ -75,22 +96,33 @@ function AboutHeader() {
   );
 }
 
-// Each clip is served as both VP9/webm and H.264/mp4 so every browser gets
-// one it can decode (the original set was 3 webm + 1 mp4, and the lone mp4
-// failed to demux anywhere without H.264). `slug` also names the poster.
+// All six tools, wired from the correctly-identified clips. The row is
+// built from stills now, not video: `slug` names the PNG in public/icons,
+// extracted at t=2.0s (the fully-drawn frame) with the jitter.video
+// watermark cropped out. Captions describe the tool's role — placeholder
+// wording, easy to swap.
 const SKILLS = [
-  { name: "After Effects", slug: "After-Effects" },
-  { name: "Illustrator", slug: "Illustrator" },
-  { name: "Photoshop", slug: "Photoshop" },
-  { name: "Premiere Pro", slug: "Premiere-Pro" },
+  { name: "After Effects", slug: "After-Effects", caption: "Motion graphics and compositing" },
+  { name: "Illustrator", slug: "Illustrator", caption: "Vector artwork and layout" },
+  { name: "Photoshop", slug: "Photoshop", caption: "Image retouching and composites" },
+  { name: "Premiere Pro", slug: "Premiere-Pro", caption: "Video editing and colour" },
+  { name: "Affinity", slug: "affinity", caption: "Design and photo editing" },
+  { name: "Filmora", slug: "filmora", caption: "Fast-turnaround video edits" },
 ];
 
-// These clips animate their icon in from an empty frame, so frame 0 is
-// solid black — which is why pausing at 0 rendered four black tiles. The
-// icon is fully drawn (letterforms included) around 2s, before the outro
-// starts dissolving it again, so that's both the poster frame and the
-// frame the video rests on once it has been played.
-const ICON_REST_TIME = 2.0;
+// Carousel geometry, in px. Fixed rather than fluid so the track can be
+// stepped by a known amount and so late-loading images can never shift
+// the layout underneath the name Flip landing on this page.
+const TILE_SIZE = 168;
+const TILE_GAP = 20;
+const TILE_STEP = TILE_SIZE + TILE_GAP;
+const CAROUSEL_STEP_MS = 2600;
+const CAROUSEL_SLIDE_MS = 700;
+
+// Ken-burns drift on the photo. 0.08 was measurably working (1.00 -> 1.08
+// across the page) but too small to read as motion on a page with only a
+// few hundred px of scroll, which is why the photo looked static.
+const KEN_BURNS_RANGE = 0.16;
 
 // Locked About copy, one string per paragraph, verbatim as supplied.
 const ABOUT_BODY: string[] = [
@@ -112,75 +144,130 @@ function easeInOutSine(t: number) {
   return -(Math.cos(Math.PI * t) - 1) / 2;
 }
 
-function SkillTile({ name, slug }: { name: string; slug: string }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const tileRef = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState(false);
-
-  const play = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.loop = true;
-    v.currentTime = 0;
-    v.play().catch(() => {});
-    setActive(true);
-  };
-
-  // Rests on the fully-drawn frame rather than frame 0 (which is blank),
-  // so the tile matches its poster instead of going black after a hover.
-  const stop = () => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.pause();
-    try {
-      v.currentTime = ICON_REST_TIME;
-    } catch {
-      // seeking before metadata is ready throws in some browsers; the
-      // poster is still showing at that point, so there's nothing to fix.
-    }
-    setActive(false);
-  };
-
-  useEffect(() => {
-    const canHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-    if (canHover) return;
-    const el = tileRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) play();
-        else stop();
-      },
-      { threshold: 0.6 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
+function SkillTile({
+  skill,
+  hovered,
+  onHover,
+}: {
+  skill: (typeof SKILLS)[number];
+  hovered: boolean;
+  onHover: (name: string | null) => void;
+}) {
   return (
     <div
-      ref={tileRef}
-      onMouseEnter={play}
-      onMouseLeave={stop}
-      className={`frame-glow${active ? " frame-glow--active" : ""} relative aspect-square w-full overflow-hidden rounded-2xl bg-black`}
+      onMouseEnter={() => onHover(skill.name)}
+      onMouseLeave={() => onHover(null)}
+      className={`frame-glow${hovered ? " frame-glow--active" : ""} relative shrink-0 overflow-hidden rounded-2xl bg-black`}
+      style={{
+        width: TILE_SIZE,
+        height: TILE_SIZE,
+        transform: hovered ? "scale(1.06)" : "scale(1)",
+        transition: "transform 320ms cubic-bezier(0.4,0,0.2,1)",
+      }}
     >
-      <video
-        ref={videoRef}
-        poster={`/icons/${slug}.png`}
-        muted
-        playsInline
-        preload="auto"
+      <Image
+        src={`/icons/${skill.slug}.png`}
+        alt={skill.name}
+        width={360}
+        height={360}
         className="h-full w-full object-cover"
-      >
-        <source src={`/icons/${slug}.webm`} type="video/webm" />
-        <source src={`/icons/${slug}.mp4`} type="video/mp4" />
-      </video>
-      <span
-        className="pointer-events-none absolute bottom-2 left-0 right-0 text-center text-xs tracking-wide text-white/60"
-        style={{ fontFamily: SANS }}
-      >
-        {name}
-      </span>
+      />
+    </div>
+  );
+}
+
+function SkillsCarousel() {
+  const [index, setIndex] = useState(0);
+  const [animate, setAnimate] = useState(true);
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  // Auto-advance, paused while a tile is hovered so its caption can
+  // actually be read.
+  useEffect(() => {
+    if (hovered) return;
+    const id = window.setInterval(() => setIndex((i) => i + 1), CAROUSEL_STEP_MS);
+    return () => window.clearInterval(id);
+  }, [hovered]);
+
+  // The track holds the list twice, so stepping onto the first tile of
+  // the second copy looks identical to the first tile of the first —
+  // which is the frame where the position resets with the transition
+  // switched off, making the loop seamless.
+  useEffect(() => {
+    if (index !== SKILLS.length) return;
+    const id = window.setTimeout(() => {
+      setAnimate(false);
+      setIndex(0);
+    }, CAROUSEL_SLIDE_MS);
+    return () => window.clearTimeout(id);
+  }, [index]);
+
+  useEffect(() => {
+    if (animate) return;
+    const id = requestAnimationFrame(() => setAnimate(true));
+    return () => cancelAnimationFrame(id);
+  }, [animate]);
+
+  const active = SKILLS.find((s) => s.name === hovered) ?? null;
+
+  return (
+    <div>
+      <div className="overflow-hidden">
+        <div
+          className="flex"
+          style={{
+            gap: TILE_GAP,
+            transform: `translateX(${-index * TILE_STEP}px)`,
+            transition: animate ? `transform ${CAROUSEL_SLIDE_MS}ms cubic-bezier(0.4,0,0.2,1)` : "none",
+          }}
+        >
+          {[...SKILLS, ...SKILLS].map((s, i) => (
+            <SkillTile
+              key={`${s.slug}-${i}`}
+              skill={s}
+              hovered={hovered === s.name}
+              onHover={setHovered}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Fixed height so revealing a caption never reflows the page. */}
+      <div style={{ height: 58 }} className="mt-5">
+        <div
+          style={{
+            opacity: active ? 1 : 0,
+            transform: active ? "translateY(0) scale(1)" : "translateY(6px) scale(0.98)",
+            transition: "opacity 320ms ease, transform 320ms cubic-bezier(0.4,0,0.2,1)",
+          }}
+        >
+          <p
+            style={{
+              fontFamily: SANS,
+              fontWeight: 500,
+              fontSize: 17,
+              letterSpacing: "0.02em",
+              color: "#fff",
+              textShadow: active ? "0 0 18px rgba(255,255,255,0.45)" : "none",
+              transition: "text-shadow 320ms ease",
+            }}
+          >
+            {active?.name ?? "\u00a0"}
+          </p>
+          <p
+            style={{
+              fontFamily: SANS,
+              fontWeight: 300,
+              fontSize: 14,
+              letterSpacing: "0.03em",
+              color: "rgba(255,255,255,0.6)",
+              marginTop: 4,
+            }}
+          >
+            {active?.caption ?? "\u00a0"}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -218,7 +305,7 @@ export default function AboutSection() {
 
         const photoEl = photoRef.current;
         if (photoEl) {
-          const scale = 1 + easeInOutSine(frac) * 0.08;
+          const scale = 1 + easeInOutSine(frac) * KEN_BURNS_RANGE;
           photoEl.style.transform = `scale(${scale})`;
         }
 
@@ -278,6 +365,7 @@ export default function AboutSection() {
                     fontWeight: 300,
                     fontSize: "clamp(15px, 1.15vw, 18px)",
                     lineHeight: 1.7,
+                    letterSpacing: "0.022em",
                     marginTop: i === 0 ? 0 : "1.1em",
                   }}
                 >
@@ -287,7 +375,7 @@ export default function AboutSection() {
             </div>
           )}
 
-          <div className="frame-glow relative aspect-square w-[clamp(180px,60vw,280px)] shrink-0 self-center overflow-hidden rounded-2xl sm:self-start sm:w-[clamp(220px,26vw,340px)]">
+          <div className="frame-glow frame-glow--photo relative aspect-square w-[clamp(180px,60vw,280px)] shrink-0 self-center overflow-hidden rounded-2xl sm:self-start sm:w-[clamp(220px,26vw,340px)]">
             <div ref={photoRef} className="h-full w-full" style={{ willChange: "transform" }}>
               <Image
                 src="/photo/riddhi-photo.jpg"
@@ -315,11 +403,7 @@ export default function AboutSection() {
             {SKILLS_LABEL}
           </p>
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-6">
-            {SKILLS.map((s) => (
-              <SkillTile key={s.name} name={s.name} slug={s.slug} />
-            ))}
-          </div>
+          <SkillsCarousel />
         </div>
 
         <Link

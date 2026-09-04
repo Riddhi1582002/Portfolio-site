@@ -45,3 +45,12 @@ body {
   --glow-border-opacity: 0.4;
   --glow-shadow-opacity: 0.5;
 }
+
+/* The default frame is tuned for small tiles; at photo size, 1px at 16%
+   with a 22px shadow disappears against the black page and the image
+   reads as an untreated rectangle. Same system, turned up. */
+.frame-glow.frame-glow--photo {
+  --glow-border-opacity: 0.38;
+  --glow-shadow-opacity: 0.4;
+  --glow-blur: 40px;
+}
