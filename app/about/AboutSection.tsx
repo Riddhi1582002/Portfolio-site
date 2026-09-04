@@ -75,12 +75,22 @@ function AboutHeader() {
   );
 }
 
+// Each clip is served as both VP9/webm and H.264/mp4 so every browser gets
+// one it can decode (the original set was 3 webm + 1 mp4, and the lone mp4
+// failed to demux anywhere without H.264). `slug` also names the poster.
 const SKILLS = [
-  { name: "After Effects", src: "/icons/After-Effects.webm" },
-  { name: "Illustrator", src: "/icons/Illustrator.mp4" },
-  { name: "Photoshop", src: "/icons/Photoshop.webm" },
-  { name: "Premiere Pro", src: "/icons/Premiere-Pro.webm" },
+  { name: "After Effects", slug: "After-Effects" },
+  { name: "Illustrator", slug: "Illustrator" },
+  { name: "Photoshop", slug: "Photoshop" },
+  { name: "Premiere Pro", slug: "Premiere-Pro" },
 ];
+
+// These clips animate their icon in from an empty frame, so frame 0 is
+// solid black — which is why pausing at 0 rendered four black tiles. The
+// icon is fully drawn (letterforms included) around 2s, before the outro
+// starts dissolving it again, so that's both the poster frame and the
+// frame the video rests on once it has been played.
+const ICON_REST_TIME = 2.0;
 
 // Placeholder easing until the LAYERS section's poster-arc reveal curve
 // exists to match against (flagged to the user — see chat).
@@ -88,7 +98,7 @@ function easeInOutSine(t: number) {
   return -(Math.cos(Math.PI * t) - 1) / 2;
 }
 
-function SkillTile({ name, src }: { name: string; src: string }) {
+function SkillTile({ name, slug }: { name: string; slug: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const tileRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(false);
@@ -97,15 +107,23 @@ function SkillTile({ name, src }: { name: string; src: string }) {
     const v = videoRef.current;
     if (!v) return;
     v.loop = true;
+    v.currentTime = 0;
     v.play().catch(() => {});
     setActive(true);
   };
 
+  // Rests on the fully-drawn frame rather than frame 0 (which is blank),
+  // so the tile matches its poster instead of going black after a hover.
   const stop = () => {
     const v = videoRef.current;
     if (!v) return;
     v.pause();
-    v.currentTime = 0;
+    try {
+      v.currentTime = ICON_REST_TIME;
+    } catch {
+      // seeking before metadata is ready throws in some browsers; the
+      // poster is still showing at that point, so there's nothing to fix.
+    }
     setActive(false);
   };
 
@@ -134,12 +152,15 @@ function SkillTile({ name, src }: { name: string; src: string }) {
     >
       <video
         ref={videoRef}
-        src={src}
+        poster={`/icons/${slug}.png`}
         muted
         playsInline
         preload="auto"
         className="h-full w-full object-cover"
-      />
+      >
+        <source src={`/icons/${slug}.webm`} type="video/webm" />
+        <source src={`/icons/${slug}.mp4`} type="video/mp4" />
+      </video>
       <span
         className="pointer-events-none absolute bottom-2 left-0 right-0 text-center text-xs tracking-wide text-white/60"
         style={{ fontFamily: SANS }}
@@ -241,7 +262,7 @@ export default function AboutSection() {
           style={{ opacity: 0 }}
         >
           {SKILLS.map((s) => (
-            <SkillTile key={s.name} name={s.name} src={s.src} />
+            <SkillTile key={s.name} name={s.name} slug={s.slug} />
           ))}
         </div>
 
