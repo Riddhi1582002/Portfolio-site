@@ -5,14 +5,16 @@ import Link from "next/link";
 import Image from "next/image";
 import gsap from "gsap";
 import { Flip } from "gsap/Flip";
-import { takePendingNameFlip } from "../lib/nameFlip";
+import { NAME_FLIP_ID, takePendingNameFlip } from "../lib/nameFlip";
 import "../components/hero-fonts.css";
 
 gsap.registerPlugin(Flip);
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 const NAME_FLIP_DURATION = 0.6;
-const ABOUT_HEADER_SIZE = 44;
+// Deliberately well above the hero name's 46px rest size so the Flip reads
+// as a grow, not just a reposition; clamped so it still fits at 320px.
+const ABOUT_HEADER_SIZE = "clamp(34px, 7vw, 72px)";
 
 // Neue Montreal isn't a variable font (no fvar table in any of the
 // static woff2 weights), so the hero-name-weight -> header-weight
@@ -58,7 +60,7 @@ function AboutHeader() {
   };
 
   return (
-    <div ref={wrapRef} className="relative inline-block">
+    <div ref={wrapRef} data-flip-id={NAME_FLIP_ID} className="relative inline-block">
       <span ref={headerWeightRef} style={{ ...shared, fontWeight: 700 }}>
         Riddhi Thakkar
       </span>
@@ -212,9 +214,13 @@ export default function AboutSection() {
   return (
     <div className="min-h-screen bg-black px-6 py-24 text-white sm:px-12">
       <div className="mx-auto max-w-5xl">
-        <div className="flex flex-col-reverse items-start gap-10 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+        {/* Header is its own centered row — deliberately not beside the
+            photo, so the Flip lands it on the page's horizontal centre. */}
+        <div className="flex justify-center">
           <AboutHeader />
+        </div>
 
+        <div className="mt-14 flex justify-center sm:justify-end">
           <div className="frame-glow relative aspect-square w-[clamp(180px,60vw,280px)] shrink-0 overflow-hidden rounded-2xl sm:w-[clamp(220px,26vw,340px)]">
             <div ref={photoRef} className="h-full w-full" style={{ willChange: "transform" }}>
               <Image

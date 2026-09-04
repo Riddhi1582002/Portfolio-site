@@ -15,7 +15,7 @@ import localFont from "next/font/local";
 import gsap from "gsap";
 import { SplitText } from "gsap/SplitText";
 import { Flip } from "gsap/Flip";
-import { setPendingNameFlip } from "../lib/nameFlip";
+import { NAME_FLIP_ID, setPendingNameFlip } from "../lib/nameFlip";
 import "./hero-fonts.css";
 import "./hero-hint.css";
 
@@ -601,6 +601,7 @@ export default function HeroSection() {
             <Link
               ref={nameTextRef}
               href="/about"
+              data-flip-id={NAME_FLIP_ID}
               onClick={handleNameClick}
               className="relative inline-block before:absolute before:bottom-0 before:left-0 before:h-px before:w-full before:origin-right before:scale-x-0 before:bg-white before:transition-transform before:duration-200 before:ease-[cubic-bezier(0.4,0,0.2,1)] before:content-[''] hover:before:origin-left hover:before:scale-x-100 focus:before:origin-left focus:before:scale-x-100"
               style={{
