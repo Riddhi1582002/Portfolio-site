@@ -2,10 +2,7 @@
 
 import { useRef, useEffect } from "react";
 
-// How long the center-out reveal takes once it starts. Change this if you
-// want it to line up more precisely with when "is my peace..." appears —
-// that text's own trigger isn't wired up yet (separate, unbuilt piece), so
-// this just runs on its own timer starting from the same scroll trigger.
+// How long the center-out reveal takes once it starts.
 const FADE_DURATION_MS = 1600;
 // Width of the soft edge, in px, between solid black and fully visible video.
 const FEATHER_PX = 220;
@@ -14,6 +11,9 @@ function easeInOutCubic(x) {
   return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 }
 
+// Pure background layer: your video, untouched, plus the scroll-triggered
+// transition. No text, no tint, no filters on the video itself —
+// HeroSection.tsx owns the ART/name text and sits on top of this.
 export default function HeroVideoBackground() {
   const videoRef = useRef(null);
   const outerRef = useRef(null);
@@ -74,12 +74,10 @@ export default function HeroVideoBackground() {
         // its last frame.
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
       />
-      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", pointerEvents: "none" }} />
 
-      {/* Solid black, clipped to a circle that grows from the center out.
-          Starts at radius 0 (invisible) and expands until it fully covers
-          the frame, which is what makes the video "bleed away" from the
-          middle outward instead of fading uniformly. */}
+      {/* Solid black via a radial-gradient that grows from the center out,
+          with a soft feathered edge — not a hard clip-path circle. Starts
+          fully transparent and expands until it fully covers the frame. */}
       <div
         ref={coverRef}
         style={{
@@ -89,36 +87,6 @@ export default function HeroVideoBackground() {
           pointerEvents: "none",
         }}
       />
-
-      <div
-        style={{
-          position: "absolute",
-          top: 32,
-          left: 32,
-          color: "#fff",
-          fontFamily: "system-ui, -apple-system, sans-serif",
-          fontSize: 14,
-          letterSpacing: "0.02em",
-          opacity: 0.85,
-        }}
-      >
-        Riddhi Thakkar
-      </div>
-
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-        <div
-          style={{
-            color: "#fff",
-            fontFamily: "Georgia, 'Times New Roman', serif",
-            fontSize: "clamp(80px, 14vw, 220px)",
-            fontWeight: 400,
-            letterSpacing: "0.02em",
-            textShadow: "0 0 10px rgba(255,255,255,0.85), 0 0 40px rgba(255,255,255,0.55), 0 0 90px rgba(255,255,255,0.3)",
-          }}
-        >
-          ART
-        </div>
-      </div>
     </div>
   );
 }
