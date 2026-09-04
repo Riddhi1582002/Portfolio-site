@@ -92,6 +92,15 @@ const SKILLS = [
 // frame the video rests on once it has been played.
 const ICON_REST_TIME = 2.0;
 
+// The locked About copy ("Who am I? Not staging an existential crisis
+// mid-portfolio...") has never existed in this codebase — it isn't hidden
+// by CSS or gated behind a scroll trigger, it was simply never added, and
+// it isn't recoverable from anywhere in the repo. Paste the paragraphs in
+// here (one string per paragraph) and they render, styled and wired into
+// the scroll reveal, with no other change needed. Left empty rather than
+// filled with stand-in prose, so half-written copy can't ship by accident.
+const ABOUT_BODY: string[] = [];
+
 // Placeholder easing until the LAYERS section's poster-arc reveal curve
 // exists to match against (flagged to the user — see chat).
 function easeInOutSine(t: number) {
@@ -190,6 +199,7 @@ function viewportRevealT(el: HTMLElement) {
 
 export default function AboutSection() {
   const photoRef = useRef<HTMLDivElement>(null);
+  const bodyRevealRef = useRef<HTMLDivElement>(null);
   const skillsRevealRef = useRef<HTMLDivElement>(null);
   const backRevealRef = useRef<HTMLAnchorElement>(null);
 
@@ -205,6 +215,13 @@ export default function AboutSection() {
         if (photoEl) {
           const scale = 1 + easeInOutSine(frac) * 0.08;
           photoEl.style.transform = `scale(${scale})`;
+        }
+
+        const bodyEl = bodyRevealRef.current;
+        if (bodyEl) {
+          const t = easeInOutSine(viewportRevealT(bodyEl));
+          bodyEl.style.opacity = String(t);
+          bodyEl.style.transform = `translateY(${(1 - t) * REVEAL_TRANSLATE_Y}px)`;
         }
 
         const skillsEl = skillsRevealRef.current;
@@ -241,8 +258,31 @@ export default function AboutSection() {
           <AboutHeader />
         </div>
 
-        <div className="mt-14 flex justify-center sm:justify-end">
-          <div className="frame-glow relative aspect-square w-[clamp(180px,60vw,280px)] shrink-0 overflow-hidden rounded-2xl sm:w-[clamp(220px,26vw,340px)]">
+        {/* Body copy sits left of the corner-placed photo on sm+, stacked
+            above it below that. Renders nothing while ABOUT_BODY is empty,
+            so the photo row keeps its current layout until copy arrives. */}
+        <div className="mt-14 flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-end sm:gap-12">
+          {ABOUT_BODY.length > 0 && (
+            <div ref={bodyRevealRef} className="max-w-prose flex-1" style={{ opacity: 0 }}>
+              {ABOUT_BODY.map((para, i) => (
+                <p
+                  key={i}
+                  className="text-white/75"
+                  style={{
+                    fontFamily: SANS,
+                    fontWeight: 300,
+                    fontSize: "clamp(15px, 1.15vw, 18px)",
+                    lineHeight: 1.7,
+                    marginTop: i === 0 ? 0 : "1.1em",
+                  }}
+                >
+                  {para}
+                </p>
+              ))}
+            </div>
+          )}
+
+          <div className="frame-glow relative aspect-square w-[clamp(180px,60vw,280px)] shrink-0 self-center overflow-hidden rounded-2xl sm:self-start sm:w-[clamp(220px,26vw,340px)]">
             <div ref={photoRef} className="h-full w-full" style={{ willChange: "transform" }}>
               <Image
                 src="/photo/riddhi-photo.jpg"
