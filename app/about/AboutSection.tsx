@@ -2,7 +2,6 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import gsap from "gsap";
 import { Flip } from "gsap/Flip";
 import {
@@ -12,6 +11,7 @@ import {
   takePendingNameFlip,
 } from "../lib/nameFlip";
 import "../components/hero-fonts.css";
+import PhotoCard from "./PhotoCard";
 
 gsap.registerPlugin(Flip);
 
@@ -113,16 +113,15 @@ function AboutHeader() {
   );
 }
 
-// All six tools, wired from the correctly-identified clips. The row is
-// built from stills now, not video: `slug` names the PNG in public/icons,
-// extracted at t=2.0s (the fully-drawn frame) with the jitter.video
-// watermark cropped out. Captions describe the tool's role — placeholder
-// wording, easy to swap.
+// All six tools. Supplied 512x512 transparent PNGs — `slug` names the
+// file in public/icons. Nothing here is video any more: no poster frames,
+// no rest-position extraction, no webm/mp4 pair, no watermark crop.
+// Captions describe the tool's role — placeholder wording, easy to swap.
 const SKILLS = [
-  { name: "After Effects", slug: "After-Effects", caption: "Motion graphics and compositing" },
-  { name: "Illustrator", slug: "Illustrator", caption: "Vector artwork and layout" },
-  { name: "Photoshop", slug: "Photoshop", caption: "Image retouching and composites" },
-  { name: "Premiere Pro", slug: "Premiere-Pro", caption: "Video editing and colour" },
+  { name: "After Effects", slug: "after-effects", caption: "Motion graphics and compositing" },
+  { name: "Illustrator", slug: "illustrator", caption: "Vector artwork and layout" },
+  { name: "Photoshop", slug: "photoshop", caption: "Image retouching and composites" },
+  { name: "Premiere Pro", slug: "premiere-pro", caption: "Video editing and colour" },
   { name: "Affinity", slug: "affinity", caption: "Design and photo editing" },
   { name: "Filmora", slug: "filmora", caption: "Fast-turnaround video edits" },
 ];
@@ -142,11 +141,6 @@ const MARQUEE_LOOP_PX = SKILLS_COUNT * TILE_STEP;
 // motion, not a control the reader has to keep up with.
 const MARQUEE_SPEED_PX_S = 22;
 const MARQUEE_DURATION_S = MARQUEE_LOOP_PX / MARQUEE_SPEED_PX_S;
-
-// Ken-burns drift on the photo. 0.08 was measurably working (1.00 -> 1.08
-// across the page) but too small to read as motion on a page with only a
-// few hundred px of scroll, which is why the photo looked static.
-const KEN_BURNS_RANGE = 0.16;
 
 // Locked About copy, one string per paragraph, verbatim as supplied.
 const ABOUT_BODY: string[] = [
@@ -195,11 +189,15 @@ function SkillTile({
       }}
     >
       {loadImage && (
-        <Image
+        // Plain <img> by request. These are fixed-size static PNGs and the
+        // export build has no image optimiser, so next/image adds nothing.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
           src={`/icons/${skill.slug}.png`}
           alt={skill.name}
-          width={360}
-          height={360}
+          width={512}
+          height={512}
+          decoding="async"
           className="h-full w-full object-cover"
         />
       )}
@@ -368,7 +366,6 @@ function viewportRevealT(el: HTMLElement) {
 const REVEAL_STAGGER = 0.09; // of the reveal window, per paragraph
 
 export default function AboutSection() {
-  const photoRef = useRef<HTMLDivElement>(null);
   const bodyRevealRef = useRef<HTMLDivElement>(null);
   const paraRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   // Until the intro has played, the scroll handler leaves the paragraphs
@@ -384,15 +381,6 @@ export default function AboutSection() {
     const onScroll = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        const max = document.documentElement.scrollHeight - window.innerHeight;
-        const frac = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 1;
-
-        const photoEl = photoRef.current;
-        if (photoEl) {
-          const scale = 1 + easeInOutSine(frac) * KEN_BURNS_RANGE;
-          photoEl.style.transform = `scale(${scale})`;
-        }
-
         // Each paragraph on its own progress, offset by its index, so the
         // block reads as a cascade rather than one slab appearing.
         if (!introDoneRef.current) return;
@@ -500,18 +488,16 @@ export default function AboutSection() {
             </div>
           )}
 
-          <div className="frame-glow frame-glow--photo relative aspect-square w-[clamp(180px,60vw,280px)] shrink-0 self-center overflow-hidden rounded-2xl sm:self-start sm:w-[clamp(220px,26vw,340px)]">
-            <div ref={photoRef} className="h-full w-full" style={{ willChange: "transform" }}>
-              <Image
-                src="/photo/riddhi-photo.jpg"
-                alt="Riddhi Thakkar"
-                width={680}
-                height={680}
-                className="h-full w-full object-cover"
-                priority={false}
-              />
-            </div>
-          </div>
+          {/* The photo's treatment is the pointer tilt + holographic shine
+              now. That REPLACES the earlier glow-edge frame and the
+              scroll-tied ken-burns drift — the card carries its own
+              behind-glow and its own pointer-driven motion, and stacking
+              a scroll scale on top of a hover scale fights it. */}
+          <PhotoCard
+            avatarUrl="/photo/riddhi-photo.jpg"
+            alt="Riddhi Thakkar"
+            className="w-[clamp(180px,60vw,280px)] shrink-0 self-center sm:self-start sm:w-[clamp(220px,26vw,340px)]"
+          />
         </div>
 
         <div ref={skillsRevealRef} className="mt-16 sm:mt-24" style={{ opacity: 0 }}>
