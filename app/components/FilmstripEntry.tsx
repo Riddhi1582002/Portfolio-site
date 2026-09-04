@@ -189,7 +189,7 @@ export default function FilmstripEntry() {
   const rx = CROSSBAR_THICKNESS * 0.28;
 
   return (
-    <div ref={wrapperRef} style={{ position: "relative", height: `${SCROLL_LENGTH_VH}vh` }}>
+    <div ref={wrapperRef} style={{ position: "relative", height: `${SCROLL_LENGTH_VH}vh`, zIndex: 1 }}>
       <div
         ref={pinRef}
         style={{

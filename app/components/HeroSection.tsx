@@ -80,23 +80,27 @@ const ART_SCALE_MID = 1.36;
 export const ART_SCALE_DEEP = 1.94;
 
 // Font metrics for "Neue Montreal", measured via canvas TextMetrics
-// against the real webfont (cap-height isn't queryable any other way
-// from JS/CSS) — cap-height as a fraction of font-size, and this
-// element's own rendered line-box height as a multiple of font-size
-// (name and tag1 share the font; the browser's default line-height for
-// it measured out to 1.5x at both sizes tested).
-const NAME_CAP_HEIGHT_RATIO = 0.71875;
+// against the real webfont — the rendered line-box height as a multiple
+// of font-size (name and tag1 share the font; the browser's default
+// line-height for it measured out to 1.5x at both sizes tested).
 const NARRATION_LINE_HEIGHT_RATIO = 1.5;
 
-// Name-to-tagline gap = 0.6x the name's cap-height, clamped so it never
-// exceeds the tagline-to-ART gap — i.e. name-to-tagline stays <=
-// tagline-to-ART — evaluated independently at rest and at mid (the two
-// stages where name + tag1 appear together), since both the cap-height
-// and the tagline-ART gap itself differ between them (the latter is
-// already negative/overlapping at mid, carried over unchanged from the
-// earlier tag1/tag2-to-ART equalization fix). Only the name moves to
-// make room; tag1Y/tag2Y/artY stay exactly as they were.
-const NAME_TAG_GAP_RATIO = 0.6;
+// Where each block's visible ink sits inside its own line box, as a
+// fraction of its font-size — measured via canvas TextMetrics against the
+// real webfont. Both blocks carry a 1.5 line-height while Neue Montreal's
+// own font box is only 1.2em, so there is 0.15em of leading above and
+// below the text inside every box. That leading is why a box-edge gap
+// renders roughly 2.6x larger than it reads: the name's ink *bottom* is
+// 1.133em below its box top, and the tagline's ink *top* is 0.4em below
+// its own, so the two boxes can nearly touch while the text still looks
+// far apart. The gap below is therefore specified ink-to-ink.
+const NAME_INK_BOTTOM_RATIO = 1.1333;
+const TAG1_INK_TOP_RATIO = 0.4;
+const NAME_INK_ASCENT_RATIO = 0.7333;
+
+// Heading-to-subhead spacing: clear space between the name's ink and the
+// tagline's ink, as a fraction of the name's own cap height.
+const NAME_TAG_INK_GAP_RATIO = 0.45;
 
 function artTopY(artYAt: number, artScaleAt: number): number {
   return 540 + artYAt - ((462 * 0.86) / 2) * artScaleAt;
@@ -108,12 +112,19 @@ function computeNameYForStage(
   artYAt: number,
   artScaleAt: number
 ): number {
-  const tag1Bottom = tag1YAt + TAG1_FONT_SIZE * NARRATION_LINE_HEIGHT_RATIO;
-  const tagArtGap = artTopY(artYAt, artScaleAt) - tag1Bottom;
-  const nameCapHeight = nameSizeAt * NAME_CAP_HEIGHT_RATIO;
-  const nameTagGap = Math.min(NAME_TAG_GAP_RATIO * nameCapHeight, tagArtGap);
-  const nameBottomTarget = tag1YAt - nameTagGap;
-  return nameBottomTarget - nameSizeAt * NARRATION_LINE_HEIGHT_RATIO;
+  const tag1InkTop = tag1YAt + TAG1_INK_TOP_RATIO * TAG1_FONT_SIZE;
+  let inkGap = NAME_TAG_INK_GAP_RATIO * NAME_INK_ASCENT_RATIO * nameSizeAt;
+
+  // Preserve the earlier rule that name-to-tagline never exceeds
+  // tagline-to-ART — but only where that comparison is meaningful. At
+  // rest the tagline is fully transparent and already overlaps ART, so
+  // its (negative) gap would otherwise drag the name down into it.
+  const tagArtGap =
+    artTopY(artYAt, artScaleAt) -
+    (tag1YAt + TAG1_FONT_SIZE * NARRATION_LINE_HEIGHT_RATIO);
+  if (tagArtGap > 0) inkGap = Math.min(inkGap, tagArtGap);
+
+  return tag1InkTop - inkGap - NAME_INK_BOTTOM_RATIO * nameSizeAt;
 }
 
 const NAME_Y_REST = computeNameYForStage(
@@ -328,18 +339,25 @@ export default function HeroSection() {
     if (nameTextRef.current) {
       setPendingNameFlip(Flip.getState(nameTextRef.current));
     }
+    // ART, both taglines and the contact info all leave together: one
+    // timeline, every tween pinned to position 0, so they translate down
+    // and fade as a single move rather than a stagger.
     const tl = gsap.timeline({ onComplete: () => router.push("/about") });
-    if (artRef.current) {
+    const leaving = [
+      artRef.current,
+      tag1TextRef.current,
+      tag2TextRef.current,
+      contactRef.current,
+    ].filter((el): el is HTMLDivElement => el != null);
+    if (leaving.length) {
       tl.to(
-        artRef.current,
-        { opacity: 0, y: NAME_CLICK_EXIT_Y, duration: NAME_CLICK_EXIT_DURATION, ease: "power2.inOut" },
-        0
-      );
-    }
-    if (contactRef.current) {
-      tl.to(
-        contactRef.current,
-        { opacity: 0, y: NAME_CLICK_EXIT_Y, duration: NAME_CLICK_EXIT_DURATION, ease: "power2.inOut" },
+        leaving,
+        {
+          opacity: 0,
+          y: NAME_CLICK_EXIT_Y,
+          duration: NAME_CLICK_EXIT_DURATION,
+          ease: "power2.inOut",
+        },
         0
       );
     }
@@ -518,7 +536,7 @@ export default function HeroSection() {
   return (
     <div
       ref={trackRef}
-      style={{ height: `${SCROLL_LENGTH_VH}vh`, position: "relative" }}
+      style={{ height: `${SCROLL_LENGTH_VH}vh`, position: "relative", zIndex: 1 }}
     >
       <div
         style={{
@@ -526,7 +544,10 @@ export default function HeroSection() {
           top: 0,
           height: "100vh",
           overflow: "hidden",
-          background: "#000",
+          // Transparent, not #000 — HeroVideoBackground is a
+          // position:fixed layer underneath, and the ART/name/contact
+          // text has to render over it in the same frame from the start.
+          background: "transparent",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

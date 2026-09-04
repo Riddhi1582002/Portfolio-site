@@ -62,7 +62,7 @@ export default function HeroVideoBackground() {
   }, []);
 
   return (
-    <div ref={outerRef} style={{ position: "relative", width: "100%", height: "100dvh", overflow: "hidden", background: "#000" }}>
+    <div ref={outerRef} style={{ position: "fixed", inset: 0, overflow: "hidden", background: "#000", zIndex: 0 }}>
       <video
         ref={videoRef}
         src="/video/hero-bg.mp4"
