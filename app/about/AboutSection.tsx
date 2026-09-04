@@ -92,14 +92,19 @@ const SKILLS = [
 // frame the video rests on once it has been played.
 const ICON_REST_TIME = 2.0;
 
-// The locked About copy ("Who am I? Not staging an existential crisis
-// mid-portfolio...") has never existed in this codebase — it isn't hidden
-// by CSS or gated behind a scroll trigger, it was simply never added, and
-// it isn't recoverable from anywhere in the repo. Paste the paragraphs in
-// here (one string per paragraph) and they render, styled and wired into
-// the scroll reveal, with no other change needed. Left empty rather than
-// filled with stand-in prose, so half-written copy can't ship by accident.
-const ABOUT_BODY: string[] = [];
+// Locked About copy, one string per paragraph, verbatim as supplied.
+const ABOUT_BODY: string[] = [
+  "Who am I?",
+  "Not staging an existential crisis mid-portfolio, don't worry.",
+  "I love to ideate and bring ideas to life, in whatever medium I get the chance to work in. With a degree in English Literature and a University First Rank, years of professional video editing and graphic design experience, hundreds of pieces written and more canvases than I can count painted and sketched over — every one of them proof that I know what it takes to take an idea from someone's head onto a screen, a page, or a canvas. My work spans promotional videos, corporate projects, personal event coverage, social media content, and visual storytelling for digital comics.",
+  "And, because it's become impossible to ignore at this point, I've also worked with AI tools for image and video generation.",
+  "Looking forward to working together, if this sounds like the kind of collaborator you need for your next project.",
+  "Ba-bye!",
+];
+
+// Label for the icon row — deliberately not part of ABOUT_BODY, so it
+// reads as a caption for the row rather than another prose paragraph.
+const SKILLS_LABEL = "My software skills cover:";
 
 // Placeholder easing until the LAYERS section's poster-arc reveal curve
 // exists to match against (flagged to the user — see chat).
@@ -296,14 +301,25 @@ export default function AboutSection() {
           </div>
         </div>
 
-        <div
-          ref={skillsRevealRef}
-          className="mt-16 grid grid-cols-2 gap-4 sm:mt-24 sm:grid-cols-4 sm:gap-6"
-          style={{ opacity: 0 }}
-        >
-          {SKILLS.map((s) => (
-            <SkillTile key={s.name} name={s.name} slug={s.slug} />
-          ))}
+        <div ref={skillsRevealRef} className="mt-16 sm:mt-24" style={{ opacity: 0 }}>
+          <p
+            className="mb-6 text-white/55"
+            style={{
+              fontFamily: SANS,
+              fontWeight: 400,
+              fontSize: "clamp(13px, 1vw, 15px)",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            {SKILLS_LABEL}
+          </p>
+
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-6">
+            {SKILLS.map((s) => (
+              <SkillTile key={s.name} name={s.name} slug={s.slug} />
+            ))}
+          </div>
         </div>
 
         <Link
