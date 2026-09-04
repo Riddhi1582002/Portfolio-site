@@ -110,14 +110,21 @@ const SKILLS = [
   { name: "Filmora", slug: "filmora", caption: "Fast-turnaround video edits" },
 ];
 
-// Carousel geometry, in px. Fixed rather than fluid so the track can be
-// stepped by a known amount and so late-loading images can never shift
-// the layout underneath the name Flip landing on this page.
+const SKILLS_COUNT = SKILLS.length;
+
+// Marquee geometry, in px. Fixed rather than fluid so the loop distance is
+// exact and so late-loading images can never shift the layout underneath
+// the name Flip landing on this page.
 const TILE_SIZE = 168;
 const TILE_GAP = 20;
 const TILE_STEP = TILE_SIZE + TILE_GAP;
-const CAROUSEL_STEP_MS = 2600;
-const CAROUSEL_SLIDE_MS = 700;
+// One full lap is exactly one copy of the list — tile N+1 of the doubled
+// track lands where tile 1 started, gap included, so the wrap is invisible.
+const MARQUEE_LOOP_PX = SKILLS_COUNT * TILE_STEP;
+// Constant velocity, in px per second. Deliberately slow: this is ambient
+// motion, not a control the reader has to keep up with.
+const MARQUEE_SPEED_PX_S = 22;
+const MARQUEE_DURATION_S = MARQUEE_LOOP_PX / MARQUEE_SPEED_PX_S;
 
 // Ken-burns drift on the photo. 0.08 was measurably working (1.00 -> 1.08
 // across the page) but too small to read as motion on a page with only a
@@ -148,15 +155,17 @@ function SkillTile({
   skill,
   hovered,
   onHover,
+  onLeave,
 }: {
   skill: (typeof SKILLS)[number];
   hovered: boolean;
-  onHover: (name: string | null) => void;
+  onHover: () => void;
+  onLeave: () => void;
 }) {
   return (
     <div
-      onMouseEnter={() => onHover(skill.name)}
-      onMouseLeave={() => onHover(null)}
+      onMouseEnter={onHover}
+      onMouseLeave={onLeave}
       className={`frame-glow${hovered ? " frame-glow--active" : ""} relative shrink-0 overflow-hidden rounded-2xl bg-black`}
       style={{
         width: TILE_SIZE,
@@ -176,64 +185,88 @@ function SkillTile({
   );
 }
 
+// Continuous constant-velocity marquee. Deliberately CSS-driven rather
+// than JS-driven: a linear `translate3d` keyframe animation runs on the
+// compositor at a fixed px/s, so it cannot be stepped, cannot drift, and
+// cannot be perturbed by anything on the main thread.
+//
+// It is also completely decoupled from the pointer. The track's animation
+// is never paused, never restarted, and never reads mouse position;
+// hovering a tile only sets `hovered`, which drives the caption. The old
+// implementation stepped the track on a setInterval and paused that
+// interval on hover, which is what made stray mouse movement over the row
+// nudge the scroll position.
+//
+// The track holds the list twice and travels exactly one copy's width
+// (MARQUEE_LOOP_PX, gap included) before restarting, so the frame at the
+// wrap is pixel-identical to the frame at the start — no tile is ever cut
+// in half at the loop point. The window is wide enough for the full list,
+// and the edges are feathered rather than hard-cut so a tile entering or
+// leaving reads as a fade, not a clipped frame.
 function SkillsCarousel() {
-  const [index, setIndex] = useState(0);
-  const [animate, setAnimate] = useState(true);
-  const [hovered, setHovered] = useState<string | null>(null);
-
-  // Auto-advance, paused while a tile is hovered so its caption can
-  // actually be read.
-  useEffect(() => {
-    if (hovered) return;
-    const id = window.setInterval(() => setIndex((i) => i + 1), CAROUSEL_STEP_MS);
-    return () => window.clearInterval(id);
-  }, [hovered]);
-
-  // The track holds the list twice, so stepping onto the first tile of
-  // the second copy looks identical to the first tile of the first —
-  // which is the frame where the position resets with the transition
-  // switched off, making the loop seamless.
-  useEffect(() => {
-    if (index !== SKILLS.length) return;
-    const id = window.setTimeout(() => {
-      setAnimate(false);
-      setIndex(0);
-    }, CAROUSEL_SLIDE_MS);
-    return () => window.clearTimeout(id);
-  }, [index]);
-
-  useEffect(() => {
-    if (animate) return;
-    const id = requestAnimationFrame(() => setAnimate(true));
-    return () => cancelAnimationFrame(id);
-  }, [animate]);
-
-  const active = SKILLS.find((s) => s.name === hovered) ?? null;
+  const [hoveredTile, setHoveredTile] = useState<number | null>(null);
+  const active = hoveredTile == null ? null : SKILLS[hoveredTile % SKILLS_COUNT];
 
   return (
     <div>
-      <div className="overflow-hidden">
+      <div
+        style={{
+          overflow: "hidden",
+          // Vertical room for the hover scale (1.06 on a 168px tile) so
+          // overflow:hidden crops the track horizontally, not the tile.
+          paddingBlock: 8,
+          marginBlock: -8,
+          // Feathered edges: without these the window's own boundary is a
+          // hard cut, which is what read as "the last icon is chopped off".
+          maskImage:
+            "linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%)",
+          WebkitMaskImage:
+            "linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%)",
+        }}
+      >
         <div
-          className="flex"
+          className="skills-marquee flex w-max"
           style={{
             gap: TILE_GAP,
-            transform: `translateX(${-index * TILE_STEP}px)`,
-            transition: animate ? `transform ${CAROUSEL_SLIDE_MS}ms cubic-bezier(0.4,0,0.2,1)` : "none",
+            animationDuration: `${MARQUEE_DURATION_S}s`,
+            willChange: "transform",
           }}
         >
           {[...SKILLS, ...SKILLS].map((s, i) => (
             <SkillTile
               key={`${s.slug}-${i}`}
               skill={s}
-              hovered={hovered === s.name}
-              onHover={setHovered}
+              // Keyed on the tile's own index, not its name: the track
+              // holds the list twice, so matching on name lit up the
+              // duplicate copy at the same time.
+              hovered={hoveredTile === i}
+              onHover={() => setHoveredTile(i)}
+              onLeave={() => setHoveredTile(null)}
             />
           ))}
         </div>
       </div>
 
-      {/* Fixed height so revealing a caption never reflows the page. */}
-      <div style={{ height: 58 }} className="mt-5">
+      <style>{`
+        @keyframes skills-marquee-scroll {
+          from { transform: translate3d(0, 0, 0); }
+          to   { transform: translate3d(-${MARQUEE_LOOP_PX}px, 0, 0); }
+        }
+        .skills-marquee {
+          animation-name: skills-marquee-scroll;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .skills-marquee { animation: none; }
+        }
+      `}</style>
+
+      {/* Fixed height so revealing a caption never reflows the page.
+          mt-7 rather than mt-5: the marquee window carries 8px of vertical
+          padding (room for the hover scale) that the caption would
+          otherwise eat into, leaving under 16px between the two boxes. */}
+      <div style={{ height: 58 }} className="mt-7">
         <div
           style={{
             opacity: active ? 1 : 0,

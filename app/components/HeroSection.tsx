@@ -152,8 +152,17 @@ export const STAGE_H = 1080;
 
 // How many viewport-heights of scroll it takes to play rest -> mid -> deep.
 // Raise this to slow the scroll-scrub down (more scrolling per frame of
-// motion), lower it to speed it up.
-const SCROLL_LENGTH_VH = 400;
+// motion), lower it to speed it up. 400 meant three full viewport heights
+// of scrolling (400vh track - 100vh sticky) to get through two beats,
+// which is why each beat felt like it took forever to arrive.
+const SCROLL_LENGTH_VH = 250;
+
+// Time constant, in seconds, for the scroll-progress smoothing below. A
+// wheel notch is a discrete ~100px jump, so scrubbing straight off
+// scrollY makes the animation advance in visible chunks — the single
+// biggest reason the sequence read as stepped rather than continuous.
+// Low enough that the motion still feels directly attached to the wheel.
+const SCROLL_SMOOTH_TAU = 0.085;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
@@ -181,11 +190,18 @@ function interpolate(
 }
 
 // Scroll-fraction breakpoints where each frame's transition starts/ends.
-// These are the original prototype's second-based cue points (0, 1.6, 5.6,
-// 7.6, 11.4, 12.4s across a 12.4s timeline) renormalized to a 0-1 scroll
-// fraction, so the pacing between frames matches the approved prototype.
+// Derived from the prototype's second-based cue points (0, 1.6, 5.6, 7.6,
+// 11.4, 12.4s) but with the dead plateaus cut down hard. Those held p
+// constant across 12.9% + 16.1% + 8.1% = 37.1% of the whole track, so
+// more than a third of the scrolling produced no motion at all — scroll,
+// move, nothing, move, nothing. That is what read as stepped.
+//
+// The two motion segments keep their relative proportions (they are the
+// approved beat pacing); only the holds shrink, to 4% lead-in, 8% between
+// beats, 3% trailing. Dead scroll is now 15% instead of 37.1%, and each
+// beat gets ~42% of the track instead of ~31%.
 const SCROLL_TO_P = interpolate(
-  [0, 0.129, 0.4516, 0.6129, 0.9194, 1],
+  [0, 0.04, 0.46, 0.54, 0.97, 1],
   [0, 0, 1, 1, 2, 2]
 );
 
@@ -208,8 +224,13 @@ export default function HeroSection() {
   const trackRef = useRef<HTMLDivElement>(null);
   const artRef = useRef<HTMLDivElement>(null);
   const contactRef = useRef<HTMLDivElement>(null);
-  const [scrollP, setScrollP] = useState(0); // 0..1 raw scroll fraction through the track
+  const [scrollP, setScrollP] = useState(0); // 0..1 smoothed scroll fraction through the track
   const [t, setT] = useState(0); // seconds elapsed, for the idle breathing/drift motion
+  // Raw scroll fraction (what the page actually is), vs scrollP (what is
+  // rendered, easing toward it). See SCROLL_SMOOTH_TAU.
+  const scrollTargetRef = useRef(0);
+  const scrollSmoothRef = useRef(0);
+  const primedRef = useRef(false);
 
   // Narration text (name, tag1, tag2) reveals per-line via a SplitText
   // clip-mask, scrubbed by this component's own scroll-progress value —
@@ -268,7 +289,21 @@ export default function HeroSection() {
       const rect = el.getBoundingClientRect();
       const total = rect.height - window.innerHeight;
       const scrolled = -rect.top;
-      setScrollP(total > 0 ? clamp01(scrolled / total) : 0);
+      // Only the *target* is written here. The rAF clock below eases the
+      // rendered value toward it, so a chunky wheel notch becomes a
+      // continuous glide instead of a jump. Writing a ref rather than
+      // state also means scrolling no longer re-renders the hero twice
+      // per frame (once from here, once from the clock).
+      scrollTargetRef.current = total > 0 ? clamp01(scrolled / total) : 0;
+      if (!primedRef.current) {
+        // First measurement of the session (including a reload part-way
+        // down the page): adopt the real position rather than easing to
+        // it from 0, which would play the whole sequence as an unasked-for
+        // intro animation.
+        primedRef.current = true;
+        scrollSmoothRef.current = scrollTargetRef.current;
+        setScrollP(scrollTargetRef.current);
+      }
     };
     const onScroll = () => {
       lastScrollTimeRef.current = performance.now();
@@ -397,7 +432,21 @@ export default function HeroSection() {
   useEffect(() => {
     let raf: number;
     const start = performance.now();
+    let last = start;
     const tick = (now: number) => {
+      // Frame-rate-independent exponential ease toward the raw scroll
+      // position: the same TAU converges at the same wall-clock rate at
+      // 30fps as at 120fps, so the scrub does not speed up or slow down
+      // with the display.
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const target = scrollTargetRef.current;
+      const k = 1 - Math.exp(-dt / SCROLL_SMOOTH_TAU);
+      const next = scrollSmoothRef.current + (target - scrollSmoothRef.current) * k;
+      // Snap once close enough, so the tail of the ease cannot leave the
+      // sequence parked a hair short of a checkpoint.
+      scrollSmoothRef.current = Math.abs(target - next) < 0.0002 ? target : next;
+      setScrollP(scrollSmoothRef.current);
       setT((now - start) / 1000);
       raf = requestAnimationFrame(tick);
     };
