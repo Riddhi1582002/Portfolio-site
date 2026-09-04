@@ -16,6 +16,7 @@ import gsap from "gsap";
 import { SplitText } from "gsap/SplitText";
 import { Flip } from "gsap/Flip";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
+import HeroReels from "./HeroReels";
 import "./hero-fonts.css";
 import "./hero-hint.css";
 
@@ -155,7 +156,26 @@ export const STAGE_H = 1080;
 // motion), lower it to speed it up. 400 meant three full viewport heights
 // of scrolling (400vh track - 100vh sticky) to get through two beats,
 // which is why each beat felt like it took forever to arrive.
-const SCROLL_LENGTH_VH = 250;
+// The hero beats occupy HERO_BEATS_END of the track; the tail drives the
+// camera push into the A and the REELS entrance. 375/0.55 keeps the beats
+// spanning the same 151vh of scrolling they were verified at.
+const SCROLL_LENGTH_VH = 375;
+const HERO_BEATS_END = 0.55;
+
+// Camera push into the A's triangular negative space.
+//
+// This is a camera move on the real composition, not a graphic: the stage
+// is scaled about a point inside the actual letter. The point is derived
+// from the A's measured on-screen box (see cameraTargetRef below), not
+// from hard-coded viewport coordinates.
+//
+// The two ratios are the counter's centroid within the A's own glyph box,
+// measured off Dream Avenue's outline: the enclosed triangle spans the
+// upper-middle of the letter, so its centre sits a little left of the
+// glyph's horizontal middle and about two fifths down from the apex.
+const A_COUNTER_X_RATIO = 0.455;
+const A_COUNTER_Y_RATIO = 0.412;
+const CAMERA_MAX_ZOOM = 7.5;
 
 // Time constant, in seconds, for the scroll-progress smoothing below. A
 // wheel notch is a discrete ~100px jump, so scrubbing straight off
@@ -463,7 +483,12 @@ export default function HeroSection() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const p = SCROLL_TO_P(scrollP); // 0 = rest, 1 = mid-scroll, 2 = deep scroll
+  // The beats play across the first HERO_BEATS_END of the track; the rest
+  // of it is the camera move. One scroll progress, two consumers.
+  const p = SCROLL_TO_P(clamp01(scrollP / HERO_BEATS_END));
+  // THE transition progress. Camera zoom, camera position, reel x, reel
+  // opacity and reel entrance scale are all functions of this one value.
+  const transitionP = clamp01((scrollP - HERO_BEATS_END) / (1 - HERO_BEATS_END));
 
   const breath = Math.sin(t * 0.055 * Math.PI * 2) * 0.014;
   const drift = Math.sin(t * 0.04 * Math.PI * 2) * 10;
@@ -580,6 +605,15 @@ export default function HeroSection() {
   // contain` (matches how the prototype's CompositionStage scaled its SVG),
   // so every position/size above stays pixel-perfect at any screen size.
   const [stageScale, setStageScale] = useState(1);
+
+  // Camera target, in stage coordinates. Measured from the rendered "A"
+  // itself — a Range over the first character of the wordmark — so the
+  // push follows the real letter wherever the composition puts it, rather
+  // than aiming at a baked-in coordinate. Re-measured on resize and once
+  // the beats have finished, which is when the transition can begin.
+  const stageElRef = useRef<HTMLDivElement>(null);
+  const cameraElRef = useRef<HTMLDivElement>(null);
+  const [cameraTarget, setCameraTarget] = useState({ x: STAGE_W / 2, y: STAGE_H / 2 });
   useEffect(() => {
     const fit = () => {
       setStageScale(
@@ -590,6 +624,53 @@ export default function HeroSection() {
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
   }, []);
+
+  useEffect(() => {
+    const measure = () => {
+      const camera = cameraElRef.current;
+      const art = artRef.current;
+      if (!camera || !art) return;
+      const node = art.firstChild;
+      if (!node || node.nodeType !== Node.TEXT_NODE) return;
+      const range = document.createRange();
+      range.setStart(node, 0);
+      range.setEnd(node, 1); // just the "A"
+      const a = range.getBoundingClientRect();
+      const cam = camera.getBoundingClientRect();
+      if (!a.width || !a.height || !cam.width) return;
+      // Convert the A's on-screen box back into camera-local (= stage)
+      // coordinates by dividing out the total scale currently applied.
+      // Doing it this way means the measurement is valid at any zoom, so
+      // the target does not have to be captured before the push begins.
+      const total = cam.width / STAGE_W;
+      const left = (a.left - cam.left) / total;
+      const top = (a.top - cam.top) / total;
+      const w = a.width / total;
+      const h = a.height / total;
+      setCameraTarget((prev) => {
+        const x = left + w * A_COUNTER_X_RATIO;
+        const y = top + h * A_COUNTER_Y_RATIO;
+        // Only commit meaningful changes: rewriting this every frame would
+        // move the transform-origin under the zoom and make it drift.
+        return Math.abs(prev.x - x) < 0.5 && Math.abs(prev.y - y) < 0.5 ? prev : { x, y };
+      });
+    };
+    const id = requestAnimationFrame(measure);
+    window.addEventListener("resize", measure);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener("resize", measure);
+    };
+  }, [p, stageScale]);
+
+  // Camera: scale the real composition about the point inside the A and
+  // carry that point to the middle of the frame. Transform only.
+  const zoom = 1 + (CAMERA_MAX_ZOOM - 1) * easeInOutSine(transitionP);
+  const cameraTx = STAGE_W / 2 - cameraTarget.x;
+  const cameraTy = STAGE_H / 2 - cameraTarget.y;
+  // ART is gone by the end because the camera has pushed past it, not
+  // because a separate element faded it out on its own schedule.
+  const cameraOpacity = 1 - clamp01((transitionP - 0.55) / 0.3);
 
   return (
     <div
@@ -612,6 +693,7 @@ export default function HeroSection() {
         }}
       >
         <div
+          ref={stageElRef}
           style={{
             position: "relative",
             width: STAGE_W,
@@ -620,6 +702,23 @@ export default function HeroSection() {
             flexShrink: 0,
           }}
         >
+          {/* CAMERA. The whole composition is scaled about a point inside
+              the real A and that point is carried to the middle of the
+              frame, so the transition is a push into the letter's
+              triangular negative space rather than anything drawn on top
+              of it. Transform and opacity only. */}
+          <div
+            id="hero-camera"
+            ref={cameraElRef}
+            style={{
+              position: "absolute",
+              inset: 0,
+              transformOrigin: `${cameraTarget.x}px ${cameraTarget.y}px`,
+              transform: `translate(${cameraTx}px, ${cameraTy}px) scale(${zoom})`,
+              opacity: cameraOpacity,
+              willChange: transitionP > 0 ? "transform, opacity" : "auto",
+            }}
+          >
           {/* soft halo bloom behind everything, sized to ART */}
           <div
             style={{
@@ -782,7 +881,14 @@ export default function HeroSection() {
           >
             Scroll to continue
           </div>
+          </div>
         </div>
+
+        {/* REELS media. Deliberately OUTSIDE the camera wrapper and outside
+            the authored stage, in plain viewport units: the camera push
+            must not drag it along, and its resting size is a share of the
+            viewport, not of the 1920x1080 canvas. Same single progress. */}
+        <HeroReels progress={transitionP} />
       </div>
     </div>
   );
