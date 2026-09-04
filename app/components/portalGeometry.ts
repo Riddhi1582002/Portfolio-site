@@ -146,6 +146,20 @@ export type PortalGeometry = {
   discRadius: number;
   /** Native-ratio frame the aperture is resolving into, at this progress. */
   videoRect: { cx: number; cy: number; w: number; h: number } | null;
+  /**
+   * 0 until phase 3, then 0 -> 1 as the frame settles into composition.
+   *
+   * A centred portrait frame cannot contain the A: at 920x1080 the widest
+   * a centred frame can be inside a 1920x1080 stage is 920px (x 500-1420),
+   * and the A's crossbar is at x 312-522. Reaching it would need a 1296px
+   * wide centred frame, which at native ratio is 1521px tall against a
+   * 1080px stage — it would have to be cropped. So the footage sits over
+   * the letter while the aperture is the letter, and travels into
+   * composition once the frame has separated from it. The caller moves the
+   * media by exactly this fraction, so the aperture never leaves it and
+   * the media is never scaled, stretched or cropped.
+   */
+  travel?: number;
 };
 
 // How much bigger the seed frame is than the box that merely contains the
@@ -189,17 +203,20 @@ export function getPortalGeometry(progress: number, input: PortalInput): PortalG
   }
 
   if (p < PHASE_2_END) {
-    // PHASE 2 — the counter is fully open and now the native-ratio frame
-    // grows out through it, same disc-clipping rule, same centre.
+    // PHASE 2 — the counter is fully open; the native-ratio frame now
+    // grows out through it. A rectangle growing about its own centre, not
+    // a disc clipped against the rectangle: the disc version rounded off
+    // the top and read as a teardrop rather than as a frame forming.
+    // Unioned with the counter, so the aperture is never smaller than the
+    // A's interior and the corners simply fill in around it.
     const t = easeInOutCubic(clamp01((p - PHASE_1_END) / (PHASE_2_END - PHASE_1_END)));
-    // Exactly enough radius to reach the furthest corner at t = 1, so the
-    // frame finishes opening at PHASE_2_END rather than roughly halfway
-    // through the phase.
-    const r = t * maxRadius(centre, rectPoly(seed.cx, seed.cy, seed.w, seed.h));
-    const frame = clipToConvex(rectPoly(seed.cx, seed.cy, seed.w, seed.h), disc(centre.x, centre.y, r));
     const children: ClipChild[] = [{ d: polyToPath(counter) }];
-    if (frame.length >= 3) children.push({ d: polyToPath(frame) });
-    return { phase: "counter", children, discRadius: r, videoRect: seed };
+    const w = seed.w * t;
+    const h = seed.h * t;
+    if (w > 1 && h > 1) {
+      children.push({ d: polyToPath(rectPoly(seed.cx, seed.cy, w, h)) });
+    }
+    return { phase: "counter", children, discRadius: 0, videoRect: seed };
   }
 
   // PHASE 3 — a plain computed rectangle at the video's native ratio,
@@ -215,12 +232,21 @@ export function getPortalGeometry(progress: number, input: PortalInput): PortalG
     children: [{ d: polyToPath(rectPoly(cx, cy, w, h)) }],
     discRadius: 0,
     videoRect: { cx, cy, w, h },
+    travel: t,
   };
 }
 
-/** ART fades on the same progress. It is never scaled, rotated or distorted. */
+/**
+ * ART fades on the same progress. It is never scaled, rotated or distorted.
+ *
+ * It holds through phase 1 and most of phase 2 — while the aperture is
+ * still the letter's own interior, the A *is* the frame, and taking it
+ * away early left the middle of the transition as a bare rectangle with
+ * no typography anywhere. It is gone by the time the frame separates from
+ * the letter and travels.
+ */
 export function artOpacity(progress: number) {
-  return 1 - clamp01((clamp01(progress) - 0.12) / 0.33);
+  return 1 - clamp01((clamp01(progress) - 0.22) / 0.38);
 }
 
 /**

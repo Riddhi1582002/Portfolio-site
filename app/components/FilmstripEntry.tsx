@@ -74,6 +74,7 @@ for (let i = 0; i < COUNTER_POLY.length; i += 2) {
 }
 const PORTAL_CENTRE = toStage(CROSSBAR_CENTER.x, CROSSBAR_CENTER.y);
 const COUNTER_BOX = bbox(COUNTER_STAGE);
+const STAGE_CENTRE: Pt = { x: STAGE_W / 2, y: STAGE_H / 2 };
 // The native frame settles at this height; width follows from the video's
 // own ratio, so a portrait reel stays portrait on a wide viewport.
 const FINAL_HEIGHT = STAGE_H * 0.78;
@@ -217,15 +218,26 @@ export default function FilmstripEntry() {
     crossbar: crossbarChild,
     centre: PORTAL_CENTRE,
     videoAspect,
-    stageCentre: FRAME_CENTRE,
+    // Where the frame settles: the middle of the stage. See the note on
+    // PortalGeometry.travel for why it cannot simply live there.
+    stageCentre: STAGE_CENTRE,
     finalHeight: FINAL_HEIGHT,
   });
 
-  // The video is FIXED: always drawn at its settled native-ratio size and
-  // position. Only the window over it changes. It is never scaled to the
-  // aperture and never stretched.
-  const videoLeft = FRAME_CENTRE.x - videoW / 2;
-  const videoTop = FRAME_CENTRE.y - videoH / 2;
+  // The media is drawn at one size for the whole transition — its native
+  // ratio at the settled height — and is never scaled, stretched or
+  // cropped. Through phases 1 and 2 it is also completely stationary,
+  // sitting over the letter so the aperture has real footage to reveal.
+  //
+  // In phase 3, once the frame has separated from the A, media and
+  // aperture travel together by the same fraction into the composed
+  // centre. They move in lockstep, so the aperture never runs off the
+  // footage and what you see is always the same video, just more of it.
+  const travel = geo.travel ?? 0;
+  const videoCentreX = FRAME_CENTRE.x + (STAGE_CENTRE.x - FRAME_CENTRE.x) * travel;
+  const videoCentreY = FRAME_CENTRE.y + (STAGE_CENTRE.y - FRAME_CENTRE.y) * travel;
+  const videoLeft = videoCentreX - videoW / 2;
+  const videoTop = videoCentreY - videoH / 2;
 
   return (
     <div ref={trackRef} style={{ position: "relative", height: `${SCROLL_LENGTH_VH}vh`, zIndex: 1 }}>
