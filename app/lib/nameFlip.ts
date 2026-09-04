@@ -11,11 +11,12 @@ import type { Flip } from "gsap/Flip";
 // Flip has nothing to match the captured state against and animates nothing.
 export const NAME_FLIP_ID = "riddhi-name";
 
-// The About header's face. Declared here so the hero can warm exactly this
-// face before navigating: if the webfont is still loading when the header
-// mounts, the landing geometry is measured against the fallback and then
-// changes underneath the animation.
-export const NAME_FLIP_FONT = "700 72px 'Neue Montreal'";
+// The About header's face — the same weight as the hero name, so the Flip
+// is purely size and position and no weight crossfade is needed. Declared
+// here so the hero can warm exactly this face before navigating: if the
+// webfont is still loading when the header mounts, the landing geometry is
+// measured against the fallback and then changes underneath the animation.
+export const NAME_FLIP_FONT = "500 72px 'Neue Montreal'";
 
 let pendingState: Flip.FlipState | null = null;
 

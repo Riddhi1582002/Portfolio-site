@@ -21,38 +21,32 @@ const NAME_FLIP_DURATION = 0.75;
 // as a grow, not just a reposition; clamped so it still fits at 320px.
 const ABOUT_HEADER_SIZE = "clamp(34px, 7vw, 72px)";
 
-// Neue Montreal isn't a variable font (no fvar table in any of the
-// static woff2 weights), so the hero-name-weight -> header-weight
-// change can't be tweened live — two stacked static-weight layers
-// crossfade instead, while the wrapper's position/size comes from Flip.
+// The header is ONE text layer, at the same weight as the hero name.
+//
+// It used to be two stacked layers — the hero's 500 and the header's 700 —
+// crossfading, so the name appeared to gain weight as it landed. The
+// wrapper box matched, which made it look fine when you measured boxes,
+// but the glyphs inside did not: the two weights differ by 22px of ink
+// across "Riddhi Thakkar", and per-character offsets reach 20px by the
+// last letter. For the ~330ms both layers were above 0.15 opacity you saw
+// both sets of letterforms at once — the visible doubling.
+//
+// Neue Montreal has no fvar table in any of the static woff2 weights, so
+// the weight could not be tweened continuously either. One weight, one
+// layer, no doubling: the Flip is then purely a change of size and
+// position, which is what it is for.
 function AboutHeader() {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const heroWeightRef = useRef<HTMLSpanElement>(null);
-  const headerWeightRef = useRef<HTMLSpanElement>(null);
 
   // A LAYOUT effect, not an effect: this has to run before the browser
   // paints /about. Deferring it (as the old promise-based version did)
   // meant the header painted at its natural final geometry for a couple
   // of frames — first in the fallback face, then in Neue Montreal — and
   // only then snapped back to the hero's position to start animating.
-  // That front-of-transition pop was visible on every run.
   useLayoutEffect(() => {
     const state = takePendingNameFlip();
-    if (!wrapRef.current || !heroWeightRef.current || !headerWeightRef.current) {
-      return;
-    }
-    if (!state) {
-      // Direct load of /about (no hero flip in progress) — no animation.
-      gsap.set(headerWeightRef.current, { opacity: 1 });
-      gsap.set(heroWeightRef.current, { opacity: 0 });
-      return;
-    }
-    gsap.set(headerWeightRef.current, { opacity: 0 });
-    gsap.set(heroWeightRef.current, { opacity: 1 });
-
     const wrap = wrapRef.current;
-    const heroWeight = heroWeightRef.current;
-    const headerWeight = headerWeightRef.current;
+    if (!wrap || !state) return;
 
     let ctx: gsap.Context | null = null;
     let cancelled = false;
@@ -60,62 +54,42 @@ function AboutHeader() {
     const run = () => {
       if (cancelled) return;
       ctx = gsap.context(() => {
-        // Promote the flipped wrapper for the duration. It is scaled from
-        // the hero's 46px to the header's clamp(34px,7vw,72px), and
-        // without a layer the text is re-rasterised at a new scale every
-        // frame. Dropped again on completion so it does not hold a layer
-        // for the life of the page.
+        // Promote for the duration: the wrapper is scaled from the hero's
+        // 46px to the header's clamp(34px,7vw,72px), and without a layer
+        // the text is re-rasterised at a new scale every frame. Released
+        // on completion so it does not hold a layer for the page's life.
         gsap.set(wrap, { willChange: "transform" });
-        const tl = gsap.timeline({
+        Flip.from(state, {
+          targets: wrap,
+          duration: NAME_FLIP_DURATION,
+          // Decelerating arrival rather than in-out: power2.inOut eases at
+          // both ends, which on a long travel reads as a hesitation in the
+          // middle.
+          ease: "power3.out",
+          scale: true,
           onComplete: () => gsap.set(wrap, { willChange: "auto" }),
         });
-        tl.add(
-          Flip.from(state, {
-            targets: wrap,
-            duration: NAME_FLIP_DURATION,
-            // Decelerating arrival rather than in-out: power2.inOut eases
-            // at both ends, which on a long travel reads as a hesitation
-            // in the middle.
-            ease: "power3.out",
-            scale: true,
-          }),
-          0
-        );
-        tl.to(heroWeight, { opacity: 0, duration: NAME_FLIP_DURATION, ease: "power1.inOut" }, 0);
-        tl.to(headerWeight, { opacity: 1, duration: NAME_FLIP_DURATION, ease: "power1.inOut" }, 0);
       });
     };
 
     // The hero warms this exact face before navigating (warmNameFlipFont),
     // so the check normally passes synchronously and the flip starts in
     // this layout pass. The promise path is only a fallback for browsers
-    // without the Font Loading API or a font that failed to warm; there,
-    // measuring against the fallback face and having it swap mid-flight
-    // is still the worse option.
+    // without the Font Loading API or a face that failed to warm.
     let fontReady = false;
     try {
       fontReady = document.fonts.check(NAME_FLIP_FONT, "Riddhi Thakkar");
     } catch {
       fontReady = false;
     }
-    if (fontReady) {
-      run();
-    } else {
-      document.fonts.ready.then(run);
-    }
+    if (fontReady) run();
+    else document.fonts.ready.then(run);
 
     return () => {
       cancelled = true;
       ctx?.revert();
     };
   }, []);
-
-  const shared = {
-    fontFamily: SANS,
-    fontSize: ABOUT_HEADER_SIZE,
-    letterSpacing: "0.005em",
-    color: "#fff",
-  };
 
   return (
     <div
@@ -124,13 +98,14 @@ function AboutHeader() {
       className="relative inline-block"
       style={{ backfaceVisibility: "hidden" }}
     >
-      <span ref={headerWeightRef} style={{ ...shared, fontWeight: 700 }}>
-        Riddhi Thakkar
-      </span>
       <span
-        ref={heroWeightRef}
-        className="pointer-events-none absolute inset-0"
-        style={{ ...shared, fontWeight: 500, opacity: 0 }}
+        style={{
+          fontFamily: SANS,
+          fontSize: ABOUT_HEADER_SIZE,
+          fontWeight: 500,
+          letterSpacing: "0.005em",
+          color: "#fff",
+        }}
       >
         Riddhi Thakkar
       </span>
@@ -386,9 +361,21 @@ function viewportRevealT(el: HTMLElement) {
   return Math.min(1, Math.max(0, (start - rect.top) / (start - end)));
 }
 
+// Confirmed reveal for About body copy: each paragraph fades up as it
+// enters the viewport, staggered block to block. Deliberately NOT the
+// grey-to-white clip-mask line reveal the hero narration uses — that
+// treatment stays specific to the hero.
+const REVEAL_STAGGER = 0.09; // of the reveal window, per paragraph
+
 export default function AboutSection() {
   const photoRef = useRef<HTMLDivElement>(null);
   const bodyRevealRef = useRef<HTMLDivElement>(null);
+  const paraRefs = useRef<(HTMLParagraphElement | null)[]>([]);
+  // Until the intro has played, the scroll handler leaves the paragraphs
+  // alone. Without this, everything already above the fold at load is
+  // simply "revealed" with no motion at all — there is nothing for it to
+  // scroll into — and only the last block ever animates.
+  const introDoneRef = useRef(false);
   const skillsRevealRef = useRef<HTMLDivElement>(null);
   const backRevealRef = useRef<HTMLAnchorElement>(null);
 
@@ -406,12 +393,17 @@ export default function AboutSection() {
           photoEl.style.transform = `scale(${scale})`;
         }
 
-        const bodyEl = bodyRevealRef.current;
-        if (bodyEl) {
-          const t = easeInOutSine(viewportRevealT(bodyEl));
-          bodyEl.style.opacity = String(t);
-          bodyEl.style.transform = `translateY(${(1 - t) * REVEAL_TRANSLATE_Y}px)`;
-        }
+        // Each paragraph on its own progress, offset by its index, so the
+        // block reads as a cascade rather than one slab appearing.
+        if (!introDoneRef.current) return;
+        paraRefs.current.forEach((para, i) => {
+          if (!para) return;
+          const raw = viewportRevealT(para);
+          const shifted = (raw - i * REVEAL_STAGGER) / (1 - REVEAL_STAGGER * (ABOUT_BODY.length - 1));
+          const t = easeInOutSine(Math.min(1, Math.max(0, shifted)));
+          para.style.opacity = String(t);
+          para.style.transform = `translateY(${(1 - t) * REVEAL_TRANSLATE_Y}px)`;
+        });
 
         const skillsEl = skillsRevealRef.current;
         if (skillsEl) {
@@ -438,6 +430,36 @@ export default function AboutSection() {
     };
   }, []);
 
+  // Intro pass: fade the body copy up once on arrival, staggered block to
+  // block, then hand over to the scroll handler. Held back while the name
+  // Flip is running so the two do not compete for the same frames.
+  useEffect(() => {
+    const paras = paraRefs.current.filter((el): el is HTMLParagraphElement => el != null);
+    if (!paras.length) return;
+    const delay = hasPendingNameFlip() ? NAME_FLIP_DURATION + 0.1 : 0.15;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        paras,
+        { opacity: 0, y: REVEAL_TRANSLATE_Y },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.7,
+          ease: "power2.out",
+          stagger: 0.11,
+          delay,
+          onComplete: () => {
+            introDoneRef.current = true;
+            paras.forEach((el) => {
+              el.style.willChange = "auto";
+            });
+          },
+        }
+      );
+    });
+    return () => ctx.revert();
+  }, []);
+
   return (
     <div className="min-h-screen bg-black px-6 py-24 text-white sm:px-12">
       <div className="mx-auto max-w-5xl">
@@ -452,10 +474,13 @@ export default function AboutSection() {
             so the photo row keeps its current layout until copy arrives. */}
         <div className="mt-14 flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-end sm:gap-12">
           {ABOUT_BODY.length > 0 && (
-            <div ref={bodyRevealRef} className="max-w-prose flex-1" style={{ opacity: 0 }}>
+            <div ref={bodyRevealRef} className="max-w-prose flex-1">
               {ABOUT_BODY.map((para, i) => (
                 <p
                   key={i}
+                  ref={(el) => {
+                    paraRefs.current[i] = el;
+                  }}
                   className="text-white/75"
                   style={{
                     fontFamily: SANS,
@@ -464,6 +489,9 @@ export default function AboutSection() {
                     lineHeight: 1.7,
                     letterSpacing: "0.022em",
                     marginTop: i === 0 ? 0 : "1.1em",
+                    // Starts hidden; the scroll handler above drives it.
+                    opacity: 0,
+                    willChange: "opacity, transform",
                   }}
                 >
                   {para}
