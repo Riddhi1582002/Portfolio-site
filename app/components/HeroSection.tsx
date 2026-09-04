@@ -60,11 +60,20 @@ const HINT_DISMISSED_KEY = "heroScrollHintDismissed";
 // curve.
 const TAG1_FONT_SIZE = 40;
 const TAG1_Y_REST = 320;
-const TAG1_Y_MID = 300;
+// Mid-stage tagline sits high enough that the clear space above ART equals
+// the clear space below it at the deep stage (ART -> "is my peace"). That
+// target gap is ~167 stage units; tag1 can only absorb ~184 of the needed
+// shift before the name — whose Y is derived from tag1Y — clips off the top
+// of the stage at viewports where the 1920x1080 stage exactly fills the
+// screen, so the shift is split with ART_Y_MID below.
+const TAG1_Y_MID = 154;
 const NAME_SIZE_REST = 46;
 const NAME_SIZE_MID = 60;
 const ART_Y_REST = 66;
-const ART_Y_MID = 72;
+// Carries the remainder of the tagline-to-ART gap shift (see TAG1_Y_MID).
+// Mid-stage only — rest and deep are untouched, so the ART -> "is my peace"
+// gap this is being matched against stays exactly as it was.
+const ART_Y_MID = 132;
 export const ART_Y_DEEP = -60;
 const ART_SCALE_REST = 1;
 const ART_SCALE_MID = 1.36;
