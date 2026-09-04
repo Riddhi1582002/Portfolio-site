@@ -8,8 +8,16 @@
 // single largest cause of its stalling.
 //
 // The raw lives outside public/ so it is never served. This emits the web
-// sizes into public/photo/ instead. Runs from `prebuild`, so a plain
-// `npm run build` cannot forget it.
+// sizes into public/photo/ instead, and THOSE ARE COMMITTED.
+//
+// This deliberately does not run as part of the build. It used to hang off
+// `prebuild`, which broke the deployed site: a host whose build command is
+// `next build` rather than `npm run build` never fires the npm lifecycle
+// hook, so the images were simply never generated and the About page had
+// no photo. Committing a 57KB jpg is cheaper than making every deploy
+// depend on an npm hook firing and on sharp being installed.
+//
+// Run `npm run prepare-images` by hand after replacing the raw.
 
 import { mkdir, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
