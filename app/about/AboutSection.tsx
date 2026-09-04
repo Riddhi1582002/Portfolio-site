@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import gsap from "gsap";
 import { Flip } from "gsap/Flip";
-import { NAME_FLIP_ID, takePendingNameFlip } from "../lib/nameFlip";
+import {
+  NAME_FLIP_FONT,
+  NAME_FLIP_ID,
+  hasPendingNameFlip,
+  takePendingNameFlip,
+} from "../lib/nameFlip";
 import "../components/hero-fonts.css";
 
 gsap.registerPlugin(Flip);
@@ -25,7 +30,13 @@ function AboutHeader() {
   const heroWeightRef = useRef<HTMLSpanElement>(null);
   const headerWeightRef = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => {
+  // A LAYOUT effect, not an effect: this has to run before the browser
+  // paints /about. Deferring it (as the old promise-based version did)
+  // meant the header painted at its natural final geometry for a couple
+  // of frames — first in the fallback face, then in Neue Montreal — and
+  // only then snapped back to the hero's position to start animating.
+  // That front-of-transition pop was visible on every run.
+  useLayoutEffect(() => {
     const state = takePendingNameFlip();
     if (!wrapRef.current || !heroWeightRef.current || !headerWeightRef.current) {
       return;
@@ -39,20 +50,28 @@ function AboutHeader() {
     gsap.set(headerWeightRef.current, { opacity: 0 });
     gsap.set(heroWeightRef.current, { opacity: 1 });
 
-    // Wait for fonts before measuring. The header is Neue Montreal at
-    // clamp(34px,7vw,72px); if it is still in the fallback when Flip
-    // measures the landing geometry, the webfont swapping mid-flight
-    // changes the target box underneath the animation, which is the
-    // single biggest source of jank here.
+    const wrap = wrapRef.current;
+    const heroWeight = heroWeightRef.current;
+    const headerWeight = headerWeightRef.current;
+
     let ctx: gsap.Context | null = null;
     let cancelled = false;
-    document.fonts.ready.then(() => {
-      if (cancelled || !wrapRef.current) return;
+
+    const run = () => {
+      if (cancelled) return;
       ctx = gsap.context(() => {
-        const tl = gsap.timeline();
+        // Promote the flipped wrapper for the duration. It is scaled from
+        // the hero's 46px to the header's clamp(34px,7vw,72px), and
+        // without a layer the text is re-rasterised at a new scale every
+        // frame. Dropped again on completion so it does not hold a layer
+        // for the life of the page.
+        gsap.set(wrap, { willChange: "transform" });
+        const tl = gsap.timeline({
+          onComplete: () => gsap.set(wrap, { willChange: "auto" }),
+        });
         tl.add(
           Flip.from(state, {
-            targets: wrapRef.current,
+            targets: wrap,
             duration: NAME_FLIP_DURATION,
             // Decelerating arrival rather than in-out: power2.inOut eases
             // at both ends, which on a long travel reads as a hesitation
@@ -62,10 +81,28 @@ function AboutHeader() {
           }),
           0
         );
-        tl.to(heroWeightRef.current, { opacity: 0, duration: NAME_FLIP_DURATION, ease: "power1.inOut" }, 0);
-        tl.to(headerWeightRef.current, { opacity: 1, duration: NAME_FLIP_DURATION, ease: "power1.inOut" }, 0);
+        tl.to(heroWeight, { opacity: 0, duration: NAME_FLIP_DURATION, ease: "power1.inOut" }, 0);
+        tl.to(headerWeight, { opacity: 1, duration: NAME_FLIP_DURATION, ease: "power1.inOut" }, 0);
       });
-    });
+    };
+
+    // The hero warms this exact face before navigating (warmNameFlipFont),
+    // so the check normally passes synchronously and the flip starts in
+    // this layout pass. The promise path is only a fallback for browsers
+    // without the Font Loading API or a font that failed to warm; there,
+    // measuring against the fallback face and having it swap mid-flight
+    // is still the worse option.
+    let fontReady = false;
+    try {
+      fontReady = document.fonts.check(NAME_FLIP_FONT, "Riddhi Thakkar");
+    } catch {
+      fontReady = false;
+    }
+    if (fontReady) {
+      run();
+    } else {
+      document.fonts.ready.then(run);
+    }
 
     return () => {
       cancelled = true;
@@ -81,7 +118,12 @@ function AboutHeader() {
   };
 
   return (
-    <div ref={wrapRef} data-flip-id={NAME_FLIP_ID} className="relative inline-block">
+    <div
+      ref={wrapRef}
+      data-flip-id={NAME_FLIP_ID}
+      className="relative inline-block"
+      style={{ backfaceVisibility: "hidden" }}
+    >
       <span ref={headerWeightRef} style={{ ...shared, fontWeight: 700 }}>
         Riddhi Thakkar
       </span>
@@ -154,11 +196,14 @@ function easeInOutSine(t: number) {
 function SkillTile({
   skill,
   hovered,
+  loadImage,
   onHover,
   onLeave,
 }: {
   skill: (typeof SKILLS)[number];
   hovered: boolean;
+  /** False until the name transition is done — see SkillsCarousel. */
+  loadImage: boolean;
   onHover: () => void;
   onLeave: () => void;
 }) {
@@ -174,13 +219,15 @@ function SkillTile({
         transition: "transform 320ms cubic-bezier(0.4,0,0.2,1)",
       }}
     >
-      <Image
-        src={`/icons/${skill.slug}.png`}
-        alt={skill.name}
-        width={360}
-        height={360}
-        className="h-full w-full object-cover"
-      />
+      {loadImage && (
+        <Image
+          src={`/icons/${skill.slug}.png`}
+          alt={skill.name}
+          width={360}
+          height={360}
+          className="h-full w-full object-cover"
+        />
+      )}
     </div>
   );
 }
@@ -205,6 +252,22 @@ function SkillTile({
 // leaving reads as a fade, not a clipped frame.
 function SkillsCarousel() {
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
+  // Twelve 360x360 PNGs (six tools, listed twice) decode on the main
+  // thread. Measured, that is ~0.95s of task time, and when the page is
+  // reached by clicking the hero name it lands inside the 750ms name
+  // Flip, which is one of the two things that stalled it. Holding them
+  // back until the transition is over costs nothing visually — the tiles
+  // already have their frame and their reserved box — and gives the flip
+  // an idle main thread.
+  const [loadImages, setLoadImages] = useState(() => !hasPendingNameFlip());
+  useEffect(() => {
+    if (loadImages) return;
+    const id = window.setTimeout(
+      () => setLoadImages(true),
+      NAME_FLIP_DURATION * 1000 + 120
+    );
+    return () => window.clearTimeout(id);
+  }, [loadImages]);
   const active = hoveredTile == null ? null : SKILLS[hoveredTile % SKILLS_COUNT];
 
   return (
@@ -240,6 +303,7 @@ function SkillsCarousel() {
               // holds the list twice, so matching on name lit up the
               // duplicate copy at the same time.
               hovered={hoveredTile === i}
+              loadImage={loadImages}
               onHover={() => setHoveredTile(i)}
               onLeave={() => setHoveredTile(null)}
             />

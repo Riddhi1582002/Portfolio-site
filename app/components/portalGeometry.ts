@@ -54,6 +54,12 @@ export function polyToPath(pts: Pt[]): string {
  * disc, so the result is the part of the shape the disc has reached.
  */
 function clipToConvex(subject: Pt[], clipper: Pt[]): Pt[] {
+  // A degenerate clipper has no edges with direction, so every half-plane
+  // test returns 0, every point counts as inside, and the subject comes
+  // back untouched — the exact opposite of clipping it away to nothing.
+  // At progress = PHASE_1_END that silently opened the whole frame in one
+  // jump instead of starting it from zero.
+  if (clipper.length < 3) return [];
   let out = subject;
   for (let i = 0; i < clipper.length && out.length; i++) {
     const a = clipper[i];
@@ -84,7 +90,12 @@ function intersect(p: Pt, q: Pt, sp: number, sq: number): Pt {
   return { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
 }
 
+// Below this the polygon is smaller than a pixel at any stage scale and
+// its edges start collapsing; treat it as no disc at all.
+const MIN_DISC_R = 0.01;
+
 function disc(cx: number, cy: number, r: number, segments = 72): Pt[] {
+  if (!(r > MIN_DISC_R)) return [];
   const pts: Pt[] = [];
   for (let i = 0; i < segments; i++) {
     const a = (i / segments) * Math.PI * 2;
@@ -137,17 +148,23 @@ export type PortalGeometry = {
   videoRect: { cx: number; cy: number; w: number; h: number } | null;
 };
 
+// How much bigger the seed frame is than the box that merely contains the
+// counter. At 1.0 the seed is the counter's own bounding box, so phase 2
+// has nothing to travel and the beat reads as a dead spot; this gives it
+// real distance to open through while leaving phase 3 the larger move.
+const SEED_GROWTH = 1.35;
+
 /**
- * The seed frame: the smallest rectangle at the video's NATIVE aspect ratio
- * that still contains the whole counter. Phase 2 resolves the A's interior
- * into this, so the frame arrives already correctly proportioned rather
- * than as a generic 16:9 box that later has to be corrected.
+ * The seed frame: a rectangle at the video's NATIVE aspect ratio, sized
+ * from the counter it grows out of. Phase 2 resolves the A's interior into
+ * this, so the frame arrives already correctly proportioned rather than as
+ * a generic 16:9 box that later has to be corrected.
  */
 export function seedRect(counter: Pt[], aspect: number) {
   const b = bbox(counter);
   const w0 = b.maxX - b.minX;
   const h0 = b.maxY - b.minY;
-  const h = Math.max(h0, w0 / aspect);
+  const h = Math.max(h0, w0 / aspect) * SEED_GROWTH;
   return { cx: (b.minX + b.maxX) / 2, cy: (b.minY + b.maxY) / 2, w: h * aspect, h };
 }
 
@@ -175,7 +192,10 @@ export function getPortalGeometry(progress: number, input: PortalInput): PortalG
     // PHASE 2 — the counter is fully open and now the native-ratio frame
     // grows out through it, same disc-clipping rule, same centre.
     const t = easeInOutCubic(clamp01((p - PHASE_1_END) / (PHASE_2_END - PHASE_1_END)));
-    const r = t * (Math.hypot(seed.w, seed.h) / 2 + maxRadius(centre, rectPoly(seed.cx, seed.cy, seed.w, seed.h)));
+    // Exactly enough radius to reach the furthest corner at t = 1, so the
+    // frame finishes opening at PHASE_2_END rather than roughly halfway
+    // through the phase.
+    const r = t * maxRadius(centre, rectPoly(seed.cx, seed.cy, seed.w, seed.h));
     const frame = clipToConvex(rectPoly(seed.cx, seed.cy, seed.w, seed.h), disc(centre.x, centre.y, r));
     const children: ClipChild[] = [{ d: polyToPath(counter) }];
     if (frame.length >= 3) children.push({ d: polyToPath(frame) });
@@ -204,14 +224,15 @@ export function artOpacity(progress: number) {
 }
 
 /**
- * Video reveal opacity, same single progress. It is 1 from the very first
- * frame on purpose: the clip-path is the reveal, and anything below 1 here
- * makes ART's own white crossbar show *through* the aperture and blend
- * with the footage, so the opening reads as grey letterform rather than as
- * video. Kept as a function of progress so the one master progress still
- * owns it if a fade is ever wanted at the handoff.
+ * Video reveal opacity — the gentle emergence over phase 1, on the same
+ * single progress.
+ *
+ * This is only safe because an opaque black fill is painted inside the
+ * aperture underneath the video (see FilmstripEntry). Without it, a
+ * partially transparent video lets ART's own white crossbar show *through*
+ * the opening and blend with the footage, so the aperture reads as grey
+ * letterform rather than as video emerging.
  */
 export function videoOpacity(progress: number) {
-  void progress;
-  return 1;
+  return 0.35 + 0.65 * easeOutCubic(clamp01(clamp01(progress) / PHASE_1_END));
 }

@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Generated at build time from assets/riddhi-photo-raw.jpg by
+# scripts/prepare-images.mjs — the 3340x3340 raw is the source of truth.
+/public/photo/riddhi-photo.jpg
+/public/photo/riddhi-photo.webp

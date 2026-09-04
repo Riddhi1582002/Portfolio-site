@@ -15,7 +15,7 @@ import localFont from "next/font/local";
 import gsap from "gsap";
 import { SplitText } from "gsap/SplitText";
 import { Flip } from "gsap/Flip";
-import { NAME_FLIP_ID, setPendingNameFlip } from "../lib/nameFlip";
+import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
 import "./hero-fonts.css";
 import "./hero-hint.css";
 
@@ -262,6 +262,15 @@ export default function HeroSection() {
   useEffect(() => {
     hintVisibleRef.current = hintVisible;
   }, [hintVisible]);
+
+  // Warm the About header's face while the hero is on screen. The Flip
+  // that lands on /about measures against this font; if it is still
+  // loading at that moment the landing box changes underneath the
+  // animation. Requesting it here means it is already loaded by the time
+  // anyone can click the name.
+  useEffect(() => {
+    warmNameFlipFont();
+  }, []);
 
   useEffect(() => {
     try {

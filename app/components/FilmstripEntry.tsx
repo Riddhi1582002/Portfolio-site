@@ -9,12 +9,18 @@
 //   - The crossbar/counter geometry is never painted as artwork; it exists
 //     only inside <clipPath>.
 //
-// Note on z-order: the video layer is painted above ART rather than behind
-// it. With it behind, ART's crossbar stroke is opaque white and covers it,
-// so video could only show through by also masking ART — a second mask,
-// which the spec rules out. Clipped to the aperture, the video covers
-// nothing except the inside of the aperture, so ART still reads as the
-// foreground and is itself completely untouched.
+// DELIBERATE DEVIATION from the written architecture: the video layer is
+// painted ABOVE ART, not behind it. The spec's "foreground ART, REELS
+// behind" assumes the aperture is a hole in the glyph, but the A's
+// crossbar is *ink*, not a counter — there is nothing to see through from
+// behind, because the crossbar stroke is opaque white and simply covers
+// whatever sits under it. Painting the video behind would need a second
+// mask on ART to punch the crossbar out, which the spec rules out.
+//
+// Clipped to a crossbar-sized aperture, the video covers nothing except
+// the inside of that aperture, so ART still reads as the foreground and
+// its own geometry is never touched. This is the correction that makes
+// the one-clip-path rule work on ink rather than on a counter.
 //
 // There is exactly ONE clipPath. Its contents come from getPortalGeometry(),
 // which CALCULATES the aperture for the current progress. Nothing is morphed
@@ -45,8 +51,10 @@ import {
 
 const SCROLL_LENGTH_VH = 220;
 
-// Static checkpoint. The scroll drive replaces this once approved.
-const PORTAL_PROGRESS = 0;
+// Time constant for easing the rendered progress toward the raw scroll
+// position. A wheel notch is a discrete jump; scrubbing an aperture
+// straight off scrollY makes it grow in visible steps.
+const PORTAL_SMOOTH_TAU = 0.09;
 
 // One font unit (upm 1000) in stage units, at the hero's ART size.
 const ART_FONT_PX = 462 * ART_SCALE_DEEP;
@@ -65,27 +73,59 @@ for (let i = 0; i < COUNTER_POLY.length; i += 2) {
   COUNTER_STAGE.push(toStage(COUNTER_POLY[i], COUNTER_POLY[i + 1]));
 }
 const PORTAL_CENTRE = toStage(CROSSBAR_CENTER.x, CROSSBAR_CENTER.y);
-// Where the native frame settles. It is anchored on the A, not on the
-// stage centre: the aperture starts inside the A's crossbar, so a frame
-// centred mid-stage would not contain the opening at all and progress 0
-// would show nothing through it. Keeping the frame over the letter is
-// also what makes the match cut work — the reel is behind the A the whole
-// time, and the aperture only decides how much of it you can see.
 const COUNTER_BOX = bbox(COUNTER_STAGE);
-const FRAME_CENTRE: Pt = {
-  x: (COUNTER_BOX.minX + COUNTER_BOX.maxX) / 2,
-  y: (COUNTER_BOX.minY + COUNTER_BOX.maxY) / 2,
-};
 // The native frame settles at this height; width follows from the video's
 // own ratio, so a portrait reel stays portrait on a wide viewport.
 const FINAL_HEIGHT = STAGE_H * 0.78;
 
+/**
+ * Where the fixed video frame sits. The video never moves and never
+ * scales — only the window over it changes — so this one rectangle has to
+ * satisfy two constraints at once:
+ *
+ *   1. contain every aperture the transition ever opens (the crossbar,
+ *      the counter, and the seed frame), or the opening would show black
+ *      backdrop where there is no video to reveal;
+ *   2. sit wholly inside the stage, so the settled frame reads as a
+ *      correctly-proportioned frame rather than one running off an edge.
+ *
+ * Centring it mid-stage fails (1): the aperture opens inside the A, which
+ * is left of centre, so a centred frame does not contain it. Centring it
+ * on the A fails (2). So the frame starts from the A and is clamped into
+ * the band where both hold.
+ */
+function frameCentre(seed: { cx: number; cy: number; w: number; h: number }, w: number, h: number): Pt {
+  const clamp = (v: number, lo: number, hi: number) =>
+    lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
+  const apertureBox = {
+    minX: Math.min(COUNTER_BOX.minX, seed.cx - seed.w / 2),
+    maxX: Math.max(COUNTER_BOX.maxX, seed.cx + seed.w / 2),
+    minY: Math.min(COUNTER_BOX.minY, seed.cy - seed.h / 2),
+    maxY: Math.max(COUNTER_BOX.maxY, seed.cy + seed.h / 2),
+  };
+  const wantX = (COUNTER_BOX.minX + COUNTER_BOX.maxX) / 2;
+  const wantY = (COUNTER_BOX.minY + COUNTER_BOX.maxY) / 2;
+  return {
+    x: clamp(wantX, Math.max(w / 2, apertureBox.maxX - w / 2), Math.min(STAGE_W - w / 2, apertureBox.minX + w / 2)),
+    y: clamp(wantY, Math.max(h / 2, apertureBox.maxY - h / 2), Math.min(STAGE_H - h / 2, apertureBox.minY + h / 2)),
+  };
+}
+
 const ART_DEEP_G = 0.5 * GLOW_STRENGTH;
 
 export default function FilmstripEntry() {
+  const trackRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [debug, setDebug] = useState(false);
+  // THE single master progress. Aperture geometry, ART opacity, video
+  // reveal opacity and the final handoff are all functions of this one
+  // value. There is one scroll listener in this component and no other
+  // progress variable anywhere in the portal.
+  const [portalProgress, setPortalProgress] = useState(0);
+  const targetRef = useRef(0);
+  const smoothRef = useRef(0);
+  const primedRef = useRef(false);
   // Read off the loaded media rather than hardcoded, so a reel with a
   // different native ratio works without touching this file. 920/1080
   // until metadata arrives.
@@ -108,13 +148,71 @@ export default function FilmstripEntry() {
     return () => window.removeEventListener("resize", fit);
   }, []);
 
+  // One listener writes the raw target; one rAF loop eases the rendered
+  // value toward it. `?portalProgress=<n>` pins it instead, so a given
+  // frame can be captured exactly rather than scrolled to approximately.
+  useEffect(() => {
+    const pinned = new URLSearchParams(window.location.search).get("portalProgress");
+    const pinnedValue = pinned === null ? null : Number(pinned);
+    if (pinnedValue !== null && Number.isFinite(pinnedValue)) {
+      const id = requestAnimationFrame(() =>
+        setPortalProgress(Math.min(1, Math.max(0, pinnedValue)))
+      );
+      return () => cancelAnimationFrame(id);
+    }
+
+    let raf = 0;
+    let scrollRaf: number | null = null;
+    const measure = () => {
+      scrollRaf = null;
+      const el = trackRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const total = rect.height - window.innerHeight;
+      targetRef.current = total > 0 ? Math.min(1, Math.max(0, -rect.top / total)) : 0;
+      if (!primedRef.current) {
+        primedRef.current = true;
+        smoothRef.current = targetRef.current;
+        setPortalProgress(targetRef.current);
+      }
+    };
+    const onScroll = () => {
+      if (scrollRaf == null) scrollRaf = requestAnimationFrame(measure);
+    };
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const k = 1 - Math.exp(-dt / PORTAL_SMOOTH_TAU);
+      const next = smoothRef.current + (targetRef.current - smoothRef.current) * k;
+      smoothRef.current = Math.abs(targetRef.current - next) < 0.0002 ? targetRef.current : next;
+      setPortalProgress(smoothRef.current);
+      raf = requestAnimationFrame(tick);
+    };
+    measure();
+    raf = requestAnimationFrame(tick);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (scrollRaf != null) cancelAnimationFrame(scrollRaf);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, []);
+
   const onMeta = () => {
     const v = videoRef.current;
     if (v && v.videoWidth && v.videoHeight) setVideoAspect(v.videoWidth / v.videoHeight);
   };
 
+  const videoH = FINAL_HEIGHT;
+  const videoW = videoH * videoAspect;
+  const seed = seedRect(COUNTER_STAGE, videoAspect);
+  const FRAME_CENTRE = frameCentre(seed, videoW, videoH);
+
   const crossbarChild = { d: CROSSBAR_PATH, transform: PORTAL_TRANSFORM };
-  const geo = getPortalGeometry(PORTAL_PROGRESS, {
+  const geo = getPortalGeometry(portalProgress, {
     counter: COUNTER_STAGE,
     crossbar: crossbarChild,
     centre: PORTAL_CENTRE,
@@ -126,18 +224,15 @@ export default function FilmstripEntry() {
   // The video is FIXED: always drawn at its settled native-ratio size and
   // position. Only the window over it changes. It is never scaled to the
   // aperture and never stretched.
-  const videoH = FINAL_HEIGHT;
-  const videoW = videoH * videoAspect;
   const videoLeft = FRAME_CENTRE.x - videoW / 2;
   const videoTop = FRAME_CENTRE.y - videoH / 2;
 
-  const seed = seedRect(COUNTER_STAGE, videoAspect);
-
   return (
-    <div style={{ position: "relative", height: `${SCROLL_LENGTH_VH}vh`, zIndex: 1 }}>
+    <div ref={trackRef} style={{ position: "relative", height: `${SCROLL_LENGTH_VH}vh`, zIndex: 1 }}>
       <div
         style={{
-          position: "relative",
+          position: "sticky",
+          top: 0,
           height: "100vh",
           overflow: "hidden",
           background: "#000",
@@ -172,7 +267,7 @@ export default function FilmstripEntry() {
               inset: 0,
               zIndex: 1,
               pointerEvents: "none",
-              opacity: artOpacity(PORTAL_PROGRESS),
+              opacity: artOpacity(portalProgress),
             }}
             aria-label="ART"
           >
@@ -198,9 +293,15 @@ export default function FilmstripEntry() {
               inset: 0,
               zIndex: 2,
               clipPath: "url(#reelsPortal)",
-              opacity: videoOpacity(PORTAL_PROGRESS),
             }}
           >
+            {/* Opaque black inside the aperture, under the video. This is
+                what lets the video fade in gently over phase 1: without
+                it, a partly transparent video lets ART's own white
+                crossbar show through the opening and blend with the
+                footage, and the aperture reads as grey letterform rather
+                than as video emerging out of the dark. */}
+            <div style={{ position: "absolute", inset: 0, background: "#000" }} />
             <video
               ref={videoRef}
               id="reel-video"
@@ -216,6 +317,7 @@ export default function FilmstripEntry() {
                 width: videoW,
                 height: videoH,
                 objectFit: "cover",
+                opacity: videoOpacity(portalProgress),
               }}
             >
               {/* PLACEHOLDER REEL — synthetic 920x1080 clip, not final
@@ -259,7 +361,7 @@ export default function FilmstripEntry() {
                 <circle cx={PORTAL_CENTRE.x} cy={PORTAL_CENTRE.y} r={geo.discRadius} fill="none" stroke="#f0f" strokeWidth={1} strokeDasharray="6 6" />
               )}
               <text x={40} y={56} fill="#0f0" fontSize={26} fontFamily="monospace">
-                portalProgress {PORTAL_PROGRESS.toFixed(3)}  phase {geo.phase}
+                portalProgress {portalProgress.toFixed(3)}  phase {geo.phase}
               </text>
               <text x={40} y={90} fill="#0f0" fontSize={22} fontFamily="monospace">
                 phases 0-{PHASE_1_END} crossbar / -{PHASE_2_END} counter / -1 video
