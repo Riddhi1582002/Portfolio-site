@@ -20,15 +20,16 @@
   --background-y: 50%;
   --grain: none;
   --icon: none;
-  --behind-glow-color: rgba(190, 210, 255, 0.5);
+  --behind-glow-color: rgba(255, 255, 255, 0.42);
   --behind-glow-size: 55%;
-  --inner-gradient: linear-gradient(145deg, #60496e40 0%, #71c4ff22 100%);
-  --sunpillar-1: hsl(2, 100%, 73%);
-  --sunpillar-2: hsl(53, 100%, 69%);
-  --sunpillar-3: hsl(93, 100%, 69%);
-  --sunpillar-4: hsl(176, 100%, 76%);
-  --sunpillar-5: hsl(228, 100%, 74%);
-  --sunpillar-6: hsl(283, 100%, 73%);
+  --inner-gradient: none;
+  /* White specular, not a rainbow. The source's six-hue "sunpillar" set is
+     what made this read as a holographic trading card; a photograph wants a
+     reflection off glass, so every band is neutral and only its brightness
+     varies. */
+  --spec-dim: hsla(0, 0%, 100%, 0.06);
+  --spec-mid: hsla(0, 0%, 100%, 0.26);
+  --spec-hot: hsla(0, 0%, 100%, 0.62);
   --card-radius: 16px;
 
   perspective: 700px;
@@ -47,7 +48,7 @@
     var(--behind-glow-color) 0%,
     transparent var(--behind-glow-size)
   );
-  filter: blur(50px) saturate(1.1);
+  filter: blur(50px);
   opacity: calc(0.8 * var(--card-opacity));
   transition: opacity 200ms ease;
 }
@@ -110,15 +111,16 @@
   mask-size: 150%;
   mask-position: top calc(200% - (var(--background-y) * 5)) left calc(100% - var(--background-x));
   transition: filter 0.8s ease, opacity 0.5s ease;
-  filter: brightness(0.66) contrast(1.33) saturate(0.33) opacity(0.5);
   animation: holo-bg 18s linear infinite;
   /* soft-light, not color-dodge. The original dodges against an avatar
      blended at luminosity — effectively a dark plate — so the highlights
      read as sheen. Over a full-colour photograph, dodge clips everything
      to white. soft-light at low opacity keeps the same rainbow banding
      while leaving the face readable. */
-  mix-blend-mode: soft-light;
-  opacity: 0.5;
+  /* screen, not soft-light. White on soft-light barely moves a mid-tone
+     photograph; screen is what actually reads as light bouncing off glass. */
+  mix-blend-mode: screen;
+  opacity: 0.55;
 }
 
 .pc-shine,
@@ -132,41 +134,30 @@
   background-size: cover;
   background-position: center;
   background-image:
-    repeating-linear-gradient(
-      0deg,
-      var(--sunpillar-1) calc(var(--space) * 1),
-      var(--sunpillar-2) calc(var(--space) * 2),
-      var(--sunpillar-3) calc(var(--space) * 3),
-      var(--sunpillar-4) calc(var(--space) * 4),
-      var(--sunpillar-5) calc(var(--space) * 5),
-      var(--sunpillar-6) calc(var(--space) * 6),
-      var(--sunpillar-1) calc(var(--space) * 7)
-    ),
-    repeating-linear-gradient(
+    linear-gradient(
       var(--angle),
-      #0e152e 0%,
-      hsl(180, 10%, 60%) 3.8%,
-      hsl(180, 29%, 66%) 4.5%,
-      hsl(180, 10%, 60%) 5.2%,
-      #0e152e 10%,
-      #0e152e 12%
+      transparent 18%,
+      var(--spec-dim) 32%,
+      var(--spec-mid) 42%,
+      var(--spec-hot) 48%,
+      var(--spec-mid) 54%,
+      var(--spec-dim) 64%,
+      transparent 78%
     ),
     radial-gradient(
       farthest-corner circle at var(--pointer-x) var(--pointer-y),
-      hsla(0, 0%, 0%, 0.1) 12%,
-      hsla(0, 0%, 0%, 0.15) 20%,
-      hsla(0, 0%, 0%, 0.25) 120%
+      hsla(0, 0%, 100%, 0.22) 0%,
+      hsla(0, 0%, 100%, 0.05) 38%,
+      hsla(0, 0%, 0%, 0.18) 110%
     );
   background-position:
-    0 var(--background-y),
     var(--background-x) var(--background-y),
     center;
-  background-blend-mode: color, hard-light;
+  background-blend-mode: screen;
   background-size:
-    500% 500%,
-    300% 300%,
-    200% 200%;
-  background-repeat: repeat;
+    260% 260%,
+    140% 140%;
+  background-repeat: no-repeat;
 }
 
 .pc-shine::before,
@@ -180,9 +171,8 @@
 }
 
 .pc-card-shell.active .pc-shine {
-  filter: brightness(0.85) contrast(1.5) saturate(0.5);
   animation-play-state: paused;
-  opacity: 0.72;
+  opacity: 0.9;
 }
 
 .pc-card-shell.active .pc-shine::before,
@@ -192,43 +182,32 @@
 
 .pc-shine::before {
   background-image:
-    linear-gradient(
-      45deg,
-      var(--sunpillar-4),
-      var(--sunpillar-5),
-      var(--sunpillar-6),
-      var(--sunpillar-1),
-      var(--sunpillar-2),
-      var(--sunpillar-3)
+    radial-gradient(
+      circle at var(--pointer-x) var(--pointer-y),
+      hsla(0, 0%, 100%, 0.55) 0%,
+      hsla(0, 0%, 100%, 0.14) 26%,
+      hsla(0, 0%, 100%, 0) 55%
     ),
-    radial-gradient(circle at var(--pointer-x) var(--pointer-y), hsl(0, 0%, 70%) 0%, hsla(0, 0%, 30%, 0.2) 90%),
     var(--grain);
   background-size:
-    250% 250%,
     100% 100%,
     220px 220px;
   background-position:
-    var(--pointer-x) var(--pointer-y),
     center,
     calc(var(--pointer-x) * 0.01) calc(var(--pointer-y) * 0.01);
-  background-blend-mode: color-dodge;
-  filter: brightness(calc(1.2 - var(--pointer-from-center) * 0.4))
-    contrast(calc(var(--pointer-from-center) + 1.2))
-    saturate(calc(0.5 + var(--pointer-from-center)));
-  mix-blend-mode: overlay;
+  filter: brightness(calc(1.15 - var(--pointer-from-center) * 0.25));
+  mix-blend-mode: screen;
 }
 
 .pc-shine::after {
   background-position:
-    0 var(--background-y),
-    calc(var(--background-x) * 0.4) calc(var(--background-y) * 0.5),
+    calc(var(--background-x) * 0.55) calc(var(--background-y) * 0.55),
     center;
   background-size:
-    200% 300%,
-    700% 700%,
+    170% 170%,
     100% 100%;
-  mix-blend-mode: soft-light;
-  filter: brightness(0.8) contrast(1.5);
+  mix-blend-mode: screen;
+  filter: brightness(0.85) contrast(1.2);
 }
 
 .pc-glare {
@@ -236,20 +215,21 @@
   overflow: hidden;
   background-image: radial-gradient(
     farthest-corner circle at var(--pointer-x) var(--pointer-y),
-    hsl(248, 25%, 80%) 12%,
-    hsla(207, 40%, 30%, 0.8) 90%
+    hsla(0, 0%, 100%, 0.5) 8%,
+    hsla(0, 0%, 100%, 0.1) 38%,
+    hsla(0, 0%, 0%, 0.45) 96%
   );
-  mix-blend-mode: overlay;
+  mix-blend-mode: soft-light;
   filter: brightness(0.8) contrast(1.2);
   /* Same reasoning as the shine: full strength over a photograph reads as
      a wash rather than a glare. It comes up on hover only. */
-  opacity: 0.28;
+  opacity: 0.35;
   transition: opacity 0.5s ease;
   z-index: 4;
 }
 
 .pc-card-shell.active .pc-glare {
-  opacity: 0.45;
+  opacity: 0.6;
 }
 
 /* The original blends the avatar at mix-blend-mode: luminosity, which

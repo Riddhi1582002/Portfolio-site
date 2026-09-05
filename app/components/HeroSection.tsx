@@ -67,7 +67,13 @@ const TAG1_Y_REST = 320;
 // shift before the name — whose Y is derived from tag1Y — clips off the top
 // of the stage at viewports where the 1920x1080 stage exactly fills the
 // screen, so the shift is split with ART_Y_MID below.
-const TAG1_Y_MID = 154;
+// Nudged down from 154: it closes the tagline-to-ART gap by ~42 stage
+// units (about a quarter of it) and, because the name's Y is derived from
+// this value, carries the name down by the same amount — so the name is
+// displaced upward that much less. The name-to-tagline gap is unchanged:
+// computeNameYForStage() holds it at a fixed share of the name's ink
+// height and the clamp against tagArtGap is nowhere near binding here.
+const TAG1_Y_MID = 196;
 const NAME_SIZE_REST = 46;
 const NAME_SIZE_MID = 60;
 const ART_Y_REST = 66;
@@ -665,12 +671,19 @@ export default function HeroSection() {
 
   // Camera: scale the real composition about the point inside the A and
   // carry that point to the middle of the frame. Transform only.
-  const zoom = 1 + (CAMERA_MAX_ZOOM - 1) * easeInOutSine(transitionP);
-  const cameraTx = STAGE_W / 2 - cameraTarget.x;
-  const cameraTy = STAGE_H / 2 - cameraTarget.y;
+  const cameraT = easeInOutSine(transitionP);
+  const zoom = 1 + (CAMERA_MAX_ZOOM - 1) * cameraT;
+  // Scaled BY the camera progress. Applying the full offset unconditionally
+  // meant the hero composition sat translated off-centre before the
+  // transition had started — the frame shift. At transitionP = 0 the camera
+  // is now exactly identity, so the hero is composed as authored.
+  const cameraTx = (STAGE_W / 2 - cameraTarget.x) * cameraT;
+  const cameraTy = (STAGE_H / 2 - cameraTarget.y) * cameraT;
   // ART is gone by the end because the camera has pushed past it, not
   // because a separate element faded it out on its own schedule.
-  const cameraOpacity = 1 - clamp01((transitionP - 0.55) / 0.3);
+  // Fully out well before the end, so the last stretch of scroll has no
+  // trace of the wordmark left in frame.
+  const cameraOpacity = 1 - clamp01((transitionP - 0.5) / 0.28);
 
   return (
     <div
@@ -716,7 +729,12 @@ export default function HeroSection() {
               transformOrigin: `${cameraTarget.x}px ${cameraTarget.y}px`,
               transform: `translate(${cameraTx}px, ${cameraTy}px) scale(${zoom})`,
               opacity: cameraOpacity,
-              willChange: transitionP > 0 ? "transform, opacity" : "auto",
+              // Deliberately NOT will-change: transform. Promoting this to
+              // its own layer rasterises the wordmark once and then scales
+              // that bitmap, which is what makes zoomed type go soft. Left
+              // unpromoted, the browser re-rasterises the glyphs at each
+              // new scale and the outlines stay sharp at 7.5x.
+              willChange: "auto",
             }}
           >
           {/* soft halo bloom behind everything, sized to ART */}

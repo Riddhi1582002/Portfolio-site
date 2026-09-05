@@ -89,6 +89,21 @@ export default function HeroReels({ progress }: { progress: number }) {
           background: "#000",
         }}
       >
+        {/* Black gradient down the right edge. It reads as the panel
+            falling into shadow where the letter occludes it, which is what
+            sells the reel as sitting BEHIND the A rather than pasted on
+            top of it. Purely a shadow — it never crops the media, which
+            still fills the frame underneath at its native ratio. */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 2,
+            pointerEvents: "none",
+            background:
+              "linear-gradient(to left, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.6) 12%, rgba(0,0,0,0.18) 26%, rgba(0,0,0,0) 46%)",
+          }}
+        />
         <video
           ref={videoRef}
           id="reel-video"

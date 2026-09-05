@@ -132,6 +132,13 @@ const SKILLS_COUNT = SKILLS.length;
 // exact and so late-loading images can never shift the layout underneath
 // the name Flip landing on this page.
 const TILE_SIZE = 168;
+// Snapped to the Photoshop icon's own outline, measured off its alpha
+// channel: the artwork occupies x 0-511 and y 6-504 of the 512px canvas —
+// a rounded rectangle 512x499 — and its corner reaches the box edge 76px
+// in, i.e. 14.8% of the side. Every tile takes that shape, so the frame
+// sits exactly on the icon's edge instead of around it.
+const TILE_H = Math.round((TILE_SIZE * 499) / 512);
+const TILE_RADIUS = "14.8%";
 const TILE_GAP = 20;
 const TILE_STEP = TILE_SIZE + TILE_GAP;
 // One full lap is exactly one copy of the list — tile N+1 of the doubled
@@ -146,7 +153,7 @@ const MARQUEE_DURATION_S = MARQUEE_LOOP_PX / MARQUEE_SPEED_PX_S;
 const ABOUT_BODY: string[] = [
   "Who am I?",
   "Not staging an existential crisis mid-portfolio, don't worry.",
-  "I love to ideate and bring ideas to life, in whatever medium I get the chance to work in. With a degree in English Literature and a University First Rank, years of professional video editing and graphic design experience, hundreds of pieces written and more canvases than I can count painted and sketched over — every one of them proof that I know what it takes to take an idea from someone's head onto a screen, a page, or a canvas. My work spans promotional videos, corporate projects, personal event coverage, social media content, and visual storytelling for digital comics.",
+  "I love to ideate and bring ideas to life, in whatever medium I get the chance to work in. With a degree in English Literature and a University First Rank, years of professional video editing and graphic design experience, hundreds of literature pieces written and more canvases than I can count painted and sketched over - every one of them is proof that I know what it takes to take an idea from someone's head onto a screen, a page, or a canvas. My work spans promotional videos, corporate projects, personal event coverage, social media content, and visual storytelling for digital comics.",
   "And, because it's become impossible to ignore at this point, I've also worked with AI tools for image and video generation.",
   "Looking forward to working together, if this sounds like the kind of collaborator you need for your next project.",
   "Ba-bye!",
@@ -180,10 +187,11 @@ function SkillTile({
     <div
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
-      className={`frame-glow${hovered ? " frame-glow--active" : ""} relative shrink-0 overflow-hidden rounded-2xl bg-black`}
+      className={`frame-glow${hovered ? " frame-glow--active" : ""} relative shrink-0 overflow-hidden bg-black`}
       style={{
         width: TILE_SIZE,
-        height: TILE_SIZE,
+        height: TILE_H,
+        borderRadius: TILE_RADIUS,
         transform: hovered ? "scale(1.06)" : "scale(1)",
         transition: "transform 320ms cubic-bezier(0.4,0,0.2,1)",
       }}
@@ -475,7 +483,7 @@ export default function AboutSection() {
                     fontWeight: 300,
                     fontSize: "clamp(15px, 1.15vw, 18px)",
                     lineHeight: 1.7,
-                    letterSpacing: "0.022em",
+                    letterSpacing: "0.045em",
                     marginTop: i === 0 ? 0 : "1.1em",
                     // Starts hidden; the scroll handler above drives it.
                     opacity: 0,
