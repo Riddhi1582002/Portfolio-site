@@ -1,6 +1,7 @@
 import HeroVideoBackground from "./components/HeroVideoBackground";
 import HeroSection from "./components/HeroSection";
 import ReelSection from "./components/ReelSection";
+import CordSectionWrapper from "./components/CordSectionWrapper";
 
 export default function Home() {
   return (
@@ -17,8 +18,13 @@ export default function Home() {
           each, plus the spread at the front. */}
       <ReelSection />
 
-      {/* NEXT: REELS -> LAYERS. The 90-degree roll onto the cord, the two
-          narration beats down it, and the bulb. Plugs in here. */}
+      {/* REELS -> LAYERS. The camera rolls 90 degrees so the strip is seen
+          edge-on as one continuous line, travels down it through two
+          narration beats, and arrives at the bulb. */}
+      <CordSectionWrapper />
+
+      {/* NEXT: LAYERS. The arc of work around the bulb, then the pencil
+          beat, the eye match cut and the infinite canvas. Plugs in here. */}
     </div>
   );
 }
