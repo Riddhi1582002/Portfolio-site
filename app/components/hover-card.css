@@ -1,0 +1,148 @@
+/* THE card hover treatment for the whole site.
+   Every card and every media placeholder uses this: a 3D pointer tilt, and
+   the glare strips that the tilt produces at the corners. Nothing else.
+
+   Explicitly NOT here: any glow, halo or spotlight that follows the cursor.
+   The cursor sets the tilt angle; the light is a consequence of the tilt,
+   the way it would be on a real tilted panel. Colour never enters — the
+   strips are neutral white, so colour on this site only ever comes from the
+   work itself.
+
+   Variables are scoped to .hc-wrapper rather than :root so they do not leak
+   into the site's own token set (globals.css owns --glow-*). */
+
+.hc-wrapper {
+  --pointer-from-top: 0.5;
+  --pointer-from-left: 0.5;
+  --rotate-x: 0deg;
+  --rotate-y: 0deg;
+  /* 0 at rest, 1 at full tilt. The strips brighten with this, not with
+     where the pointer is. */
+  --tilt-amount: 0;
+
+  --spec-dim: hsla(0, 0%, 100%, 0.05);
+  --spec-mid: hsla(0, 0%, 100%, 0.22);
+  --spec-hot: hsla(0, 0%, 100%, 0.55);
+
+  --card-radius: 16px;
+  --card-aspect: 1;
+
+  perspective: 700px;
+  transform: translate3d(0, 0, 0.1px);
+  position: relative;
+  touch-action: none;
+}
+
+.hc-shell {
+  position: relative;
+  z-index: 1;
+}
+
+.hc-card {
+  display: grid;
+  width: 100%;
+  aspect-ratio: var(--card-aspect);
+  border-radius: var(--card-radius);
+  position: relative;
+  box-shadow: rgba(0, 0, 0, 0.8) calc((var(--pointer-from-left) * 10px) - 3px)
+    calc((var(--pointer-from-top) * 20px) - 6px) 20px -5px;
+  transition: transform 1s ease;
+  transform: translateZ(0) rotateX(0deg) rotateY(0deg);
+  background: #000;
+  backface-visibility: hidden;
+  overflow: hidden;
+  /* Contain the blend modes. Without this the screen-blended glare and
+     sheen composite against the page backdrop rather than against the card,
+     which pushes the whole stacking context off the subpixel-antialiased
+     text path — body copy elsewhere on the page picked up colour fringing. */
+  isolation: isolate;
+}
+
+.hc-shell.active .hc-card {
+  transition: none;
+  transform: translateZ(0) rotateX(var(--rotate-y)) rotateY(var(--rotate-x));
+}
+
+.hc-shell.entering .hc-card {
+  transition: transform 180ms ease-out;
+}
+
+.hc-card > * {
+  grid-area: 1/-1;
+  border-radius: var(--card-radius);
+  pointer-events: none;
+}
+
+/* The content — a photo, a video, a placeholder block. Painted normally:
+   full colour, never blended down to a plate. */
+.hc-content {
+  overflow: hidden;
+  z-index: 1;
+  backface-visibility: hidden;
+}
+
+.hc-content > * {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Corner strips: two short bands anchored to opposite corners, their angle
+   shifting with the tilt and their strength rising with how far the card is
+   tilted. Screen, so they only ever add light. */
+.hc-glare {
+  z-index: 2;
+  background-image:
+    linear-gradient(
+      calc(135deg + var(--rotate-x) * 1.6),
+      var(--spec-hot) 0%,
+      var(--spec-mid) 9%,
+      transparent 26%
+    ),
+    linear-gradient(
+      calc(-45deg + var(--rotate-x) * 1.6),
+      var(--spec-mid) 0%,
+      transparent 22%
+    );
+  mix-blend-mode: screen;
+  opacity: calc(0.12 + var(--tilt-amount) * 0.62);
+  transition: opacity 0.4s ease;
+}
+
+.hc-shell.active .hc-glare {
+  transition: none;
+}
+
+/* A single soft sweep across the panel, angled with the tilt. Reads as the
+   edge of a reflection travelling over glass as the panel turns. */
+.hc-sheen {
+  z-index: 3;
+  background-image: linear-gradient(
+    calc(-45deg + var(--rotate-y) * 2),
+    transparent 30%,
+    var(--spec-dim) 42%,
+    var(--spec-mid) 50%,
+    var(--spec-dim) 58%,
+    transparent 70%
+  );
+  mix-blend-mode: screen;
+  opacity: calc(var(--tilt-amount) * 0.85);
+  transition: opacity 0.4s ease;
+}
+
+.hc-shell.active .hc-sheen {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-card,
+  .hc-shell.active .hc-card {
+    transform: none !important;
+    transition: none;
+  }
+  .hc-glare,
+  .hc-sheen {
+    opacity: 0.12;
+  }
+}

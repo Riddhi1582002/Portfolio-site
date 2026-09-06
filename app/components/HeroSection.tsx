@@ -17,6 +17,8 @@ import { SplitText } from "gsap/SplitText";
 import { Flip } from "gsap/Flip";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
 import HeroReels from "./HeroReels";
+import NarrationLine from "./NarrationLine";
+import LinkPreview from "./LinkPreview";
 import "./hero-fonts.css";
 import "./hero-hint.css";
 
@@ -60,6 +62,15 @@ const HINT_DISMISSED_KEY = "heroScrollHintDismissed";
 // needs the rest/mid breakpoints on their own, not just baked into a
 // curve.
 const TAG1_FONT_SIZE = 40;
+// THE narration style. Every narration line on the site — hero, section
+// transitions, closing — renders at these values and through
+// <NarrationLine>, so they are one voice rather than per-section choices.
+export const NARRATION_FONT_SIZE = 40;
+export const NARRATION_WEIGHT = 300;
+export const NARRATION_TRACKING = "0.01em";
+export const NARRATION_COLOR = "rgba(255,255,255,0.88)";
+export const NARRATION_GLOW =
+  "0 0 12px rgba(255,255,255,0.28), 0 0 34px rgba(255,255,255,0.12)";
 const TAG1_Y_REST = 320;
 // Mid-stage tagline sits high enough that the clear space above ART equals
 // the clear space below it at the deep stage (ART -> "is my peace"). That
@@ -267,8 +278,6 @@ export default function HeroSection() {
   const tag1TextRef = useRef<HTMLDivElement>(null);
   const tag2TextRef = useRef<HTMLDivElement>(null);
   const nameSplitRef = useRef<SplitText | null>(null);
-  const tag1SplitRef = useRef<SplitText | null>(null);
-  const tag2SplitRef = useRef<SplitText | null>(null);
 
   // "Scroll to continue" hint state. clickStateRef tracks an in-progress
   // double-click window; lastScrollTimeRef timestamps the most recent
@@ -557,29 +566,9 @@ export default function HeroSection() {
       nameSplitRef.current = s;
       splits.push(s);
     }
-    if (tag1TextRef.current) {
-      const s = SplitText.create(tag1TextRef.current, {
-        type: "lines",
-        mask: "lines",
-      });
-      gsap.set(s.lines, { yPercent: 100 });
-      tag1SplitRef.current = s;
-      splits.push(s);
-    }
-    if (tag2TextRef.current) {
-      const s = SplitText.create(tag2TextRef.current, {
-        type: "lines",
-        mask: "lines",
-      });
-      gsap.set(s.lines, { yPercent: 100 });
-      tag2SplitRef.current = s;
-      splits.push(s);
-    }
     return () => {
       splits.forEach((s) => s.revert());
       nameSplitRef.current = null;
-      tag1SplitRef.current = null;
-      tag2SplitRef.current = null;
     };
   }, []);
 
@@ -596,16 +585,6 @@ export default function HeroSection() {
       gsap.set(nameSplitRef.current.lines, { yPercent: (1 - nameOpacity) * 100 });
     }
   }, [nameOpacity]);
-  useEffect(() => {
-    if (tag1SplitRef.current) {
-      gsap.set(tag1SplitRef.current.lines, { yPercent: (1 - tag1Opacity) * 100 });
-    }
-  }, [tag1Opacity]);
-  useEffect(() => {
-    if (tag2SplitRef.current) {
-      gsap.set(tag2SplitRef.current.lines, { yPercent: (1 - tag2Opacity) * 100 });
-    }
-  }, [tag2Opacity]);
 
   // Fit the 1920x1080 authored stage into the viewport like `object-fit:
   // contain` (matches how the prototype's CompositionStage scaled its SVG),
@@ -794,6 +773,10 @@ export default function HeroSection() {
                 scoped to the text's own width, not the full-width row
                 above it — a swipe-in from the right on hover/focus,
                 written directly in Tailwind (no external component). */}
+            {/* Hover preview of where the link goes. The About page's own
+                portrait stands in for a screenshot: it is already on the
+                site, so nothing is fetched from a third party on hover. */}
+            <LinkPreview image="/photo/riddhi-photo.jpg" alt="About Riddhi Thakkar">
             <Link
               ref={nameTextRef}
               href="/about"
@@ -812,6 +795,7 @@ export default function HeroSection() {
             >
               Riddhi Thakkar
             </Link>
+            </LinkPreview>
           </div>
 
           <div
@@ -823,15 +807,19 @@ export default function HeroSection() {
               top: tag1Y,
               textAlign: "center",
               fontFamily: SANS,
-              fontWeight: 300,
-              fontSize: TAG1_FONT_SIZE,
-              letterSpacing: "0.01em",
-              color: "rgba(255,255,255,0.82)",
-              opacity: tag1Opacity,
+              fontWeight: NARRATION_WEIGHT,
+              fontSize: NARRATION_FONT_SIZE,
+              lineHeight: NARRATION_LINE_HEIGHT_RATIO,
+              letterSpacing: NARRATION_TRACKING,
+              color: NARRATION_COLOR,
+              textShadow: NARRATION_GLOW,
               pointerEvents: "none",
             }}
           >
-            is just a name. What actually makes me is my
+            <NarrationLine
+              progress={tag1Opacity}
+              text="is just a name. What actually makes me is my"
+            />
           </div>
 
           <div
@@ -843,19 +831,21 @@ export default function HeroSection() {
               top: tag2Y,
               textAlign: "center",
               fontFamily: SANS,
-              fontWeight: 300,
-              fontSize: 38,
-              lineHeight: 1.5,
-              letterSpacing: "0.01em",
-              color: "rgba(255,255,255,0.85)",
-              opacity: tag2Opacity,
+              fontWeight: NARRATION_WEIGHT,
+              // Same size as the first line now: they are the same voice.
+              fontSize: NARRATION_FONT_SIZE,
+              lineHeight: NARRATION_LINE_HEIGHT_RATIO,
+              letterSpacing: NARRATION_TRACKING,
+              color: NARRATION_COLOR,
+              textShadow: NARRATION_GLOW,
               pointerEvents: "none",
+              paddingInline: "12%",
             }}
           >
-            is my peace.
-            <br />
-            And if you are paying me for it, I&apos;ll make sure that piece
-            becomes your peace.
+            <NarrationLine
+              progress={tag2Opacity}
+              text="is my peace. And if you are paying me for it, I'll make sure that piece becomes your peace."
+            />
           </div>
 
           <div

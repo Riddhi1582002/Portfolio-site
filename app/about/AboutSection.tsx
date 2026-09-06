@@ -11,7 +11,8 @@ import {
   takePendingNameFlip,
 } from "../lib/nameFlip";
 import "../components/hero-fonts.css";
-import PhotoCard from "./PhotoCard";
+import HoverCard from "../components/HoverCard";
+import SwitchToggle from "../components/SwitchToggle";
 
 gsap.registerPlugin(Flip);
 
@@ -117,16 +118,50 @@ function AboutHeader() {
 // file in public/icons. Nothing here is video any more: no poster frames,
 // no rest-position extraction, no webm/mp4 pair, no watermark crop.
 // Captions describe the tool's role — placeholder wording, easy to swap.
-const SKILLS = [
-  { name: "After Effects", slug: "after-effects", caption: "Motion graphics and compositing" },
-  { name: "Illustrator", slug: "illustrator", caption: "Vector artwork and layout" },
-  { name: "Photoshop", slug: "photoshop", caption: "Image retouching and composites" },
-  { name: "Premiere Pro", slug: "premiere-pro", caption: "Video editing and colour" },
-  { name: "Affinity", slug: "affinity", caption: "Design and photo editing" },
-  { name: "Filmora", slug: "filmora", caption: "Fast-turnaround video edits" },
+type Tool = { name: string; src: string; caption: string };
+
+const CREATIVE_TOOLS: Tool[] = [
+  { name: "After Effects", src: "/icons/after-effects.png", caption: "Motion graphics and compositing" },
+  { name: "Illustrator", src: "/icons/illustrator.png", caption: "Vector artwork and layout" },
+  { name: "Photoshop", src: "/icons/photoshop.png", caption: "Image retouching and composites" },
+  { name: "Premiere Pro", src: "/icons/premiere-pro.png", caption: "Video editing and colour" },
+  { name: "Affinity", src: "/icons/affinity.png", caption: "Design and photo editing" },
+  { name: "Filmora", src: "/icons/filmora.png", caption: "Fast-turnaround video edits" },
 ];
 
-const SKILLS_COUNT = SKILLS.length;
+// Captions are placeholder wording, easy to swap.
+// NOTE: the supplied zip had 24 logos for 25 tools — there was no Claude
+// Code mark, so it borrows Claude's. Drop a claude-code.png into
+// public/icons/ai/ and change the src below.
+const AI_TOOLS: Tool[] = [
+  { name: "ChatGPT", src: "/icons/ai/chatgpt.png", caption: "Drafting and ideation" },
+  { name: "Claude", src: "/icons/ai/claude.png", caption: "Writing and analysis" },
+  { name: "Gemini", src: "/icons/ai/gemini.png", caption: "Research and drafting" },
+  { name: "Kimi", src: "/icons/ai/kimi.png", caption: "Long-context reading" },
+  { name: "NotebookLM", src: "/icons/ai/notebooklm.png", caption: "Source-grounded notes" },
+  { name: "Perplexity", src: "/icons/ai/perplexity.png", caption: "Cited research" },
+  { name: "Google AI Studio", src: "/icons/ai/google-ai-studio.png", caption: "Prompt prototyping" },
+  { name: "Claude Code", src: "/icons/ai/claude.png", caption: "Building and automation" },
+  { name: "Adobe Firefly", src: "/icons/ai/adobe-firefly.png", caption: "Generative image work" },
+  { name: "Leonardo AI", src: "/icons/ai/leonardo.png", caption: "Concept imagery" },
+  { name: "Moda", src: "/icons/ai/moda.png", caption: "Design generation" },
+  { name: "Frameo", src: "/icons/ai/frameo.png", caption: "Frame and layout work" },
+  { name: "Gamma", src: "/icons/ai/gamma.png", caption: "Decks and one-pagers" },
+  { name: "Runway", src: "/icons/ai/runway.png", caption: "Generative video" },
+  { name: "Kling AI", src: "/icons/ai/kling.png", caption: "Video generation" },
+  { name: "Hailuo AI", src: "/icons/ai/hailuo.png", caption: "Video generation" },
+  { name: "Pictory AI", src: "/icons/ai/pictory.png", caption: "Long-form to short-form" },
+  { name: "Google Flow", src: "/icons/ai/google-flow.png", caption: "Cinematic generation" },
+  { name: "ElevenLabs", src: "/icons/ai/elevenlabs.png", caption: "Voice and narration" },
+  { name: "Suno", src: "/icons/ai/suno.png", caption: "Music and scoring" },
+  { name: "Adobe Enhance Speech", src: "/icons/ai/adobe-enhance-speech.png", caption: "Dialogue cleanup" },
+  { name: "Replit", src: "/icons/ai/replit.png", caption: "Prototyping in-browser" },
+  { name: "Lovable", src: "/icons/ai/lovable.png", caption: "App scaffolding" },
+  { name: "Netlify", src: "/icons/ai/netlify.png", caption: "Deploys and hosting" },
+  { name: "Meshy.ai", src: "/icons/ai/meshy.png", caption: "3D asset generation" },
+];
+
+
 
 // Marquee geometry, in px. Fixed rather than fluid so the loop distance is
 // exact and so late-loading images can never shift the layout underneath
@@ -138,16 +173,19 @@ const TILE_SIZE = 168;
 // in, i.e. 14.8% of the side. Every tile takes that shape, so the frame
 // sits exactly on the icon's edge instead of around it.
 const TILE_H = Math.round((TILE_SIZE * 499) / 512);
-const TILE_RADIUS = "14.8%";
+// Every tile is cut to the Photoshop icon's silhouette.
+const SHAPE_MASK = "/icons/photoshop.png";
 const TILE_GAP = 20;
 const TILE_STEP = TILE_SIZE + TILE_GAP;
 // One full lap is exactly one copy of the list — tile N+1 of the doubled
 // track lands where tile 1 started, gap included, so the wrap is invisible.
-const MARQUEE_LOOP_PX = SKILLS_COUNT * TILE_STEP;
+// One lap is exactly one copy of whichever list is showing, so the wrap is
+// invisible for both. Computed per-list rather than baked in.
+const loopPx = (count: number) => count * TILE_STEP;
 // Constant velocity, in px per second. Deliberately slow: this is ambient
 // motion, not a control the reader has to keep up with.
 const MARQUEE_SPEED_PX_S = 22;
-const MARQUEE_DURATION_S = MARQUEE_LOOP_PX / MARQUEE_SPEED_PX_S;
+const durationS = (count: number) => loopPx(count) / MARQUEE_SPEED_PX_S;
 
 // Locked About copy, one string per paragraph, verbatim as supplied.
 const ABOUT_BODY: string[] = [
@@ -161,7 +199,7 @@ const ABOUT_BODY: string[] = [
 
 // Label for the icon row — deliberately not part of ABOUT_BODY, so it
 // reads as a caption for the row rather than another prose paragraph.
-const SKILLS_LABEL = "My software skills cover:";
+const SKILLS_LABEL = "MY TOOLKIT COVERS";
 
 // Placeholder easing until the LAYERS section's poster-arc reveal curve
 // exists to match against (flagged to the user — see chat).
@@ -169,16 +207,16 @@ function easeInOutSine(t: number) {
   return -(Math.cos(Math.PI * t) - 1) / 2;
 }
 
-function SkillTile({
-  skill,
+function ToolTile({
+  tool,
   hovered,
   loadImage,
   onHover,
   onLeave,
 }: {
-  skill: (typeof SKILLS)[number];
+  tool: Tool;
   hovered: boolean;
-  /** False until the name transition is done — see SkillsCarousel. */
+  /** False until the name transition is done — see ToolsCarousel. */
   loadImage: boolean;
   onHover: () => void;
   onLeave: () => void;
@@ -191,7 +229,18 @@ function SkillTile({
       style={{
         width: TILE_SIZE,
         height: TILE_H,
-        borderRadius: TILE_RADIUS,
+        // The Photoshop icon's own alpha channel is the tile's shape. A
+        // border-radius could not do this: the icon is a squircle, not a
+        // rounded rectangle, so a radius left slack at the corners no
+        // matter what value it was given. Masking with the artwork snaps
+        // the edge to the real silhouette by construction, and the glow
+        // border is masked with it, so the frame follows the shape too.
+        WebkitMaskImage: `url(${SHAPE_MASK})`,
+        maskImage: `url(${SHAPE_MASK})`,
+        WebkitMaskSize: "100% 100%",
+        maskSize: "100% 100%",
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
         transform: hovered ? "scale(1.06)" : "scale(1)",
         transition: "transform 320ms cubic-bezier(0.4,0,0.2,1)",
       }}
@@ -201,8 +250,8 @@ function SkillTile({
         // export build has no image optimiser, so next/image adds nothing.
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={`/icons/${skill.slug}.png`}
-          alt={skill.name}
+          src={tool.src}
+          alt={tool.name}
           width={512}
           height={512}
           decoding="async"
@@ -213,33 +262,23 @@ function SkillTile({
   );
 }
 
-// Continuous constant-velocity marquee. Deliberately CSS-driven rather
-// than JS-driven: a linear `translate3d` keyframe animation runs on the
-// compositor at a fixed px/s, so it cannot be stepped, cannot drift, and
-// cannot be perturbed by anything on the main thread.
+// Continuous constant-velocity marquee, one per tool category.
 //
-// It is also completely decoupled from the pointer. The track's animation
-// is never paused, never restarted, and never reads mouse position;
-// hovering a tile only sets `hovered`, which drives the caption. The old
-// implementation stepped the track on a setInterval and paused that
-// interval on hover, which is what made stray mouse movement over the row
-// nudge the scroll position.
+// CSS-driven on purpose: a linear translate3d keyframe runs on the
+// compositor at a fixed px/s, so it cannot be stepped, cannot drift and
+// cannot be perturbed by the main thread. It is also completely decoupled
+// from the pointer — hovering a tile only sets which caption shows; it
+// never nudges the scroll.
 //
 // The track holds the list twice and travels exactly one copy's width
-// (MARQUEE_LOOP_PX, gap included) before restarting, so the frame at the
-// wrap is pixel-identical to the frame at the start — no tile is ever cut
-// in half at the loop point. The window is wide enough for the full list,
-// and the edges are feathered rather than hard-cut so a tile entering or
-// leaving reads as a fade, not a clipped frame.
-function SkillsCarousel() {
+// (gap included) before restarting, so the wrap frame is identical to the
+// start frame and no tile is ever cut at the loop point. The window edges
+// are feathered rather than hard-cut.
+function ToolsCarousel({ tools, idPrefix }: { tools: Tool[]; idPrefix: string }) {
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
-  // Twelve 360x360 PNGs (six tools, listed twice) decode on the main
-  // thread. Measured, that is ~0.95s of task time, and when the page is
-  // reached by clicking the hero name it lands inside the 750ms name
-  // Flip, which is one of the two things that stalled it. Holding them
-  // back until the transition is over costs nothing visually — the tiles
-  // already have their frame and their reserved box — and gives the flip
-  // an idle main thread.
+  // Twelve-plus PNGs decode on the main thread, and when this page is
+  // reached by clicking the hero name that lands inside the 750ms name
+  // Flip. Held back until the transition is over.
   const [loadImages, setLoadImages] = useState(() => !hasPendingNameFlip());
   useEffect(() => {
     if (loadImages) return;
@@ -249,19 +288,19 @@ function SkillsCarousel() {
     );
     return () => window.clearTimeout(id);
   }, [loadImages]);
-  const active = hoveredTile == null ? null : SKILLS[hoveredTile % SKILLS_COUNT];
+
+  const active = hoveredTile == null ? null : tools[hoveredTile % tools.length];
+  const anim = `${idPrefix}-marquee`;
 
   return (
     <div>
       <div
         style={{
           overflow: "hidden",
-          // Vertical room for the hover scale (1.06 on a 168px tile) so
-          // overflow:hidden crops the track horizontally, not the tile.
-          paddingBlock: 8,
-          marginBlock: -8,
-          // Feathered edges: without these the window's own boundary is a
-          // hard cut, which is what read as "the last icon is chopped off".
+          // Vertical room for the hover scale so overflow:hidden crops the
+          // track horizontally, not the tile.
+          paddingBlock: 10,
+          marginBlock: -10,
           maskImage:
             "linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%)",
           WebkitMaskImage:
@@ -269,20 +308,19 @@ function SkillsCarousel() {
         }}
       >
         <div
-          className="skills-marquee flex w-max"
+          className={`${anim} flex w-max`}
           style={{
             gap: TILE_GAP,
-            animationDuration: `${MARQUEE_DURATION_S}s`,
+            animationDuration: `${durationS(tools.length)}s`,
             willChange: "transform",
           }}
         >
-          {[...SKILLS, ...SKILLS].map((s, i) => (
-            <SkillTile
-              key={`${s.slug}-${i}`}
-              skill={s}
-              // Keyed on the tile's own index, not its name: the track
-              // holds the list twice, so matching on name lit up the
-              // duplicate copy at the same time.
+          {[...tools, ...tools].map((t, i) => (
+            <ToolTile
+              key={`${t.name}-${i}`}
+              tool={t}
+              // Keyed on index, not name: the track holds the list twice,
+              // so matching on name lit the duplicate at the same time.
               hovered={hoveredTile === i}
               loadImage={loadImages}
               onHover={() => setHoveredTile(i)}
@@ -293,24 +331,21 @@ function SkillsCarousel() {
       </div>
 
       <style>{`
-        @keyframes skills-marquee-scroll {
+        @keyframes ${anim}-scroll {
           from { transform: translate3d(0, 0, 0); }
-          to   { transform: translate3d(-${MARQUEE_LOOP_PX}px, 0, 0); }
+          to   { transform: translate3d(-${loopPx(tools.length)}px, 0, 0); }
         }
-        .skills-marquee {
-          animation-name: skills-marquee-scroll;
+        .${anim} {
+          animation-name: ${anim}-scroll;
           animation-timing-function: linear;
           animation-iteration-count: infinite;
         }
         @media (prefers-reduced-motion: reduce) {
-          .skills-marquee { animation: none; }
+          .${anim} { animation: none; }
         }
       `}</style>
 
-      {/* Fixed height so revealing a caption never reflows the page.
-          mt-7 rather than mt-5: the marquee window carries 8px of vertical
-          padding (room for the hover scale) that the caption would
-          otherwise eat into, leaving under 16px between the two boxes. */}
+      {/* Fixed height so revealing a caption never reflows the page. */}
       <div style={{ height: 58 }} className="mt-7">
         <div
           style={{
@@ -376,6 +411,9 @@ const REVEAL_STAGGER = 0.09; // of the reveal window, per paragraph
 export default function AboutSection() {
   const bodyRevealRef = useRef<HTMLDivElement>(null);
   const paraRefs = useRef<(HTMLParagraphElement | null)[]>([]);
+  // Which tool category the switch is showing. A real boolean, so it can
+  // drive anything else that needs it later.
+  const [showAiTools, setShowAiTools] = useState(false);
   // Until the intro has played, the scroll handler leaves the paragraphs
   // alone. Without this, everything already above the fold at load is
   // simply "revealed" with no motion at all — there is nothing for it to
@@ -391,15 +429,22 @@ export default function AboutSection() {
       raf = requestAnimationFrame(() => {
         // Each paragraph on its own progress, offset by its index, so the
         // block reads as a cascade rather than one slab appearing.
-        if (!introDoneRef.current) return;
-        paraRefs.current.forEach((para, i) => {
-          if (!para) return;
-          const raw = viewportRevealT(para);
-          const shifted = (raw - i * REVEAL_STAGGER) / (1 - REVEAL_STAGGER * (ABOUT_BODY.length - 1));
-          const t = easeInOutSine(Math.min(1, Math.max(0, shifted)));
-          para.style.opacity = String(t);
-          para.style.transform = `translateY(${(1 - t) * REVEAL_TRANSLATE_Y}px)`;
-        });
+        // The guard belongs to the paragraphs only. It used to sit above
+        // this whole callback, which meant the skills block and the back
+        // link never got their opacity set either — they stayed at the
+        // inline 0 until some later scroll happened to run after the intro
+        // had finished, and often that never came.
+        if (introDoneRef.current) {
+          paraRefs.current.forEach((para, i) => {
+            if (!para) return;
+            const raw = viewportRevealT(para);
+            const shifted =
+              (raw - i * REVEAL_STAGGER) / (1 - REVEAL_STAGGER * (ABOUT_BODY.length - 1));
+            const t = easeInOutSine(Math.min(1, Math.max(0, shifted)));
+            para.style.opacity = String(t);
+            para.style.transform = `translateY(${(1 - t) * REVEAL_TRANSLATE_Y}px)`;
+          });
+        }
 
         const skillsEl = skillsRevealRef.current;
         if (skillsEl) {
@@ -446,6 +491,8 @@ export default function AboutSection() {
           delay,
           onComplete: () => {
             introDoneRef.current = true;
+            // Re-run the scroll pass now that the guard has lifted.
+            window.dispatchEvent(new Event("scroll"));
             paras.forEach((el) => {
               el.style.willChange = "auto";
             });
@@ -457,8 +504,11 @@ export default function AboutSection() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-black px-6 py-24 text-white sm:px-12">
-      <div className="mx-auto max-w-5xl">
+    <div className="min-h-screen bg-black px-4 py-24 text-white sm:px-6 lg:px-8">
+      {/* Wider than the old max-w-5xl: 1024px left very large gutters
+            on desktop and cut the marquee window short, so fewer icons were
+            visible than there was room for. */}
+        <div className="mx-auto max-w-[1600px]">
         {/* Header is its own centered row — deliberately not beside the
             photo, so the Flip lands it on the page's horizontal centre. */}
         <div className="flex justify-center">
@@ -496,33 +546,63 @@ export default function AboutSection() {
             </div>
           )}
 
-          {/* The photo's treatment is the pointer tilt + holographic shine
-              now. That REPLACES the earlier glow-edge frame and the
-              scroll-tied ken-burns drift — the card carries its own
-              behind-glow and its own pointer-driven motion, and stacking
-              a scroll scale on top of a hover scale fights it. */}
-          <PhotoCard
-            avatarUrl="/photo/riddhi-photo.jpg"
-            alt="Riddhi Thakkar"
+          {/* Tilt plus the glare strips the tilt produces. The same
+              treatment every card and placeholder on the site gets. */}
+          <HoverCard
             className="w-[clamp(180px,60vw,280px)] shrink-0 self-center sm:self-start sm:w-[clamp(220px,26vw,340px)]"
-          />
+            aspect={1}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/photo/riddhi-photo.jpg" alt="Riddhi Thakkar" loading="lazy" />
+          </HoverCard>
         </div>
 
         <div ref={skillsRevealRef} className="mt-16 sm:mt-24" style={{ opacity: 0 }}>
-          <p
-            className="mb-6 text-white/55"
-            style={{
-              fontFamily: SANS,
-              fontWeight: 400,
-              fontSize: "clamp(13px, 1vw, 15px)",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            {SKILLS_LABEL}
-          </p>
+          <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-4">
+            <p
+              className="text-white"
+              style={{
+                fontFamily: SANS,
+                fontWeight: 700,
+                fontSize: "clamp(14px, 1.1vw, 17px)",
+                letterSpacing: "0.08em",
+              }}
+            >
+              {SKILLS_LABEL}
+            </p>
 
-          <SkillsCarousel />
+            {/* The artwork IS the control — no wrapper button, no label,
+                no overlay. --switch-width is the one thing to change to
+                resize it. */}
+            <SwitchToggle
+              on={showAiTools}
+              onChange={setShowAiTools}
+              label={showAiTools ? "Showing AI tools" : "Showing creative tools"}
+              className="[--switch-width:150px]"
+            />
+
+            <p
+              className="text-white/55"
+              style={{
+                fontFamily: SANS,
+                fontWeight: 400,
+                fontSize: "clamp(12px, 0.9vw, 14px)",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              {showAiTools ? "AI tools" : "Creative tools"}
+            </p>
+          </div>
+
+          {/* Both lists stay mounted so neither re-decodes its images when
+              the switch is flipped back. */}
+          <div style={{ display: showAiTools ? "none" : "block" }}>
+            <ToolsCarousel tools={CREATIVE_TOOLS} idPrefix="creative" />
+          </div>
+          <div style={{ display: showAiTools ? "block" : "none" }}>
+            <ToolsCarousel tools={AI_TOOLS} idPrefix="ai" />
+          </div>
         </div>
 
         <Link

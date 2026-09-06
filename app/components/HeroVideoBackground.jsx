@@ -10,9 +10,11 @@ const REVEAL_START_PX = 40;
 const REVEAL_DISTANCE_FRAC = 1.1;
 // Width of the soft edge between solid black and fully visible video.
 const FEATHER_PX = 460;
-// The source clip is dark, and there is no scrim or tint over it to
-// reduce — so this lifts the video itself instead.
-const VIDEO_FILTER = "brightness(1.45) contrast(1.04) saturate(1.05)";
+// The old source was flat as well as dark (peak luma 64/255), so it took a
+// 1.45x lift to read at all. The replacement is still a dark clip overall
+// (mean ~15) but carries real highlights (peak 224-239), and 1.45x would
+// clip those to white. A gentle lift is all it needs now.
+const VIDEO_FILTER = "brightness(1.15) contrast(1.04) saturate(1.05)";
 
 function easeInOutCubic(x) {
   return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
