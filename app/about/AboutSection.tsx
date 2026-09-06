@@ -164,7 +164,7 @@ const AI_TOOLS: Tool[] = [
 // Marquee geometry, in px. Fixed rather than fluid so the loop distance is
 // exact and so late-loading images can never shift the layout underneath
 // the name Flip landing on this page.
-const TILE_SIZE = 168;
+const TILE_SIZE = 148;
 // Snapped to the Photoshop icon's own outline, measured off its alpha
 // channel: the artwork occupies x 0-511 and y 6-504 of the 512px canvas —
 // a rounded rectangle 512x499 — and its corner reaches the box edge 76px
@@ -173,7 +173,14 @@ const TILE_SIZE = 168;
 const TILE_H = Math.round((TILE_SIZE * 499) / 512);
 // Every tile is cut to the Photoshop icon's silhouette.
 const SHAPE_MASK = "/icons/photoshop.png";
-const TILE_GAP = 20;
+const TILE_GAP = 22;
+// Vertical breathing room inside the marquee's overflow:hidden window.
+// The window has to clip HORIZONTALLY — that is what makes the track a
+// window rather than a page-wide overflow — but the hover glow and the
+// hover lift both extend well past the tile vertically, and at the old
+// 10px they were sliced off flat above and below. Padding opens the box,
+// the equal negative margin takes the space back out of the layout.
+const TRACK_BLEED = 64;
 const TILE_STEP = TILE_SIZE + TILE_GAP;
 // One full lap is exactly one copy of the list — tile N+1 of the doubled
 // track lands where tile 1 started, gap included, so the wrap is invisible.
@@ -183,21 +190,48 @@ const loopPx = (count: number) => count * TILE_STEP;
 // Constant velocity, in px per second. Deliberately slow: this is ambient
 // motion, not a control the reader has to keep up with.
 const MARQUEE_SPEED_PX_S = 22;
-const durationS = (count: number) => loopPx(count) / MARQUEE_SPEED_PX_S;
 
-// Locked About copy, one string per paragraph, verbatim as supplied.
+// Locked About copy, verbatim as supplied. Split by ROLE rather than
+// reworded: the first line is the section's label, the second is the
+// intro that carries the voice, and the rest is body copy. Nothing here
+// is edited — only which element renders it.
+const ABOUT_LABEL = "Who am I?";
+const ABOUT_INTRO = "Not staging an existential crisis mid-portfolio, don't worry.";
 const ABOUT_BODY: string[] = [
-  "Who am I?",
-  "Not staging an existential crisis mid-portfolio, don't worry.",
   "I love to ideate and bring ideas to life, in whatever medium I get the chance to work in. With a degree in English Literature and a University First Rank, years of professional video editing and graphic design experience, hundreds of literature pieces written and more canvases than I can count painted and sketched over - every one of them is proof that I know what it takes to take an idea from someone's head onto a screen, a page, or a canvas. My work spans promotional videos, corporate projects, personal event coverage, social media content, and visual storytelling for digital comics.",
   "And, because it's become impossible to ignore at this point, I've also worked with AI tools for image and video generation.",
   "Looking forward to working together, if this sounds like the kind of collaborator you need for your next project.",
   "Ba-bye!",
 ];
 
+// Every block the reveal cascade drives, in reading order.
+const ABOUT_PARAS: string[] = [ABOUT_INTRO, ...ABOUT_BODY];
+
 // Label for the icon row — deliberately not part of ABOUT_BODY, so it
 // reads as a caption for the row rather than another prose paragraph.
 const SKILLS_LABEL = "MY TOOLKIT COVERS";
+
+// One page margin and one measure, used by every section so they all sit
+// on the same invisible vertical grid.
+const PAGE_X = "px-6 sm:px-10 lg:px-16";
+const PAGE_MAX = "mx-auto w-full max-w-[1500px]";
+
+// Editorial scale. The name is the only display-size element; everything
+// below it is deliberately smaller and further apart in size, so the
+// hierarchy comes from type rather than from whitespace.
+const LABEL_STYLE = {
+  fontFamily: SANS,
+  fontWeight: 700,
+  fontSize: "clamp(12px, 0.95vw, 15px)",
+  letterSpacing: "0.18em",
+  textTransform: "uppercase",
+  color: "#fff",
+} as const;
+
+// The two category accents, as "r, g, b". Same values the toggle's own
+// halo uses, so the switch and the tiles it controls agree.
+const CREATIVE_ACCENT = "255, 92, 176";
+const AI_ACCENT = "56, 224, 255";
 
 // Placeholder easing until the LAYERS section's poster-arc reveal curve
 // exists to match against (flagged to the user — see chat).
@@ -209,6 +243,7 @@ function ToolTile({
   tool,
   hovered,
   loadImage,
+  accent,
   onHover,
   onLeave,
 }: {
@@ -216,16 +251,22 @@ function ToolTile({
   hovered: boolean;
   /** False until the name transition is done — see ToolsCarousel. */
   loadImage: boolean;
+  /** "r, g, b" of the active category's accent. */
+  accent: string;
   onHover: () => void;
   onLeave: () => void;
 }) {
   return (
-    // Outer element carries the glow. drop-shadow follows the ALPHA of what
-    // it filters, so the glow traces the icon's silhouette exactly — a
-    // box-shadow or a border would draw the tile's rectangle instead and
-    // leave bright residue sitting in the corners the squircle does not
+    // Outer element carries the depth and the glow. drop-shadow follows the
+    // ALPHA of what it filters, so both trace the icon's silhouette exactly
+    // — a box-shadow or a border would draw the tile's rectangle instead
+    // and leave bright residue sitting in the corners the squircle does not
     // reach. Nothing here paints a background or a border for the same
     // reason: outside the silhouette there is nothing at all.
+    //
+    // Resting is not flat: a cast shadow below and a faint rim put the tile
+    // on a surface. Hover adds lift, a little scale, a deeper cast and a
+    // soft halo in the section's accent — restrained, and no gloss.
     <div
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
@@ -234,15 +275,15 @@ function ToolTile({
         width: TILE_SIZE,
         height: TILE_H,
         filter: hovered
-          ? "drop-shadow(0 0 14px rgba(255,255,255,0.42)) drop-shadow(0 0 34px rgba(255,255,255,0.22))"
-          : "drop-shadow(0 0 10px rgba(255,255,255,0.16))",
-        transform: hovered ? "scale(1.06)" : "scale(1)",
+          ? `drop-shadow(0 16px 26px rgba(0,0,0,0.62)) drop-shadow(0 0 15px rgba(255,255,255,0.28)) drop-shadow(0 0 40px rgba(${accent},0.26))`
+          : "drop-shadow(0 7px 12px rgba(0,0,0,0.55)) drop-shadow(0 0 9px rgba(255,255,255,0.13))",
+        transform: hovered ? "translateY(-7px) scale(1.045)" : "translateY(0) scale(1)",
         transition:
-          "transform 320ms cubic-bezier(0.4,0,0.2,1), filter 320ms ease",
+          "transform 340ms cubic-bezier(0.22,0.7,0.24,1), filter 340ms ease",
       }}
     >
       <div
-        className="h-full w-full overflow-hidden"
+        className="relative h-full w-full overflow-hidden"
         style={{
           // The Photoshop icon's own alpha is the tile's shape. A
           // border-radius could not do this: the icon is a squircle, not a
@@ -266,27 +307,77 @@ function ToolTile({
             width={512}
             height={512}
             decoding="async"
+            // Without this, pressing on a tile and moving starts Chrome's
+            // native image drag-and-drop. The browser then fires
+            // pointercancel on the very first move, which ended the
+            // marquee gesture a frame after it began and handed the line
+            // to the throw momentum instead of to the pointer.
+            draggable={false}
             className="h-full w-full object-cover"
           />
         )}
+
+        {/* Surface: a specular sheen falling from the top-left and a
+            grounding shade at the bottom. Both live INSIDE the mask, so
+            they follow the squircle rather than sitting in a rectangle
+            over it, and neither is strong enough to read as gloss. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(155deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.05) 26%, rgba(255,255,255,0) 48%, rgba(0,0,0,0.16) 100%)",
+            opacity: hovered ? 0.85 : 1,
+            transition: "opacity 340ms ease",
+          }}
+        />
+        {/* A one-pixel inner rim, brighter along the top edge. This is what
+            gives the tile an edge to catch light on. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            boxShadow:
+              "inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(0,0,0,0.28)",
+          }}
+        />
       </div>
     </div>
   );
 }
 
-// Continuous constant-velocity marquee, one per tool category.
+// Continuous constant-velocity marquee, one per tool category — and
+// draggable.
 //
-// CSS-driven on purpose: a linear translate3d keyframe runs on the
-// compositor at a fixed px/s, so it cannot be stepped, cannot drift and
-// cannot be perturbed by the main thread. It is also completely decoupled
-// from the pointer — hovering a tile only sets which caption shows; it
-// never nudges the scroll.
+// It used to be a CSS keyframe animation. That could not be dragged: a
+// running animation owns `transform`, so any value written from a pointer
+// handler is overwritten on the next compositor frame. The track is now
+// driven from one rAF loop that owns the transform outright, which makes
+// the two behaviours the same mechanism rather than two fighting ones:
 //
-// The track holds the list twice and travels exactly one copy's width
-// (gap included) before restarting, so the wrap frame is identical to the
-// start frame and no tile is ever cut at the loop point. The window edges
-// are feathered rather than hard-cut.
-function ToolsCarousel({ tools, idPrefix }: { tools: Tool[]; idPrefix: string }) {
+//   offset += (drift + throw) * dt
+//
+// Untouched, `throw` is 0 and the line moves at the constant drift it
+// always did. Dragging writes the offset directly and records velocity;
+// letting go seeds `throw` with it and decays it back to nothing, so the
+// line eases out of the reader's gesture and back into its own drift
+// without a seam.
+//
+// The track holds the list twice and the offset wraps at exactly one
+// copy's width (gap included), so the wrap frame is identical to the start
+// frame and no tile is ever cut at the loop point.
+function ToolsCarousel({
+  tools,
+  idPrefix,
+  accent,
+  active: sectionActive,
+}: {
+  tools: Tool[];
+  idPrefix: string;
+  accent: string;
+  /** False while this category is the hidden one. */
+  active: boolean;
+}) {
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
   // Twelve-plus PNGs decode on the main thread, and when this page is
   // reached by clicking the hero name that lands inside the 750ms name
@@ -301,30 +392,121 @@ function ToolsCarousel({ tools, idPrefix }: { tools: Tool[]; idPrefix: string })
     return () => window.clearTimeout(id);
   }, [loadImages]);
 
-  const active = hoveredTile == null ? null : tools[hoveredTile % tools.length];
-  const anim = `${idPrefix}-marquee`;
+  const trackRef = useRef<HTMLDivElement>(null);
+  const offsetRef = useRef(0);
+  // Extra velocity from a throw, in px/s. Decays to 0, leaving the drift.
+  const throwRef = useRef(0);
+  const draggingRef = useRef(false);
+  const lastXRef = useRef(0);
+  const lastTRef = useRef(0);
+  const [dragging, setDragging] = useState(false);
+
+  const loop = loopPx(tools.length);
+
+  useEffect(() => {
+    if (!sectionActive) return;
+    const track = trackRef.current;
+    if (!track) return;
+
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let raf = 0;
+    let last = performance.now();
+
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      if (!draggingRef.current) {
+        const drift = reduced ? 0 : MARQUEE_SPEED_PX_S;
+        offsetRef.current += (drift + throwRef.current) * dt;
+        // Frame-rate independent decay: the throw is gone in about a
+        // second however fast the display refreshes.
+        throwRef.current *= Math.exp(-dt / 0.32);
+        if (Math.abs(throwRef.current) < 1) throwRef.current = 0;
+      }
+
+      offsetRef.current = ((offsetRef.current % loop) + loop) % loop;
+      track.style.transform = `translate3d(${-offsetRef.current}px, 0, 0)`;
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [loop, sectionActive]);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Ignore secondary buttons so a right-click never grabs the line.
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    draggingRef.current = true;
+    throwRef.current = 0;
+    lastXRef.current = e.clientX;
+    lastTRef.current = performance.now();
+    setDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current) return;
+    const now = performance.now();
+    const dx = e.clientX - lastXRef.current;
+    const dt = Math.max(0.001, (now - lastTRef.current) / 1000);
+    lastXRef.current = e.clientX;
+    lastTRef.current = now;
+    // Dragging right reveals earlier tiles, so the offset decreases.
+    offsetRef.current -= dx;
+    // Velocity, smoothed across moves and clamped. A single short frame
+    // gives an enormous instantaneous dx/dt, and taken raw that flings the
+    // line across several laps on release.
+    const instant = Math.max(-2400, Math.min(2400, -dx / dt));
+    throwRef.current = throwRef.current * 0.6 + instant * 0.4;
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setDragging(false);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  const activeTool = hoveredTile == null ? null : tools[hoveredTile % tools.length];
 
   return (
     <div>
       <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        // Belt and braces alongside draggable={false} on the images: any
+        // native drag starting inside the track would cancel the pointer.
+        onDragStart={(e) => e.preventDefault()}
         style={{
           overflow: "hidden",
-          // Vertical room for the hover scale so overflow:hidden crops the
-          // track horizontally, not the tile.
-          paddingBlock: 10,
-          marginBlock: -10,
+          // Opens the window vertically so the hover lift and the glow are
+          // not sliced off; the negative margin gives the space back to the
+          // layout so the row still sits where the grid puts it.
+          paddingBlock: TRACK_BLEED,
+          marginBlock: -TRACK_BLEED,
           maskImage:
             "linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%)",
           WebkitMaskImage:
             "linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%)",
+          cursor: dragging ? "grabbing" : "grab",
+          // Horizontal drags belong to the line, vertical ones to the page.
+          touchAction: "pan-y",
         }}
       >
         <div
-          className={`${anim} flex w-max`}
+          ref={trackRef}
+          className="flex w-max"
           style={{
             gap: TILE_GAP,
-            animationDuration: `${durationS(tools.length)}s`,
             willChange: "transform",
+            // Without this a drag selects the alt text of every tile it
+            // passes over.
+            userSelect: "none",
           }}
         >
           {[...tools, ...tools].map((t, i) => (
@@ -335,6 +517,7 @@ function ToolsCarousel({ tools, idPrefix }: { tools: Tool[]; idPrefix: string })
               // so matching on name lit the duplicate at the same time.
               hovered={hoveredTile === i}
               loadImage={loadImages}
+              accent={accent}
               onHover={() => setHoveredTile(i)}
               onLeave={() => setHoveredTile(null)}
             />
@@ -342,27 +525,12 @@ function ToolsCarousel({ tools, idPrefix }: { tools: Tool[]; idPrefix: string })
         </div>
       </div>
 
-      <style>{`
-        @keyframes ${anim}-scroll {
-          from { transform: translate3d(0, 0, 0); }
-          to   { transform: translate3d(-${loopPx(tools.length)}px, 0, 0); }
-        }
-        .${anim} {
-          animation-name: ${anim}-scroll;
-          animation-timing-function: linear;
-          animation-iteration-count: infinite;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .${anim} { animation: none; }
-        }
-      `}</style>
-
       {/* Fixed height so revealing a caption never reflows the page. */}
-      <div style={{ height: 58 }} className="mt-7">
+      <div style={{ height: 58 }} className="mt-8">
         <div
           style={{
-            opacity: active ? 1 : 0,
-            transform: active ? "translateY(0) scale(1)" : "translateY(6px) scale(0.98)",
+            opacity: activeTool ? 1 : 0,
+            transform: activeTool ? "translateY(0) scale(1)" : "translateY(6px) scale(0.98)",
             transition: "opacity 320ms ease, transform 320ms cubic-bezier(0.4,0,0.2,1)",
           }}
         >
@@ -370,26 +538,26 @@ function ToolsCarousel({ tools, idPrefix }: { tools: Tool[]; idPrefix: string })
             style={{
               fontFamily: SANS,
               fontWeight: 500,
-              fontSize: 17,
+              fontSize: 16,
               letterSpacing: "0.02em",
               color: "#fff",
-              textShadow: active ? "0 0 18px rgba(255,255,255,0.45)" : "none",
+              textShadow: activeTool ? `0 0 18px rgba(${accent},0.55)` : "none",
               transition: "text-shadow 320ms ease",
             }}
           >
-            {active?.name ?? "\u00a0"}
+            {activeTool?.name ?? "\u00a0"}
           </p>
           <p
             style={{
               fontFamily: SANS,
               fontWeight: 300,
-              fontSize: 14,
+              fontSize: 13,
               letterSpacing: "0.03em",
               color: "rgba(255,255,255,0.6)",
               marginTop: 4,
             }}
           >
-            {active?.caption ?? "\u00a0"}
+            {activeTool?.caption ?? "\u00a0"}
           </p>
         </div>
       </div>
@@ -451,7 +619,7 @@ export default function AboutSection() {
             if (!para) return;
             const raw = viewportRevealT(para);
             const shifted =
-              (raw - i * REVEAL_STAGGER) / (1 - REVEAL_STAGGER * (ABOUT_BODY.length - 1));
+              (raw - i * REVEAL_STAGGER) / (1 - REVEAL_STAGGER * (ABOUT_PARAS.length - 1));
             const t = easeInOutSine(Math.min(1, Math.max(0, shifted)));
             para.style.opacity = String(t);
             para.style.transform = `translateY(${(1 - t) * REVEAL_TRANSLATE_Y}px)`;
@@ -516,55 +684,60 @@ export default function AboutSection() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-black px-4 py-24 text-white sm:px-6 lg:px-8">
-      {/* Wider than the old max-w-5xl: 1024px left very large gutters
-            on desktop and cut the marquee window short, so fewer icons were
-            visible than there was room for. */}
-        <div className="mx-auto max-w-[1600px]">
+    <div className={`min-h-screen bg-black py-24 text-white ${PAGE_X}`}>
+      {/* ONE page margin and ONE measure. Every section below sits inside
+          this container, so the name, the About column, the toolkit
+          heading and the card line all align to the same vertical grid. */}
+      <div className={PAGE_MAX}>
         {/* Header is its own centered row — deliberately not beside the
             photo, so the Flip lands it on the page's horizontal centre. */}
         <div className="flex justify-center">
           <AboutHeader />
         </div>
 
-        {/* Body copy sits left of the corner-placed photo on sm+, stacked
-            above it below that. Renders nothing while ABOUT_BODY is empty,
-            so the photo row keeps its current layout until copy arrives. */}
-        {/* justify-between, not justify-end: the copy starts at the
-            container's left edge so its margin lines up with the
-            "MY TOOLKIT COVERS" heading below. */}
-        <div className="mt-14 flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-between sm:gap-12">
-          {ABOUT_BODY.length > 0 && (
-            <div ref={bodyRevealRef} className="max-w-prose flex-1">
-              {ABOUT_BODY.map((para, i) => (
-                <p
-                  key={i}
-                  ref={(el) => {
-                    paraRefs.current[i] = el;
-                  }}
-                  className="text-white/75"
-                  style={{
-                    fontFamily: SANS,
-                    fontWeight: 300,
-                    fontSize: "clamp(15px, 1.15vw, 18px)",
-                    lineHeight: 1.7,
-                    letterSpacing: "0.045em",
-                    marginTop: i === 0 ? 0 : "1.1em",
-                    // Starts hidden; the scroll handler above drives it.
-                    opacity: 0,
-                    willChange: "opacity, transform",
-                  }}
-                >
-                  {para}
-                </p>
-              ))}
-            </div>
-          )}
+        {/* About: label and copy on the left, portrait on the right.
+            items-start, so the photo hangs from the top of the text block
+            rather than floating at its centre; the small top offset lands
+            it beside the intro line rather than beside the label. */}
+        <div className="mt-20 flex flex-col gap-12 sm:mt-24 sm:flex-row sm:items-start sm:justify-between sm:gap-16">
+          <div ref={bodyRevealRef} className="flex-1 sm:max-w-[58ch]">
+            <p style={LABEL_STYLE}>{ABOUT_LABEL}</p>
+
+            {ABOUT_PARAS.map((para, i) => (
+              <p
+                key={i}
+                ref={(el) => {
+                  paraRefs.current[i] = el;
+                }}
+                style={{
+                  fontFamily: SANS,
+                  // The intro is the mid-tier the page was missing: bigger
+                  // than body copy, lighter than the name, and the only
+                  // thing between them. Body copy sits well below it so the
+                  // step is unmistakable.
+                  fontWeight: i === 0 ? 400 : 300,
+                  fontSize:
+                    i === 0
+                      ? "clamp(19px, 1.75vw, 27px)"
+                      : "clamp(15px, 1.02vw, 17px)",
+                  lineHeight: i === 0 ? 1.42 : 1.78,
+                  letterSpacing: i === 0 ? "0.005em" : "0.045em",
+                  color: i === 0 ? "rgba(255,255,255,0.94)" : "rgba(255,255,255,0.7)",
+                  marginTop: i === 0 ? "0.7em" : i === 1 ? "1.5em" : "1.15em",
+                  // Starts hidden; the scroll handler above drives it.
+                  opacity: 0,
+                  willChange: "opacity, transform",
+                }}
+              >
+                {para}
+              </p>
+            ))}
+          </div>
 
           {/* Tilt plus the glare strips the tilt produces. The same
               treatment every card and placeholder on the site gets. */}
           <HoverCard
-            className="w-[clamp(180px,60vw,280px)] shrink-0 self-center sm:self-start sm:w-[clamp(220px,26vw,340px)]"
+            className="w-[clamp(180px,58vw,260px)] shrink-0 self-center sm:mt-[3.2rem] sm:w-[clamp(200px,24vw,380px)] sm:self-start"
             aspect={1}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -572,21 +745,15 @@ export default function AboutSection() {
           </HoverCard>
         </div>
 
-        <div ref={skillsRevealRef} className="mt-16 sm:mt-24" style={{ opacity: 0 }}>
-          <p
-            className="text-white"
-            style={{
-              fontFamily: SANS,
-              fontWeight: 700,
-              fontSize: "clamp(14px, 1.1vw, 17px)",
-              letterSpacing: "0.08em",
-            }}
-          >
-            {SKILLS_LABEL}
-          </p>
-
-          {/* Below the heading, on its own row. */}
-          <div className="mb-8 mt-4">
+        {/* The toolkit is the page's second section, not a separate block
+            dropped much lower down: the gap here is a section break, close
+            to the one under the name, rather than the old near-double. */}
+        <div ref={skillsRevealRef} className="mt-20 sm:mt-24" style={{ opacity: 0 }}>
+          {/* Heading and control share one row: label on the page's left
+              margin, the switch and its label pushed to the right edge of
+              the same grid. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-5">
+            <p style={LABEL_STYLE}>{SKILLS_LABEL}</p>
             <ToolToggle
               on={showAiTools}
               onChange={setShowAiTools}
@@ -594,13 +761,25 @@ export default function AboutSection() {
             />
           </div>
 
-          {/* Both lists stay mounted so neither re-decodes its images when
-              the switch is flipped back. */}
-          <div style={{ display: showAiTools ? "none" : "block" }}>
-            <ToolsCarousel tools={CREATIVE_TOOLS} idPrefix="creative" />
+          {/* The card line sits directly under the heading row and spans
+              the container's full width. Both lists stay mounted so
+              neither re-decodes its images when the switch is flipped
+              back; only the visible one runs its rAF loop. */}
+          <div className="mt-12" style={{ display: showAiTools ? "none" : "block" }}>
+            <ToolsCarousel
+              tools={CREATIVE_TOOLS}
+              idPrefix="creative"
+              accent={CREATIVE_ACCENT}
+              active={!showAiTools}
+            />
           </div>
-          <div style={{ display: showAiTools ? "block" : "none" }}>
-            <ToolsCarousel tools={AI_TOOLS} idPrefix="ai" />
+          <div className="mt-12" style={{ display: showAiTools ? "block" : "none" }}>
+            <ToolsCarousel
+              tools={AI_TOOLS}
+              idPrefix="ai"
+              accent={AI_ACCENT}
+              active={showAiTools}
+            />
           </div>
         </div>
 

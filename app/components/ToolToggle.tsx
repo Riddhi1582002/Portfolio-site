@@ -32,7 +32,10 @@ export default function ToolToggle({
 }) {
   return (
     <label className="tt-label" htmlFor={id}>
-      <span className="tt-toggle">
+      {/* The accent travels with the state rather than being passed in:
+          there are exactly two categories, and the control is the thing
+          that knows which one is showing. */}
+      <span className="tt-toggle" data-accent={on ? "ai" : "creative"}>
         <input
           id={id}
           className="tt-state"

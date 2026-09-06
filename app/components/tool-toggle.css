@@ -23,6 +23,10 @@
   --toggle-surface: #ecf0f3;
   --toggle-light: #ffffff;
   --toggle-shadow: #d1d9e6;
+  /* The accent is the section's identity: pink while Creative Tools are
+     showing, cyan once AI Tools are. Set on the control and read by the
+     halo below, so one property changes the whole state. */
+  --tt-accent: 255, 92, 176;
 
   isolation: isolate;
   position: relative;
@@ -37,7 +41,19 @@
     -8px -4px 8px 0px var(--toggle-light),
     8px 4px 12px 0px var(--toggle-shadow),
     4px 4px 4px 0px var(--toggle-shadow) inset,
-    -4px -4px 4px 0px var(--toggle-light) inset;
+    -4px -4px 4px 0px var(--toggle-light) inset,
+    /* The halo sits on the pill itself, not on the indicator inside it:
+       the pill is overflow:hidden, which clips its children but never its
+       own box-shadow, so a glow on the indicator would be cut off at the
+       pill's edge. */
+    0 0 7px 0 rgba(var(--tt-accent), 0.22),
+    0 0 16px 0 rgba(var(--tt-accent), 0.11);
+  transition: box-shadow 0.4s ease;
+}
+
+/* AI tools. Same geometry, cyan instead of pink. */
+.tt-toggle[data-accent="ai"] {
+  --tt-accent: 56, 224, 255;
 }
 
 /* Kept in the layout rather than display:none so it stays focusable and
@@ -76,7 +92,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tt-indicator {
+  .tt-indicator,
+  .tt-toggle {
     transition: none;
   }
 }
