@@ -18,7 +18,6 @@ import { Flip } from "gsap/Flip";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
 import HeroReels from "./HeroReels";
 import NarrationLine from "./NarrationLine";
-import LinkPreview from "./LinkPreview";
 import "./hero-fonts.css";
 import "./hero-hint.css";
 
@@ -531,10 +530,15 @@ export default function HeroSection() {
   const nameOpacity = interpolate([0, 1, 1.32], [1, 1, 0])(p);
 
   const tag1Opacity = interpolate([0.42, 0.95, 1.28], [0, 1, 0])(p);
+  // The focus pull is the ARRIVAL only. Narration leaves the way the name
+  // does — a straight opacity fade on the wrapper — so the letters must not
+  // re-blur on the way out. This rises with the line and then stays at 1.
+  const tag1Focus = interpolate([0.42, 0.95], [0, 1])(p);
   const tag1Y =
     interpolate([0.42, 1], [TAG1_Y_REST, TAG1_Y_MID])(p) + drift * 0.35;
 
   const tag2Opacity = interpolate([1.42, 1.95], [0, 1])(p);
+  const tag2Focus = interpolate([1.42, 1.95], [0, 1])(p);
   const tag2Y = interpolate([1.42, 2], [925, 859])(p) - drift * 0.3;
 
   const contactOpacity = interpolate([0, 0.5], [0.38, 0])(p);
@@ -773,10 +777,6 @@ export default function HeroSection() {
                 scoped to the text's own width, not the full-width row
                 above it — a swipe-in from the right on hover/focus,
                 written directly in Tailwind (no external component). */}
-            {/* Hover preview of where the link goes. The About page's own
-                portrait stands in for a screenshot: it is already on the
-                site, so nothing is fetched from a third party on hover. */}
-            <LinkPreview image="/photo/riddhi-photo.jpg" alt="About Riddhi Thakkar">
             <Link
               ref={nameTextRef}
               href="/about"
@@ -795,7 +795,6 @@ export default function HeroSection() {
             >
               Riddhi Thakkar
             </Link>
-            </LinkPreview>
           </div>
 
           <div
@@ -813,11 +812,12 @@ export default function HeroSection() {
               letterSpacing: NARRATION_TRACKING,
               color: NARRATION_COLOR,
               textShadow: NARRATION_GLOW,
+              opacity: tag1Opacity,
               pointerEvents: "none",
             }}
           >
             <NarrationLine
-              progress={tag1Opacity}
+              progress={tag1Focus}
               text="is just a name. What actually makes me is my"
             />
           </div>
@@ -838,12 +838,13 @@ export default function HeroSection() {
               letterSpacing: NARRATION_TRACKING,
               color: NARRATION_COLOR,
               textShadow: NARRATION_GLOW,
+              opacity: tag2Opacity,
               pointerEvents: "none",
               paddingInline: "12%",
             }}
           >
             <NarrationLine
-              progress={tag2Opacity}
+              progress={tag2Focus}
               text="is my peace. And if you are paying me for it, I'll make sure that piece becomes your peace."
             />
           </div>

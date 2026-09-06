@@ -12,7 +12,7 @@ import {
 } from "../lib/nameFlip";
 import "../components/hero-fonts.css";
 import HoverCard from "../components/HoverCard";
-import SwitchToggle from "../components/SwitchToggle";
+import ToolToggle from "../components/ToolToggle";
 
 gsap.registerPlugin(Flip);
 
@@ -130,18 +130,16 @@ const CREATIVE_TOOLS: Tool[] = [
 ];
 
 // Captions are placeholder wording, easy to swap.
-// NOTE: the supplied zip had 24 logos for 25 tools — there was no Claude
-// Code mark, so it borrows Claude's. Drop a claude-code.png into
-// public/icons/ai/ and change the src below.
+// Claude is one tile: Code, Design and Chat are named in its caption
+// rather than repeated as separate logos.
 const AI_TOOLS: Tool[] = [
   { name: "ChatGPT", src: "/icons/ai/chatgpt.png", caption: "Drafting and ideation" },
-  { name: "Claude", src: "/icons/ai/claude.png", caption: "Writing and analysis" },
+  { name: "Claude", src: "/icons/ai/claude.png", caption: "Claude Code, Design and Chat" },
   { name: "Gemini", src: "/icons/ai/gemini.png", caption: "Research and drafting" },
   { name: "Kimi", src: "/icons/ai/kimi.png", caption: "Long-context reading" },
   { name: "NotebookLM", src: "/icons/ai/notebooklm.png", caption: "Source-grounded notes" },
   { name: "Perplexity", src: "/icons/ai/perplexity.png", caption: "Cited research" },
   { name: "Google AI Studio", src: "/icons/ai/google-ai-studio.png", caption: "Prompt prototyping" },
-  { name: "Claude Code", src: "/icons/ai/claude.png", caption: "Building and automation" },
   { name: "Adobe Firefly", src: "/icons/ai/adobe-firefly.png", caption: "Generative image work" },
   { name: "Leonardo AI", src: "/icons/ai/leonardo.png", caption: "Concept imagery" },
   { name: "Moda", src: "/icons/ai/moda.png", caption: "Design generation" },
@@ -222,42 +220,56 @@ function ToolTile({
   onLeave: () => void;
 }) {
   return (
+    // Outer element carries the glow. drop-shadow follows the ALPHA of what
+    // it filters, so the glow traces the icon's silhouette exactly — a
+    // box-shadow or a border would draw the tile's rectangle instead and
+    // leave bright residue sitting in the corners the squircle does not
+    // reach. Nothing here paints a background or a border for the same
+    // reason: outside the silhouette there is nothing at all.
     <div
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
-      className={`frame-glow${hovered ? " frame-glow--active" : ""} relative shrink-0 overflow-hidden bg-black`}
+      className="relative shrink-0"
       style={{
         width: TILE_SIZE,
         height: TILE_H,
-        // The Photoshop icon's own alpha channel is the tile's shape. A
-        // border-radius could not do this: the icon is a squircle, not a
-        // rounded rectangle, so a radius left slack at the corners no
-        // matter what value it was given. Masking with the artwork snaps
-        // the edge to the real silhouette by construction, and the glow
-        // border is masked with it, so the frame follows the shape too.
-        WebkitMaskImage: `url(${SHAPE_MASK})`,
-        maskImage: `url(${SHAPE_MASK})`,
-        WebkitMaskSize: "100% 100%",
-        maskSize: "100% 100%",
-        WebkitMaskRepeat: "no-repeat",
-        maskRepeat: "no-repeat",
+        filter: hovered
+          ? "drop-shadow(0 0 14px rgba(255,255,255,0.42)) drop-shadow(0 0 34px rgba(255,255,255,0.22))"
+          : "drop-shadow(0 0 10px rgba(255,255,255,0.16))",
         transform: hovered ? "scale(1.06)" : "scale(1)",
-        transition: "transform 320ms cubic-bezier(0.4,0,0.2,1)",
+        transition:
+          "transform 320ms cubic-bezier(0.4,0,0.2,1), filter 320ms ease",
       }}
     >
-      {loadImage && (
-        // Plain <img> by request. These are fixed-size static PNGs and the
-        // export build has no image optimiser, so next/image adds nothing.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={tool.src}
-          alt={tool.name}
-          width={512}
-          height={512}
-          decoding="async"
-          className="h-full w-full object-cover"
-        />
-      )}
+      <div
+        className="h-full w-full overflow-hidden"
+        style={{
+          // The Photoshop icon's own alpha is the tile's shape. A
+          // border-radius could not do this: the icon is a squircle, not a
+          // rounded rectangle, so a radius left slack at the corners at any
+          // value. Masking with the artwork snaps to the real silhouette.
+          WebkitMaskImage: `url(${SHAPE_MASK})`,
+          maskImage: `url(${SHAPE_MASK})`,
+          WebkitMaskSize: "100% 100%",
+          maskSize: "100% 100%",
+          WebkitMaskRepeat: "no-repeat",
+          maskRepeat: "no-repeat",
+        }}
+      >
+        {loadImage && (
+          // Plain <img> by request. Fixed-size static PNGs, and the export
+          // build has no image optimiser, so next/image adds nothing.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={tool.src}
+            alt={tool.name}
+            width={512}
+            height={512}
+            decoding="async"
+            className="h-full w-full object-cover"
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -518,7 +530,10 @@ export default function AboutSection() {
         {/* Body copy sits left of the corner-placed photo on sm+, stacked
             above it below that. Renders nothing while ABOUT_BODY is empty,
             so the photo row keeps its current layout until copy arrives. */}
-        <div className="mt-14 flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-end sm:gap-12">
+        {/* justify-between, not justify-end: the copy starts at the
+            container's left edge so its margin lines up with the
+            "MY TOOLKIT COVERS" heading below. */}
+        <div className="mt-14 flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-between sm:gap-12">
           {ABOUT_BODY.length > 0 && (
             <div ref={bodyRevealRef} className="max-w-prose flex-1">
               {ABOUT_BODY.map((para, i) => (
@@ -558,41 +573,25 @@ export default function AboutSection() {
         </div>
 
         <div ref={skillsRevealRef} className="mt-16 sm:mt-24" style={{ opacity: 0 }}>
-          <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-4">
-            <p
-              className="text-white"
-              style={{
-                fontFamily: SANS,
-                fontWeight: 700,
-                fontSize: "clamp(14px, 1.1vw, 17px)",
-                letterSpacing: "0.08em",
-              }}
-            >
-              {SKILLS_LABEL}
-            </p>
+          <p
+            className="text-white"
+            style={{
+              fontFamily: SANS,
+              fontWeight: 700,
+              fontSize: "clamp(14px, 1.1vw, 17px)",
+              letterSpacing: "0.08em",
+            }}
+          >
+            {SKILLS_LABEL}
+          </p>
 
-            {/* The artwork IS the control — no wrapper button, no label,
-                no overlay. --switch-width is the one thing to change to
-                resize it. */}
-            <SwitchToggle
+          {/* Below the heading, on its own row. */}
+          <div className="mb-8 mt-4">
+            <ToolToggle
               on={showAiTools}
               onChange={setShowAiTools}
-              label={showAiTools ? "Showing AI tools" : "Showing creative tools"}
-              className="[--switch-width:150px]"
+              labelText={showAiTools ? "AI tools" : "Creative tools"}
             />
-
-            <p
-              className="text-white/55"
-              style={{
-                fontFamily: SANS,
-                fontWeight: 400,
-                fontSize: "clamp(12px, 0.9vw, 14px)",
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-              }}
-            >
-              {showAiTools ? "AI tools" : "Creative tools"}
-            </p>
           </div>
 
           {/* Both lists stay mounted so neither re-decodes its images when
