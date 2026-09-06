@@ -16,7 +16,7 @@ import gsap from "gsap";
 import { SplitText } from "gsap/SplitText";
 import { Flip } from "gsap/Flip";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
-import HeroReels from "./HeroReels";
+import DepthCards from "./DepthCards";
 import NarrationLine from "./NarrationLine";
 import "./hero-fonts.css";
 import "./hero-hint.css";
@@ -175,8 +175,17 @@ export const STAGE_H = 1080;
 // The hero beats occupy HERO_BEATS_END of the track; the tail drives the
 // camera push into the A and the REELS entrance. 375/0.55 keeps the beats
 // spanning the same 151vh of scrolling they were verified at.
-const SCROLL_LENGTH_VH = 375;
-const HERO_BEATS_END = 0.55;
+// Budget, in viewport heights of actual scrolling (track minus the 100vh
+// sticky pane), so "a scroll" means one viewport height:
+//   beats        151vh  (unchanged, the pacing already verified)
+//   A push       200vh  (~2 scrolls, inside the 3-scroll ceiling)
+//   card arrival 149vh  (starts at 85% of the push, so they overlap)
+const SCROLL_LENGTH_VH = 600;
+const HERO_BEATS_END = 0.302;
+// Where the camera push finishes, as a share of the post-beats tail.
+const ZOOM_END = 0.573;
+// The stack starts coming forward at 85% of the push.
+const CARDS_START = ZOOM_END * 0.85;
 
 // Camera push into the A's triangular negative space.
 //
@@ -190,8 +199,19 @@ const HERO_BEATS_END = 0.55;
 // upper-middle of the letter, so its centre sits a little left of the
 // glyph's horizontal middle and about two fifths down from the apex.
 const A_COUNTER_X_RATIO = 0.455;
-const A_COUNTER_Y_RATIO = 0.412;
-const CAMERA_MAX_ZOOM = 7.5;
+// Nudged up into the body of the triangle. At 0.412 the aim point sat
+// close enough to the crossbar that the crossbar stayed in shot at the
+// end of the push.
+const A_COUNTER_Y_RATIO = 0.36;
+// High enough that the A's own negative space fills the frame at the end
+// of the push: the counter is ~234 stage units wide, and covering a
+// 1920-wide stage needs at least 8.2x. Past that the leg edges are off
+// frame entirely and what remains is the black behind the letter.
+// Far enough that every edge of the letter has left the frame and only
+// the black it was sitting on remains. 17x still had the crossbar arc in
+// shot along the bottom; the triangle's interior has to fill the viewport
+// completely, and at this scale the nearest edge is well outside it.
+const CAMERA_MAX_ZOOM = 46;
 
 // Time constant, in seconds, for the scroll-progress smoothing below. A
 // wheel notch is a discrete ~100px jump, so scrubbing straight off
@@ -654,7 +674,8 @@ export default function HeroSection() {
 
   // Camera: scale the real composition about the point inside the A and
   // carry that point to the middle of the frame. Transform only.
-  const cameraT = easeInOutSine(transitionP);
+  // The push owns the first ZOOM_END of the tail; the rest is the stack's.
+  const cameraT = easeInOutSine(clamp01(transitionP / ZOOM_END));
   const zoom = 1 + (CAMERA_MAX_ZOOM - 1) * cameraT;
   // Scaled BY the camera progress. Applying the full offset unconditionally
   // meant the hero composition sat translated off-centre before the
@@ -662,11 +683,12 @@ export default function HeroSection() {
   // is now exactly identity, so the hero is composed as authored.
   const cameraTx = (STAGE_W / 2 - cameraTarget.x) * cameraT;
   const cameraTy = (STAGE_H / 2 - cameraTarget.y) * cameraT;
-  // ART is gone by the end because the camera has pushed past it, not
-  // because a separate element faded it out on its own schedule.
-  // Fully out well before the end, so the last stretch of scroll has no
-  // trace of the wordmark left in frame.
-  const cameraOpacity = 1 - clamp01((transitionP - 0.5) / 0.28);
+  // ART is not faded out. It leaves because the camera flies past its
+  // edges — the last thing to go is the inside edge of a leg sliding off
+  // frame, and what is left is the black the letter was sitting on. A
+  // cross-fade would have softened exactly the edges that need to stay
+  // razor clean right up to the moment they exit.
+  const cameraOpacity = 1;
 
   return (
     <div
@@ -752,7 +774,13 @@ export default function HeroSection() {
               letterSpacing: "0.005em",
               color: "#fff",
               textShadow: glowShadow(gWithCursor),
-              willChange: "transform",
+              // Promoted only while the hero is composing itself. During
+              // the camera push it MUST NOT be: a promoted layer is
+              // rasterised once at its current size and then scaled, which
+              // is exactly what turns the letterforms to mush at 17x. Left
+              // unpromoted, the browser re-rasterises the glyph outlines at
+              // every scale and the edges stay razor clean.
+              willChange: transitionP > 0 ? "auto" : "transform",
               userSelect: "none",
               WebkitUserSelect: "none",
             }}
@@ -893,11 +921,17 @@ export default function HeroSection() {
           </div>
         </div>
 
-        {/* REELS media. Deliberately OUTSIDE the camera wrapper and outside
-            the authored stage, in plain viewport units: the camera push
-            must not drag it along, and its resting size is a share of the
-            viewport, not of the 1920x1080 canvas. Same single progress. */}
-        <HeroReels progress={transitionP} />
+        {/* The card stack, arriving out of the depths. Outside the camera
+            wrapper and outside the authored stage: the push must not drag
+            it along, and it composes in viewport units.
+
+            It starts at 85% of the A push, so the two overlap — the stack
+            is already coming forward while the last edges of the letter
+            are still leaving frame. Same single progress drives both. */}
+        <DepthCards
+          progress={clamp01((transitionP - CARDS_START) / (1 - CARDS_START))}
+          sans={SANS}
+        />
       </div>
     </div>
   );
