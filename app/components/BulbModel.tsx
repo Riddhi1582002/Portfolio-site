@@ -82,7 +82,7 @@ export default function BulbModel({
           if (!mesh.isMesh) return;
           const mat = mesh.material as import("three").MeshStandardMaterial;
           if (mat && "emissive" in mat) {
-            mat.emissive = new THREE.Color(0xffd9a0);
+            mat.emissive = new THREE.Color(0xffc978);
             emissives.push(mat);
           }
         });
@@ -114,8 +114,12 @@ export default function BulbModel({
         raf = requestAnimationFrame(tick);
         if (!visible) return;
         const lit = Math.min(1, Math.max(0, litRef.current));
-        key.intensity = 1.2 + lit * 9;
-        for (const m of emissives) m.emissiveIntensity = 0.15 + lit * 2.2;
+        // Both floors are near zero: an unlit bulb has to READ unlit. An
+        // emissive floor keeps the glass glowing however far litness drops,
+        // which made the dim state look merely a little warmer rather than
+        // switched off.
+        key.intensity = 0.25 + lit * 8.5;
+        for (const m of emissives) m.emissiveIntensity = lit * 2.4;
         if (root && !reduced) root.rotation.y += 0.0016;
         renderer.render(scene, camera);
       };

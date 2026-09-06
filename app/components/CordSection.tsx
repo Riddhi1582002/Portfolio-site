@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 import NarrationLine from "./NarrationLine";
 import BulbModel from "./BulbModel";
+import ArcCarousel, { arcPresence } from "./ArcCarousel";
 import {
   NARRATION_COLOR,
   NARRATION_GLOW,
@@ -24,10 +25,19 @@ import {
 } from "./HeroSection";
 
 // Beats, as shares of the section's progress.
-const ROLL_END = 0.2;
-const LINE_1 = [0.22, 0.46] as const;
-const LINE_2 = [0.5, 0.74] as const;
-const BULB_IN = 0.72;
+const ROLL_END = 0.11;
+const LINE_1 = [0.13, 0.29] as const;
+const LINE_2 = [0.31, 0.46] as const;
+const BULB_IN = 0.44;
+// The camera stops travelling here: the bulb has arrived and holds still
+// for the rest of the section, so the arc turns around a fixed centre.
+const TRAVEL_END = 0.52;
+// The arc of work, one scroll per card.
+const ARC_START = 0.54;
+
+// Geometry of the bulb, kept here because the arc has to be centred on it.
+const BULB_TOP_VH = 172;
+const TRAVEL_VH = 150;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
@@ -42,6 +52,7 @@ export default function CordSection({
 }) {
   const p = clamp01(progress);
   const [reduced, setReduced] = useState(false);
+  const [viewport, setViewport] = useState({ vw: 1440, vh: 900 });
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,10 +62,19 @@ export default function CordSection({
     return () => cancelAnimationFrame(id);
   }, []);
 
+  useEffect(() => {
+    const read = () =>
+      setViewport({ vw: window.innerWidth, vh: window.innerHeight });
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
+
   // The roll. 0 -> face on, 1 -> edge on.
   const roll = easeInOutSine(span(p, 0, ROLL_END));
-  // Travel down the cord once the roll has finished.
-  const travel = easeInOutSine(span(p, ROLL_END, 1));
+  // Travel down the cord once the roll has finished, and stop once the
+  // bulb is in shot.
+  const travel = easeInOutSine(span(p, ROLL_END, TRAVEL_END));
 
   // Narration beats fade in and out; the second replaces the first.
   const n1In = span(p, LINE_1[0], LINE_1[0] + 0.12);
@@ -62,10 +82,23 @@ export default function CordSection({
   const n2In = span(p, LINE_2[0], LINE_2[0] + 0.12);
   const n2Out = 1 - span(p, LINE_2[1] - 0.06, LINE_2[1]);
 
-  const bulb = span(p, BULB_IN, 1);
+  const bulbIn = span(p, BULB_IN, TRAVEL_END + 0.03);
+
+  // The arc of work. Its presence is what dims the bulb: the room cannot
+  // be lit by the bulb and by nine glowing pieces at once, so the light
+  // hands over as they arrive and comes back when the last one leaves.
+  const arcP = span(p, ARC_START, 1);
+  const presence = arcPresence(arcP);
+  const lit = bulbIn * (1 - 0.86 * presence);
+
+  // Bulb size follows `min(46vh, 42vw)`; the arc is centred on it, so the
+  // same expression has to be evaluated here in vh.
+  const bulbSizeVh = Math.min(46, (42 * viewport.vw) / Math.max(1, viewport.vh));
+  const bulbCentreVh = BULB_TOP_VH - travel * TRAVEL_VH + bulbSizeVh / 2;
+
   // The wash in the room lags the model slightly, so the bulb reads as
   // coming up rather than the whole frame brightening at once.
-  const litGlow = easeInOutSine(span(p, BULB_IN + 0.06, 1));
+  const litGlow = easeInOutSine(span(p, BULB_IN + 0.04, TRAVEL_END + 0.03)) * (1 - 0.86 * presence);
 
   return (
     <div ref={hostRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#000" }}>
@@ -80,10 +113,15 @@ export default function CordSection({
           // Ends where the bulb hangs, rather than running past it.
           height: "176vh",
           width: `${(1 - roll) * 44 + 0.22}vw`,
-          transform: `translate(-50%, ${(-travel * 150).toFixed(2)}vh)`,
+          transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
           background:
             "linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 6%, #fff 94%, rgba(255,255,255,0.85) 100%)",
           boxShadow: `0 0 ${(18 + roll * 26).toFixed(0)}px rgba(255,255,255,${(0.16 + roll * 0.3).toFixed(2)})`,
+          // The cord runs down the centre of the frame, which is exactly
+          // where the card in focus sits. It dims with the bulb as the arc
+          // arrives so it stops cutting the work in half, and comes back
+          // when the light does.
+          opacity: 1 - 0.78 * presence,
           borderRadius: 2,
           willChange: "transform, width",
         }}
@@ -92,14 +130,15 @@ export default function CordSection({
       {/* The bulb hangs on the cord's end. It only comes into shot as the
           camera reaches the bottom of the travel. */}
       <div
+        data-bulb-host
         style={{
           position: "absolute",
           left: "50%",
-          top: "172vh",
+          top: `${BULB_TOP_VH}vh`,
           width: "min(46vh, 42vw)",
           aspectRatio: "1",
-          transform: `translate(-50%, ${(-travel * 150).toFixed(2)}vh)`,
-          opacity: bulb,
+          transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
+          opacity: bulbIn,
           // Above the cord, so the cord reads as attaching behind the cap
           // rather than crossing the glass.
           zIndex: 2,
@@ -114,6 +153,7 @@ export default function CordSection({
             so the two never disagree. */}
         <div
           aria-hidden
+          data-bulb-wash
           style={{
             position: "absolute",
             left: "50%",
@@ -131,8 +171,16 @@ export default function CordSection({
             zIndex: -1,
           }}
         />
-        <BulbModel litness={bulb} reduced={reduced} />
+        <BulbModel litness={lit} reduced={reduced} />
       </div>
+
+      {/* The arc of work, turning around the bulb. */}
+      <ArcCarousel
+        progress={arcP}
+        centreVh={bulbCentreVh}
+        vw={viewport.vw}
+        vh={viewport.vh}
+      />
 
       {/* Narration, to the LEFT of the line as specified. */}
       {[
@@ -151,6 +199,7 @@ export default function CordSection({
       ].map((beat) => (
         <div
           key={beat.key}
+          data-narration
           style={{
             position: "absolute",
             right: "56%",

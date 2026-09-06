@@ -7,8 +7,9 @@ import PinnedSection from "./PinnedSection";
 import CordSection from "./CordSection";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
-// roll + travel + two narration beats + the bulb arriving.
-const LENGTH_VH = 600;
+// roll + travel + two narration beats + the bulb arriving, then the arc of
+// nine pieces turning around it at roughly one viewport of scroll per card.
+const LENGTH_VH = 1200;
 
 export default function CordSectionWrapper() {
   return (
