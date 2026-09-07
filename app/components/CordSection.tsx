@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import NarrationLine from "./NarrationLine";
 import BulbModel from "./BulbModel";
 import ArcCarousel, { arcPresence } from "./ArcCarousel";
+import CameraRoll, { lineWidthPx } from "./CameraRoll";
 import {
   NARRATION_COLOR,
   NARRATION_GLOW,
@@ -70,8 +71,14 @@ export default function CordSection({
     return () => window.removeEventListener("resize", read);
   }, []);
 
-  // The roll. 0 -> face on, 1 -> edge on.
-  const roll = easeInOutSine(span(p, 0, ROLL_END));
+  // The roll. 0 -> face on, 1 -> edge on. Driven by CameraRoll now: the
+  // cards stay put and the eye moves, so this value only says how far
+  // through that move we are.
+  const rollRaw = span(p, 0, ROLL_END);
+  // The cord takes over from the camera's line at the same width, in the
+  // same place, in the last sliver of the move — so the swap is invisible.
+  const handoff = clamp01((rollRaw - 0.94) / 0.06);
+  const roll = easeInOutSine(rollRaw);
   // Travel down the cord once the roll has finished, and stop once the
   // bulb is in shot.
   const travel = easeInOutSine(span(p, ROLL_END, TRAVEL_END));
@@ -102,9 +109,15 @@ export default function CordSection({
 
   return (
     <div ref={hostRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#000" }}>
-      {/* The cord. Width collapses as the camera rolls: at roll 0 it is as
-          wide as a card, at roll 1 it is a line. Its vertical position
-          moves with the travel, so the camera appears to follow it down. */}
+      {/* The camera move that turns the strip into the line. The cards are
+          the strip's own cards at the strip's own world positions; only
+          the eye moves. It hands over to the cord below at the moment the
+          two are the same width in the same place. */}
+      <div style={{ opacity: 1 - handoff, position: "absolute", inset: 0 }}>
+        <CameraRoll progress={rollRaw} vw={viewport.vw} vh={viewport.vh} />
+      </div>
+
+      {/* The cord, taking over from the line the camera arrived at. */}
       <div
         style={{
           position: "absolute",
@@ -112,16 +125,18 @@ export default function CordSection({
           top: 0,
           // Ends where the bulb hangs, rather than running past it.
           height: "176vh",
-          width: `${(1 - roll) * 44 + 0.22}vw`,
+          // No longer collapsing from card width: the camera move already
+          // did that with real geometry. This is the line it arrived at.
+          width: lineWidthPx(viewport.vh),
           transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
           background:
             "linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 6%, #fff 94%, rgba(255,255,255,0.85) 100%)",
           boxShadow: `0 0 ${(18 + roll * 26).toFixed(0)}px rgba(255,255,255,${(0.16 + roll * 0.3).toFixed(2)})`,
-          // The cord runs down the centre of the frame, which is exactly
-          // where the card in focus sits. It dims with the bulb as the arc
-          // arrives so it stops cutting the work in half, and comes back
-          // when the light does.
-          opacity: 1 - 0.78 * presence,
+          // Fades up exactly as the camera's edge-on line fades out, and
+          // dims later with the bulb as the arc arrives — the cord runs
+          // down the centre of the frame, which is where the card in focus
+          // sits, so it would otherwise cut the work in half.
+          opacity: handoff * (1 - 0.78 * presence),
           borderRadius: 2,
           willChange: "transform, width",
         }}
