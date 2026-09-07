@@ -89,7 +89,6 @@ export default function CordSection({
   // The cord takes over from the camera's line at the same width, in the
   // same place, in the last sliver of the move — so the swap is invisible.
   const handoff = clamp01((rollRaw - 0.94) / 0.06);
-  const roll = easeInOutSine(rollRaw);
   // Travel down the cord once the roll has finished, and stop once the
   // bulb is in shot.
   const travel = easeInOutSine(span(p, ROLL_END, TRAVEL_END));
@@ -127,9 +126,11 @@ export default function CordSection({
           the strip's own cards at the strip's own world positions; only
           the eye moves. It hands over to the cord below at the moment the
           two are the same width in the same place. */}
-      <div style={{ opacity: 1 - handoff, position: "absolute", inset: 0 }}>
-        <CameraRoll progress={rollRaw} vw={viewport.vw} vh={viewport.vh} />
-      </div>
+      {handoff < 1 && (
+        <div style={{ opacity: 1 - handoff, position: "absolute", inset: 0 }}>
+          <CameraRoll progress={rollRaw} vw={viewport.vw} vh={viewport.vh} />
+        </div>
+      )}
 
       {/* The cord, taking over from the line the camera arrived at. */}
       <div
@@ -153,7 +154,11 @@ export default function CordSection({
           // the layered shadow below is the air around it.
           background:
             "linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.92) 5%, #fff 55%, rgb(255,250,240) 88%, rgb(255,242,220) 100%)",
-          boxShadow: lineGlow(0.42 + roll * 0.5),
+          // NO box-shadow here. This element is transformed every frame,
+          // and a four-layer glow on a 1500px-tall bar had to be
+          // re-rasterised with it — on its own that took the whole cord
+          // beat to about 1fps. The glow is the promoted sibling below,
+          // whose shadow never changes and which only fades.
           // Fades up exactly as the camera's edge-on line fades out, and
           // dims later with the bulb as the arc arrives — the cord runs
           // down the centre of the frame, which is where the card in focus
@@ -166,7 +171,28 @@ export default function CordSection({
           // leaving a thin gold thread down to the cap. The cord now
           // covers that thread and ends on the cap itself.
           zIndex: 3,
-          willChange: "transform, width",
+          willChange: "transform",
+        }}
+      />
+
+      {/* The line's glow, as its own layer: one constant shadow that the
+          compositor can keep, faded rather than re-blurred. */}
+      <div
+        aria-hidden
+        data-cord-glow
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: 0,
+          height: `${(BULB_TOP_VH + bulbSizeVh * CAP_RATIO).toFixed(2)}vh`,
+          width: lineWidthPx(viewport.vh),
+          transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
+          boxShadow: lineGlow(0.92),
+          borderRadius: 2,
+          opacity: handoff * (1 - 0.78 * presence),
+          zIndex: 3,
+          pointerEvents: "none",
+          willChange: "transform, opacity",
         }}
       />
 
@@ -186,10 +212,14 @@ export default function CordSection({
           transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
           background:
             "linear-gradient(to bottom, rgba(255,214,150,0) 0%, rgba(255,214,150,0.45) 62%, rgba(255,200,130,0.9) 100%)",
-          boxShadow: `0 0 10px rgba(255,206,140,${(0.5 * litGlow).toFixed(3)}), 0 0 34px rgba(255,190,110,${(0.28 * litGlow).toFixed(3)}), 0 0 96px rgba(255,178,96,${(0.13 * litGlow).toFixed(3)})`,
+          // Constant, so the blur is rasterised once; the beat fades the
+          // layer instead of re-blurring it every frame. No blend mode
+          // either — over black, screen and normal are the same picture,
+          // and the blend forced its own compositing pass.
+          boxShadow:
+            "0 0 10px rgba(255,206,140,0.5), 0 0 34px rgba(255,190,110,0.28), 0 0 96px rgba(255,178,96,0.13)",
           opacity: handoff * litGlow * (1 - 0.78 * presence),
           borderRadius: 2,
-          mixBlendMode: "screen",
           zIndex: 3,
           pointerEvents: "none",
           willChange: "transform, opacity",
@@ -239,12 +269,17 @@ export default function CordSection({
             // painted disc; light in air has a small intense core, a
             // shoulder, and a long faint skirt, and the eye reads the
             // shoulder as distance.
+            // The stops are CONSTANT and the layer is faded instead.
+            // Re-generating three radial gradients across a 2000px box
+            // every frame is a full repaint of the largest element in the
+            // beat, and it does not look any different from fading one.
             background: [
-              `radial-gradient(circle, rgba(255,244,222,${(0.5 * litGlow).toFixed(3)}) 0%, rgba(255,238,208,0) 11%)`,
-              `radial-gradient(circle, rgba(255,226,178,${(0.26 * litGlow).toFixed(3)}) 0%, rgba(255,220,166,0) 27%)`,
-              `radial-gradient(circle, rgba(255,206,140,${(0.11 * litGlow).toFixed(3)}) 0%, rgba(255,196,124,0) 58%)`,
+              "radial-gradient(circle, rgba(255,244,222,0.5) 0%, rgba(255,238,208,0) 11%)",
+              "radial-gradient(circle, rgba(255,226,178,0.26) 0%, rgba(255,220,166,0) 27%)",
+              "radial-gradient(circle, rgba(255,206,140,0.11) 0%, rgba(255,196,124,0) 58%)",
             ].join(", "),
-            mixBlendMode: "screen",
+            opacity: litGlow,
+            willChange: "opacity",
             pointerEvents: "none",
             zIndex: -1,
           }}

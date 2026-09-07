@@ -21,6 +21,8 @@ import { SMOOTHER_ACTIVE } from "./SmoothScroll";
 import usePinnedPane from "./usePinnedPane";
 import ReelStrip from "./ReelStrip";
 import CordSection from "./CordSection";
+import PencilSection from "./PencilSection";
+import InfiniteCanvas from "./InfiniteCanvas";
 import NarrationLine from "./NarrationLine";
 import "./hero-fonts.css";
 import "./hero-hint.css";
@@ -203,10 +205,20 @@ export const STAGE_H = 1080;
 const HERO_VH = 480;
 const REELS_VH = 900;
 const CORD_VH = 1200;
-const SCROLL_LENGTH_VH = HERO_VH + REELS_VH + CORD_VH;
-// Beat boundaries as shares of the whole track.
+// The closing two beats used to be their own pinned sections. They are
+// here for the same reason the strip is: two pinned panes cannot hand
+// over cleanly, and the pull-back out of the iris has to be able to
+// START on the frame the pencil beat ended on. One pane, one progress.
+const PENCIL_VH = 420;
+const CANVAS_VH = 500;
+const SCROLL_LENGTH_VH = HERO_VH + REELS_VH + CORD_VH + PENCIL_VH + CANVAS_VH;
+// Beat boundaries as shares of the whole track. Every beat keeps the
+// scroll length in vh it always had; only the track they sit on changed.
 const HERO_SPAN = HERO_VH / SCROLL_LENGTH_VH;
 const REELS_SPAN_END = (HERO_VH + REELS_VH) / SCROLL_LENGTH_VH;
+const CORD_SPAN_END = (HERO_VH + REELS_VH + CORD_VH) / SCROLL_LENGTH_VH;
+const PENCIL_SPAN_END =
+  (HERO_VH + REELS_VH + CORD_VH + PENCIL_VH) / SCROLL_LENGTH_VH;
 const HERO_BEATS_END = 0.397;
 // Where the camera push finishes, as a share of the post-beats tail.
 const ZOOM_END = 0.349;
@@ -377,6 +389,7 @@ export default function HeroSection() {
   // the native 'scroll' event is real movement, so it resets the
   // double-click window and, if the hint is currently showing, fades it
   // out and permanently dismisses it for this session.
+  const measureRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     let raf: number | null = null;
     const measure = () => {
@@ -417,11 +430,14 @@ export default function HeroSection() {
       if (raf == null) raf = requestAnimationFrame(measure);
     };
     measure();
+    // The rAF clock below calls this too — see the note there.
+    measureRef.current = measure;
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
+      measureRef.current = null;
       if (raf != null) cancelAnimationFrame(raf);
     };
   }, []);
@@ -537,6 +553,16 @@ export default function HeroSection() {
       // with the display.
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
+      // Re-measure EVERY FRAME, not only on scroll events.
+      //
+      // ScrollSmoother leaves the native scroll where it is and eases the
+      // content's transform toward it, so the pane's position on screen
+      // keeps changing for the better part of a second AFTER the last
+      // scroll event. Sampling only on those events froze this sequence
+      // wherever the final event happened to land — the beats ran
+      // hundreds of pixels behind the page and, at the end of a flick,
+      // simply stopped short.
+      measureRef.current?.();
       const target = scrollTargetRef.current;
       // One smoother only. With ScrollSmoother mounted the document is
       // already eased, and easing again here is what made the A push feel
@@ -559,7 +585,13 @@ export default function HeroSection() {
   // The hero's own progress through its slice of the shared track.
   const heroP = clamp01(scrollP / HERO_SPAN);
   const reelsP = clamp01((scrollP - HERO_SPAN) / (REELS_SPAN_END - HERO_SPAN));
-  const cordP = clamp01((scrollP - REELS_SPAN_END) / (1 - REELS_SPAN_END));
+  const cordP = clamp01(
+    (scrollP - REELS_SPAN_END) / (CORD_SPAN_END - REELS_SPAN_END)
+  );
+  const pencilP = clamp01(
+    (scrollP - CORD_SPAN_END) / (PENCIL_SPAN_END - CORD_SPAN_END)
+  );
+  const canvasP = clamp01((scrollP - PENCIL_SPAN_END) / (1 - PENCIL_SPAN_END));
 
   const p = SCROLL_TO_P(clamp01(heroP / HERO_BEATS_END));
   // THE transition progress. Camera zoom, camera position, reel x, reel
@@ -665,11 +697,15 @@ export default function HeroSection() {
   const stageElRef = useRef<HTMLDivElement>(null);
   const cameraElRef = useRef<HTMLDivElement>(null);
   const [cameraTarget, setCameraTarget] = useState({ x: STAGE_W / 2, y: STAGE_H / 2 });
+  // The closing beats lay out in real pixels, so they need the viewport
+  // rather than the stage's fit.
+  const [viewport, setViewport] = useState({ vw: 1440, vh: 900 });
   useEffect(() => {
     const fit = () => {
       setStageScale(
         Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H)
       );
+      setViewport({ vw: window.innerWidth, vh: window.innerHeight });
     };
     fit();
     window.addEventListener("resize", fit);
@@ -735,10 +771,12 @@ export default function HeroSection() {
   return (
     <div
       ref={trackRef}
+      data-track="sequence"
       style={{ height: `${SCROLL_LENGTH_VH}vh`, position: "relative", zIndex: 1 }}
     >
       <div
         ref={paneRef}
+        data-pane="sequence"
         style={{
           // Pinned by ScrollTrigger, not by `position: sticky` — see
           // usePinnedPane. Layout is otherwise identical.
@@ -754,6 +792,15 @@ export default function HeroSection() {
           justifyContent: "center",
         }}
       >
+        {/* THE HERO COMPOSITION.
+            Not rendered once the strip has taken the pane. It used to
+            stay mounted for the whole page: ART carries a four-layer text
+            glow and a 30px-blurred halo, both re-generated every frame by
+            the breath, and by the end of the push the camera has them
+            scaled seven and a half times. Behind an opaque section that
+            is invisible work — and it was the most expensive thing on
+            screen for the entire rest of the sequence. */}
+        {scrollP <= HERO_SPAN + 0.006 && (
         <div
           ref={stageElRef}
           style={{
@@ -973,6 +1020,7 @@ export default function HeroSection() {
           </div>
           </div>
         </div>
+        )}
 
         {/* The card stack, arriving out of the depths. Outside the camera
             wrapper and outside the authored stage: the push must not drag
@@ -1003,9 +1051,33 @@ export default function HeroSection() {
         )}
 
         {/* And the cord beat, same pane again. */}
-        {scrollP > REELS_SPAN_END - 0.004 && (
+        {scrollP > REELS_SPAN_END - 0.004 && scrollP < CORD_SPAN_END + 0.003 && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
             <CordSection progress={cordP} sans={SANS} />
+          </div>
+        )}
+
+        {/* The descent past the bulb and the match cut into the iris. */}
+        {scrollP > CORD_SPAN_END - 0.003 && scrollP < PENCIL_SPAN_END + 0.002 && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
+            <PencilSection
+              progress={pencilP}
+              sans={SANS}
+              vw={viewport.vw}
+              vh={viewport.vh}
+            />
+          </div>
+        )}
+
+        {/* The pull-back out of the iris, and the gallery it opens on. */}
+        {scrollP > PENCIL_SPAN_END - 0.002 && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
+            <InfiniteCanvas
+              progress={canvasP}
+              sans={SANS}
+              vw={viewport.vw}
+              vh={viewport.vh}
+            />
           </div>
         )}
       </div>

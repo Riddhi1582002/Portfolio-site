@@ -166,17 +166,25 @@ export default function ArcCarousel({
               willChange: "transform, opacity",
             }}
           >
-            <div
-              style={{
-                // The same static, card-owned glow the strip uses:
-                // brightest on the piece in focus, never cursor-driven.
-                boxShadow: `0 0 ${(64 - dist * 14).toFixed(0)}px rgba(255,255,255,${Math.max(
-                  0.06,
-                  0.3 - dist * 0.07
-                ).toFixed(3)}), 0 22px 60px rgba(0,0,0,0.72)`,
-                borderRadius: 14,
-              }}
-            >
+            <div style={{ position: "relative", borderRadius: 14 }}>
+              {/* The same static, card-owned glow the strip uses:
+                  brightest on the piece in focus, never cursor-driven.
+                  Constant shadow on its own layer, faded rather than
+                  re-blurred — nine 64px blurs recomputed per frame is
+                  what the arc used to cost. */}
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  borderRadius: 14,
+                  boxShadow:
+                    "0 0 64px rgba(255,255,255,0.3), 0 22px 60px rgba(0,0,0,0.72)",
+                  opacity: Math.max(0.2, 1 - dist * 0.24),
+                  willChange: "opacity",
+                  pointerEvents: "none",
+                }}
+              />
               <HoverCard aspect={1} radius={14}>
                 {/* Neutral placeholder. Real work replaces the child. */}
                 <div

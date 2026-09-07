@@ -42,6 +42,16 @@ const PIECES: Piece[] = [
   { id: "c8", x: 1350, y: 760, w: 320, ratio: 3 / 2 },
 ];
 
+// THE piece the iris sits on: the black disc the previous beat leaves the
+// frame on is the pupil painted on this card, and the zoom out starts
+// hard against it. PencilSection draws its last frame from the same
+// numbers, so the swap between the two is geometry, not a cross-fade.
+const IRIS_PIECE_ID = "c6";
+/** The iris's diameter as a share of its card's height. */
+const IRIS_RATIO = 0.78;
+/** How much of the reveal the camera spends pulling back. */
+const REVEAL_END = 0.2;
+
 // Where the flight home begins, as a share of the section's progress.
 const HOME_FROM = 0.72;
 // The plane is at rest until then, so the reader has the whole first
@@ -60,6 +70,37 @@ const CLICK_SLOP_PX = 5;
 // identical everywhere and only its size changes.
 const FIT_REFERENCE_VW = 1440;
 const FIT_MIN = 0.42;
+
+/** The viewport fit the plane always carries. */
+export function galleryFit(vw: number) {
+  return Math.min(1, Math.max(FIT_MIN, vw / FIT_REFERENCE_VW));
+}
+
+/**
+ * The frame the zoom out starts from, in screen px: the iris card scaled
+ * until it overfills the viewport, with the iris centred in it.
+ *
+ * The scale is solved rather than picked so that at the start of the move
+ * the card covers the frame on BOTH axes — otherwise the pull-back opens
+ * on the card's edge and the cut from the previous beat is visible.
+ */
+export function irisFrame(vw: number, vh: number) {
+  const piece = PIECES.find((x) => x.id === IRIS_PIECE_ID)!;
+  const fit = galleryFit(vw);
+  const cardW = piece.w * fit;
+  const cardH = (piece.w / piece.ratio) * fit;
+  const scale = Math.max((vw * 1.12) / cardW, (vh * 1.12) / cardH);
+  return {
+    piece,
+    fit,
+    scale,
+    /** Screen size of the card and of the iris at that scale. */
+    cardW: cardW * scale,
+    cardH: cardH * scale,
+    iris: cardH * IRIS_RATIO * scale,
+    irisPlane: (piece.w / piece.ratio) * IRIS_RATIO,
+  };
+}
 
 const mod = (v: number, m: number) => ((v % m) + m) % m;
 /** Signed distance from a to b on a ring of size m, taking the short way. */
@@ -123,9 +164,31 @@ export default function InfiniteCanvas({
   const [hovered, setHovered] = useState<string | null>(null);
   const [flipped, setFlipped] = useState(false);
 
-  const fit = Math.min(1, Math.max(FIT_MIN, vw / FIT_REFERENCE_VW));
+  const fit = galleryFit(vw);
   const fitRef = useRef(fit);
   fitRef.current = fit;
+
+  // THE ZOOM OUT.
+  //
+  // The previous beat hands over a frame that is one thing: the iris,
+  // hard against the lens, on the card it is painted on. Nothing in the
+  // gallery moves for this — the camera pulls back, so the whole plane
+  // (cards, ART and all) scales down together about the frame's centre
+  // and the rest of the work arrives from outside the frame because it
+  // was always there.
+  const frame = irisFrame(vw, vh);
+  const revealT = easeOutCubic(span(p, 0, REVEAL_END));
+  // Geometric, not linear: a linear pull-back from 5x reads as the cards
+  // rushing away and then crawling. Interpolating the LOG of the scale
+  // makes each moment of the move cover the same proportion of distance,
+  // which is what a real dolly looks like.
+  const revealScale = Math.exp(Math.log(frame.scale) * (1 - revealT));
+  const revealing = revealT < 0.999;
+  // The iris fades out as the camera gets back: once its card is one of
+  // several on screen it should read as a piece of work, not as the
+  // thing we came through. Full while we are still inside it, gone by
+  // the time the gallery is at rest.
+  const irisFade = span(revealScale, 1.0, 1.85);
 
   // The flight home. Scroll drives it; the plane is untouched before it.
   const homeT = easeInCubic(span(p, HOME_FROM, 1));
@@ -134,6 +197,27 @@ export default function InfiniteCanvas({
   const planeScale = 1 + homeT * 5;
   const artScale = 1 + homeT * 16;
   const veil = span(p, HOME_FROM + 0.16, 0.97);
+
+  // HOW MANY CELLS TO DRAW.
+  //
+  // A fixed 3x3 block was nine copies of everything at every moment of
+  // the beat, including the flight home where the plane is scaled six
+  // times and one cell covers the frame several times over. The visible
+  // slice of the plane is vw/eff by vh/eff, and the wrapped offset is
+  // somewhere inside one cell, so the block only ever has to span that
+  // slice plus the cell it starts in.
+  const eff = planeScale * revealScale * fit;
+  const cellRange = (extent: number, cell: number) => {
+    const half = extent / (2 * eff);
+    const lo = Math.floor((extent / 2 - half) / cell);
+    const hi = Math.floor((cell + extent / 2 + half) / cell);
+    const out: number[] = [];
+    for (let i = lo; i <= hi; i++) out.push(i);
+    return out;
+  };
+  const cols = revealScale > 2 ? [0] : cellRange(vw, CELL_W);
+  const rows = revealScale > 2 ? [0] : cellRange(vh, CELL_H);
+
   // The pan settles onto the ART FAST, in the first sixth of the flight,
   // while the zoom is still shallow — so the move reads as the camera
   // finding the wordmark and then diving into it. Tying the pan to the
@@ -143,6 +227,17 @@ export default function InfiniteCanvas({
   const panHomeT = easeOutCubic(span(p, HOME_FROM, HOME_FROM + 0.05));
   const homeRef = useRef(panHomeT);
   homeRef.current = panHomeT;
+  // The plane offset the pull-back is centred on: the iris card's middle
+  // at the middle of the frame.
+  //
+  // NOT wrapped to the cell. The pull-back draws the centre cell only, so
+  // the offset has to be the one that puts THAT copy of the card under the
+  // lens; taking it modulo the cell can name the copy one cell over, which
+  // is off screen — on a 1920 frame it put the iris 9,700px to the left.
+  // Wrapping resumes when the reveal ends and the full block is drawn
+  // again, and the two offsets are the same position by then.
+  const irisX = frame.piece.x + frame.piece.w / 2 - vw / 2;
+  const irisY = frame.piece.y + frame.piece.w / frame.piece.ratio / 2 - vh / 2;
 
   // Writing the transform from a ref keeps a drag off React's render path;
   // at 8 cells of content a state update per pointermove is visible.
@@ -155,6 +250,14 @@ export default function InfiniteCanvas({
   const write = useCallback(() => {
     const plane = planeRef.current;
     if (!plane) return;
+    if (revealing) {
+      // Locked to the iris while the camera pulls back — the reader has
+      // no say over the framing until the gallery has arrived.
+      plane.style.transform = `translate3d(${(-irisX).toFixed(2)}px, ${(-irisY).toFixed(
+        2
+      )}px, 0)`;
+      return;
+    }
     const h = homeRef.current;
     const wx = mod(panRef.current.x, CELL_W);
     const wy = mod(panRef.current.y, CELL_H);
@@ -163,13 +266,20 @@ export default function InfiniteCanvas({
     const ox = wx + ringDelta(wx, tx, CELL_W) * h;
     const oy = wy + ringDelta(wy, ty, CELL_H) * h;
     plane.style.transform = `translate3d(${(-ox).toFixed(2)}px, ${(-oy).toFixed(2)}px, 0)`;
-  }, [vw, vh]);
+  }, [vw, vh, revealing, irisX, irisY]);
 
   // Re-render the plane whenever the flight advances or the frame resizes,
   // not only when the pointer moves it.
   useEffect(() => {
     write();
-  }, [write, panHomeT]);
+  }, [write, panHomeT, revealScale]);
+
+  // Hand the pan over at the value the reveal left it on, so the first
+  // drag after the gallery arrives does not snap the plane back to 0,0.
+  useEffect(() => {
+    if (!revealing) return;
+    panRef.current = { x: irisX, y: irisY };
+  }, [revealing, irisX, irisY]);
 
   // Pointer capture is taken only once the gesture is actually a drag.
   //
@@ -184,6 +294,8 @@ export default function InfiniteCanvas({
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
+    // Nothing is draggable while the camera is still pulling back.
+    if (revealing) return;
     draggingRef.current = true;
     capturedRef.current = false;
     movedRef.current = 0;
@@ -263,11 +375,11 @@ export default function InfiniteCanvas({
         style={{
           position: "absolute",
           inset: 0,
-          cursor: dragging ? "grabbing" : "grab",
+          cursor: revealing ? "default" : dragging ? "grabbing" : "grab",
           touchAction: "none",
           // The whole plane grows on the flight home, on top of the
           // viewport fit it always carries.
-          transform: `scale(${(planeScale * fit).toFixed(4)})`,
+          transform: `scale(${(planeScale * revealScale * fit).toFixed(4)})`,
           transformOrigin: "50% 50%",
           willChange: "transform",
         }}
@@ -280,8 +392,8 @@ export default function InfiniteCanvas({
         >
           {/* Nine cells, so whatever the wrapped offset is the viewport is
               covered on every side. */}
-          {[-1, 0, 1].map((row) =>
-            [-1, 0, 1].map((col) => (
+          {rows.map((row) =>
+            cols.map((col) => (
               <div
                 key={`${row}:${col}`}
                 data-canvas="cell"
@@ -293,7 +405,11 @@ export default function InfiniteCanvas({
                   height: CELL_H,
                 }}
               >
-                {/* ART, on the plane and behind the work. */}
+                {/* ART, on the plane and behind the work. Not drawn at
+                    all while the camera is hard in on the iris: the card
+                    covers it, and a 400px face scaled five times is a
+                    large raster for something nobody can see. */}
+                {revealScale < 2.6 && (
                 <div
                   aria-hidden
                   data-canvas="art"
@@ -310,14 +426,21 @@ export default function InfiniteCanvas({
                     lineHeight: 0.86,
                     letterSpacing: "0.005em",
                     color: "#fff",
-                    opacity: 0.13 + homeT * 0.8,
-                    textShadow: glowShadow(0.45 + homeT * 0.55),
+                    opacity:
+                      (0.13 + homeT * 0.8) * clamp01((2.6 - revealScale) / 0.9),
+                    // CONSTANT. The flight home scales this face to
+                    // several thousand pixels, and a four-layer glow that
+                    // changes every frame means re-rendering type that
+                    // size with four blurs, once per cell, per frame.
+                    textShadow: glowShadow(1),
+                    willChange: "opacity, transform",
                     userSelect: "none",
                     pointerEvents: "none",
                   }}
                 >
                   ART
                 </div>
+                )}
 
                 {PIECES.map((piece) => (
                   <div
@@ -338,6 +461,35 @@ export default function InfiniteCanvas({
                     }}
                   >
                     <Placeholder hovered={hovered === `${row}:${col}:${piece.id}`} />
+                    {piece.id === IRIS_PIECE_ID && irisFade > 0.001 && (
+                      // The pupil the camera came out through. It is a
+                      // disc ON the card, at the card's own centre, so
+                      // pulling back shrinks it exactly as it shrinks
+                      // everything else — the match cut holds because
+                      // nothing about it is animated separately.
+                      <div
+                        aria-hidden
+                        data-canvas="iris"
+                        style={{
+                          position: "absolute",
+                          left: "50%",
+                          top: "50%",
+                          width: frame.irisPlane,
+                          height: frame.irisPlane,
+                          marginLeft: -frame.irisPlane / 2,
+                          marginTop: -frame.irisPlane / 2,
+                          borderRadius: "50%",
+                          background: "#000",
+                          boxShadow: `0 0 0 ${(1.2 / revealScale).toFixed(3)}px rgba(255,255,255,${(
+                            0.42 * irisFade
+                          ).toFixed(3)}), 0 0 ${(18 / revealScale).toFixed(
+                            2
+                          )}px rgba(255,255,255,${(0.2 * irisFade).toFixed(3)})`,
+                          opacity: irisFade,
+                          pointerEvents: "none",
+                        }}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -360,7 +512,10 @@ export default function InfiniteCanvas({
           letterSpacing: "0.16em",
           textTransform: "uppercase",
           color: "rgba(255,255,255,0.4)",
-          opacity: (1 - span(p, HOME_FROM - 0.12, HOME_FROM)) * (opened ? 0 : 1),
+          opacity:
+            (1 - span(p, HOME_FROM - 0.12, HOME_FROM)) *
+            (opened ? 0 : 1) *
+            span(revealT, 0.9, 1),
           transition: "opacity 240ms ease",
           pointerEvents: "none",
         }}

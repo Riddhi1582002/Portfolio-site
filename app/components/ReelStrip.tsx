@@ -212,6 +212,12 @@ export default function ReelStrip({ progress }: { progress: number }) {
       >
         {REELS.map((reel, i) => {
           const distance = Math.abs(i - focus);
+          // Only the pieces that can actually be in frame carry their
+          // contents. The row is nearly six viewport-widths long, and a
+          // card that is four screens away still costs its glow layer and
+          // its hover shell every frame.
+          const halfSpan = (vw / 2 + toPx(widths[i]) / 2) / Math.max(1, toPx(1));
+          const near = Math.abs(centres[i] - centreVh) < halfSpan + 8;
           // Neighbours stay visible but step back.
           const dim = Math.max(0.32, 1 - distance * 0.34);
           return (
@@ -222,30 +228,54 @@ export default function ReelStrip({ progress }: { progress: number }) {
                 width: `${widths[i]}vh`,
                 flex: "none",
                 opacity: dim,
-                // Background glow, brightest on the piece in focus. Static,
-                // not cursor-driven: it belongs to the card, not to the
-                // pointer. box-shadow rather than drop-shadow because the
-                // card is an opaque rounded rectangle, so the rectangle IS
-                // its silhouette and there is nothing to trace.
-                boxShadow: `0 0 ${(46 - distance * 12).toFixed(0)}px rgba(255,255,255,${Math.max(
-                  0.05,
-                  0.2 - distance * 0.06
-                ).toFixed(3)}), 0 24px 70px rgba(0,0,0,0.7)`,
                 borderRadius: 14,
-                transition: "opacity 240ms ease, box-shadow 240ms ease",
+                position: "relative",
+                // Promoted, because `dim` is scrubbed by scroll and so
+                // changes every frame: on an unpromoted element that
+                // repaints the whole card each time.
+                willChange: "opacity",
               }}
             >
-              <HoverCard aspect={reel.ratio} radius={14}>
-                {/* Neutral placeholder. Real work replaces the child. */}
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    background: CARD_FACE_BG,
-                    border: CARD_FACE_BORDER,
-                  }}
-                />
-              </HoverCard>
+              {/* THE GLOW, as its own layer.
+                  It used to be a box-shadow on the card whose radius and
+                  alpha were both functions of the card's distance from
+                  focus — so a 70px blur over an 864x486 card was
+                  re-rasterised every frame, eight times over, and a
+                  `transition` on it restarted every frame as well. That
+                  one property took the whole strip beat to about 1fps.
+                  The shadow is constant now and only the layer's opacity
+                  moves, which the compositor does without repainting. */}
+              {near && (
+                <>
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      borderRadius: 14,
+                      boxShadow:
+                        "0 0 46px rgba(255,255,255,0.2), 0 24px 70px rgba(0,0,0,0.7)",
+                      opacity: Math.max(0.25, 1 - distance * 0.32),
+                      willChange: "opacity",
+                      pointerEvents: "none",
+                    }}
+                  />
+                  <HoverCard aspect={reel.ratio} radius={14}>
+                    {/* Neutral placeholder. Real work replaces the child. */}
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        background: CARD_FACE_BG,
+                        border: CARD_FACE_BORDER,
+                      }}
+                    />
+                  </HoverCard>
+                </>
+              )}
+              {!near && (
+                <div style={{ width: "100%", aspectRatio: String(reel.ratio) }} />
+              )}
             </div>
           );
         })}

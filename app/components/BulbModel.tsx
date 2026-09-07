@@ -139,9 +139,23 @@ export default function BulbModel({
         alpha: true,
         antialias: true,
         premultipliedAlpha: false,
+        powerPreference: "high-performance",
       });
       renderer.setClearColor(0x000000, 0);
-      renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+      // 1.5 rather than 2. The bulb is a soft object with no fine detail
+      // to lose, and the transmissive glass makes every pixel expensive
+      // twice over — see the resolution scale below.
+      renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+      // Transmission costs a SECOND render of the scene into a target
+      // that the glass then samples. At full resolution that doubles the
+      // frame, on the frame the rest of the page is already busiest.
+      // Half resolution is invisible through a refracting envelope.
+      const withTransmissionScale = renderer as typeof renderer & {
+        transmissionResolutionScale?: number;
+      };
+      if ("transmissionResolutionScale" in withTransmissionScale) {
+        withTransmissionScale.transmissionResolutionScale = 0.5;
+      }
       // Filmic response. A tungsten filament is several stops brighter
       // than anything else in frame; with linear output it clips to a flat
       // white patch and the glass around it goes with it.
