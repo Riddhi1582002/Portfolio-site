@@ -32,17 +32,19 @@ export const REELS: Reel[] = [
 ];
 
 // One height for every card; widths follow from the ratios above.
-const CARD_H_VH = 46;
+const CARD_H_VH = 54;
 // Centre of the strip, as a share of viewport height. Below the middle, so
 // the top third stays clear for the details and there is room underneath.
-const STRIP_CENTRE_VH = 63;
+const STRIP_CENTRE_VH = 61;
 const GAP_VH = 3.2;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
 
+export { CARD_H_VH, STRIP_CENTRE_VH, GAP_VH };
+
 /** Card widths and their centre offsets along the strip, in vh units. */
-function layout(reels: Reel[]) {
+export function layout(reels: Reel[]) {
   const widths = reels.map((r) => CARD_H_VH * r.ratio);
   const centres: number[] = [];
   let x = 0;
@@ -148,6 +150,7 @@ export default function ReelStrip({ progress }: { progress: number }) {
           return (
             <div
               key={reel.id}
+              data-strip-card={i}
               style={{
                 width: `${widths[i]}vh`,
                 flex: "none",
