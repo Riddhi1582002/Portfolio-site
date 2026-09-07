@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import NarrationLine from "./NarrationLine";
 import BulbModel from "./BulbModel";
 import ArcCarousel, { arcPresence } from "./ArcCarousel";
-import CameraRoll, { lineWidthPx } from "./CameraRoll";
+import CameraRoll, { lineWidthPx, lineGlow } from "./CameraRoll";
 import {
   NARRATION_COLOR,
   NARRATION_GLOW,
@@ -43,13 +43,13 @@ const TRAVEL_VH = 150;
 // from across a room rather than the thing the whole beat arrives at.
 const BULB_VH_MAX = 78;
 const BULB_VW_MAX = 66;
-// How far down its own box the cap sits once BulbModel has lifted the
-// model's wire out of frame. The cord ends here, so the bulb hangs off the
-// line instead of appearing below where the line stops.
-// Where the cap's top edge sits down the bulb's own box. The cord runs to
-// exactly there, so the line meets the cap and the bulb hangs off it.
-// Re-measured against the supplied cordless model.
-const CAP_RATIO = 0.2;
+// Where the model's TOP edge sits down its own square box. The bulb hangs
+// upside down now, so that edge is the glass tip and it is what the line
+// comes down to meet. The box is square and the model is framed to 2.4
+// units inside a view that is 2*4.2*tan(17.5deg) = 2.65 units tall, so the
+// model fills 90.6% of the box and the empty band above it is half of the
+// remainder. Measured against the render, not assumed.
+const CAP_RATIO = 0.052;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
@@ -147,9 +147,13 @@ export default function CordSection({
           // did that with real geometry. This is the line it arrived at.
           width: lineWidthPx(viewport.vh),
           transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
+          // A lit filament does not make a flat white stripe of the wire
+          // it hangs on: the wire is brightest where the light reaches it
+          // and cools off up into the dark. The gradient is the falloff;
+          // the layered shadow below is the air around it.
           background:
-            "linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 6%, #fff 94%, rgba(255,255,255,0.85) 100%)",
-          boxShadow: `0 0 ${(18 + roll * 26).toFixed(0)}px rgba(255,255,255,${(0.16 + roll * 0.3).toFixed(2)})`,
+            "linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.92) 5%, #fff 55%, rgb(255,250,240) 88%, rgb(255,242,220) 100%)",
+          boxShadow: lineGlow(0.42 + roll * 0.5),
           // Fades up exactly as the camera's edge-on line fades out, and
           // dims later with the bulb as the arc arrives — the cord runs
           // down the centre of the frame, which is where the card in focus
@@ -163,6 +167,32 @@ export default function CordSection({
           // covers that thread and ends on the cap itself.
           zIndex: 3,
           willChange: "transform, width",
+        }}
+      />
+
+      {/* The last stretch of the line, where the bulb's own light reaches
+          it. Separate element because a box-shadow is one colour for the
+          whole edge — the warmth has to fall off ALONG the line, and only
+          once the bulb is actually lit. */}
+      <div
+        aria-hidden
+        data-cord-spill
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: `${(BULB_TOP_VH + bulbSizeVh * CAP_RATIO - 46).toFixed(2)}vh`,
+          height: "46vh",
+          width: lineWidthPx(viewport.vh),
+          transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
+          background:
+            "linear-gradient(to bottom, rgba(255,214,150,0) 0%, rgba(255,214,150,0.45) 62%, rgba(255,200,130,0.9) 100%)",
+          boxShadow: `0 0 10px rgba(255,206,140,${(0.5 * litGlow).toFixed(3)}), 0 0 34px rgba(255,190,110,${(0.28 * litGlow).toFixed(3)}), 0 0 96px rgba(255,178,96,${(0.13 * litGlow).toFixed(3)})`,
+          opacity: handoff * litGlow * (1 - 0.78 * presence),
+          borderRadius: 2,
+          mixBlendMode: "screen",
+          zIndex: 3,
+          pointerEvents: "none",
+          willChange: "transform, opacity",
         }}
       />
 
@@ -197,16 +227,24 @@ export default function CordSection({
           style={{
             position: "absolute",
             left: "50%",
-            top: "62%",
-            width: "260%",
+            // Centred on the FILAMENT, not on the model's box. Hung
+            // upside down the cap is at the top and the glass below it,
+            // so the hot spot sits a little past the middle.
+            top: "52%",
+            width: "300%",
             aspectRatio: "1",
             transform: "translate(-50%, -50%)",
             borderRadius: "50%",
-            background: `radial-gradient(circle, rgba(255,236,200,${(0.30 * litGlow).toFixed(
-              3
-            )}) 0%, rgba(255,226,170,${(0.12 * litGlow).toFixed(
-              3
-            )}) 26%, rgba(255,220,160,0) 62%)`,
+            // Three falloffs rather than one. A single gradient reads as a
+            // painted disc; light in air has a small intense core, a
+            // shoulder, and a long faint skirt, and the eye reads the
+            // shoulder as distance.
+            background: [
+              `radial-gradient(circle, rgba(255,244,222,${(0.5 * litGlow).toFixed(3)}) 0%, rgba(255,238,208,0) 11%)`,
+              `radial-gradient(circle, rgba(255,226,178,${(0.26 * litGlow).toFixed(3)}) 0%, rgba(255,220,166,0) 27%)`,
+              `radial-gradient(circle, rgba(255,206,140,${(0.11 * litGlow).toFixed(3)}) 0%, rgba(255,196,124,0) 58%)`,
+            ].join(", "),
+            mixBlendMode: "screen",
             pointerEvents: "none",
             zIndex: -1,
           }}
