@@ -55,36 +55,55 @@ export default function NarrationLine({
 
   let inkIndex = -1;
 
+  // Split into WORDS first, and let each word be an inline-block that
+  // cannot break inside itself. Rendering every character as its own
+  // inline-block let the browser wrap mid-word — which is how "toy" came
+  // out as "t" on one line and "oy" on the next.
+  const words: string[] = [];
+  let current = "";
+  for (const ch of chars) {
+    if (ch === " ") {
+      if (current) words.push(current);
+      words.push(" ");
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current) words.push(current);
+
   return (
-    <div
-      className={className}
-      // Words wrap; characters inside a word do not.
-      style={{ ...style }}
-    >
-      {chars.map((ch, i) => {
-        if (ch === " ") return <span key={i}> </span>;
-        inkIndex += 1;
-        const start =
-          inkCount > 1 ? (inkIndex / (inkCount - 1)) * staggerBudget : 0;
-        const t = easeOutCubic(clamp01((lead - start) / CHAR_SPAN));
-        const settled = t >= 0.999;
+    <div className={className} style={{ ...style }}>
+      {words.map((word, wi) => {
+        if (word === " ") return <span key={`s${wi}`}> </span>;
         return (
-          <span
-            key={i}
-            style={{
-              display: "inline-block",
-              // A settled character carries no filter and no transform at
-              // all — no sub-pixel softening, nothing left in the layer.
-              ...(settled
-                ? null
-                : {
-                    filter: `blur(${((1 - t) * MAX_BLUR_PX).toFixed(2)}px)`,
-                    transform: `translateX(${((1 - t) * MAX_OFFSET_EM).toFixed(3)}em)`,
-                    opacity: MIN_OPACITY + (1 - MIN_OPACITY) * t,
-                  }),
-            }}
-          >
-            {ch}
+          <span key={wi} style={{ display: "inline-block", whiteSpace: "nowrap" }}>
+            {Array.from(word).map((ch, ci) => {
+              inkIndex += 1;
+              const start =
+                inkCount > 1 ? (inkIndex / (inkCount - 1)) * staggerBudget : 0;
+              const t = easeOutCubic(clamp01((lead - start) / CHAR_SPAN));
+              const settled = t >= 0.999;
+              return (
+                <span
+                  key={ci}
+                  style={{
+                    display: "inline-block",
+                    // A settled character carries no filter and no
+                    // transform at all — nothing left in the layer.
+                    ...(settled
+                      ? null
+                      : {
+                          filter: `blur(${((1 - t) * MAX_BLUR_PX).toFixed(2)}px)`,
+                          transform: `translateX(${((1 - t) * MAX_OFFSET_EM).toFixed(3)}em)`,
+                          opacity: MIN_OPACITY + (1 - MIN_OPACITY) * t,
+                        }),
+                  }}
+                >
+                  {ch}
+                </span>
+              );
+            })}
           </span>
         );
       })}

@@ -21,15 +21,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import NarrationLine from "./NarrationLine";
-import {
-  REELS,
-  layout,
-  CARD_H_VH,
-  STRIP_CENTRE_VH,
-  stripEntryScale,
-  stripEntryShift,
-  stripEntryLift,
-} from "./ReelStrip";
+import { REELS, layout, CARD_H_VH, STRIP_CENTRE_VH } from "./ReelStrip";
 import {
   NARRATION_COLOR,
   NARRATION_FONT_SIZE,
@@ -65,8 +57,8 @@ const ARRIVE_STAGGER = 0.055;
 // its neighbour after that neighbour had settled, which is the crossing
 // that read as a glitch mid-spread.
 const SPREAD_STAGGER = 0.026;
-// Where the spread ends and the push-in begins, within `arrange`.
-const SPREAD_END = 0.66;
+// The spread is the whole of `arrange` now.
+const SPREAD_END = 1;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -106,16 +98,6 @@ export default function DepthCards({
   const stripOffset = vw / 2 - toPx(centres[0]);
   const stripTop = toPx(STRIP_CENTRE_VH);
   const stripH = toPx(CARD_H_VH);
-
-  // The push-in: the row arrives pulled back and centred, then comes up to
-  // full size. At push = 1 every offset is zero, which is what makes the
-  // last frame here identical to ReelStrip's first.
-  const push = easeInOutCubic(clamp01((arr - SPREAD_END) / (1 - SPREAD_END)));
-  const s = mix(stripEntryScale(vw, vh), 1, push);
-  const shiftX = stripEntryShift(vw, vh) * (1 - push);
-  const liftY = stripEntryLift(vh) * (1 - push);
-  const pivotX = vw / 2;
-  const pivotY = stripTop;
 
   const hoverable = arr < 0.02 && lead > 0.85;
 
@@ -169,12 +151,16 @@ export default function DepthCards({
           const pwBox = toPx(widths[i]);
           const rawX = stripOffset + toPx(centres[i]) - pwBox / 2;
           const rawY = stripTop - stripH / 2;
-          const boxX = pivotX + (rawX - pivotX) * s + shiftX;
-          const boxY = pivotY + (rawY - pivotY) * s + liftY;
-          const boxW = pwBox * s;
-          const boxH = stripH * s;
-          const elW = (portrait ? stripH : pwBox) * s;
-          const elH = (portrait ? pwBox : stripH) * s;
+          // Straight to the strip's own frame: card 0 holds the size it
+          // will keep, card 1's left edge shows at the right of the frame,
+          // and the rest simply leave. There is no assembled-row stop on
+          // the way — that stop WAS the second strip.
+          const boxX = rawX;
+          const boxY = rawY;
+          const boxW = pwBox;
+          const boxH = stripH;
+          const elW = portrait ? stripH : pwBox;
+          const elH = portrait ? pwBox : stripH;
           const px = boxX + boxW / 2 - elW / 2;
           const py = boxY + boxH / 2 - elH / 2;
           const stripDim = Math.max(0.32, 1 - i * 0.34);

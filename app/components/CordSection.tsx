@@ -201,12 +201,16 @@ export default function CordSection({
       {[
         {
           key: "n1",
+          side: "left" as const,
+          topVh: 44,
           text: "Photoshop came into my life as another toy I played with when I was a kid.",
           focus: span(p, LINE_1[0], LINE_1[1] - 0.06),
           opacity: Math.min(n1In, n1Out),
         },
         {
           key: "n2",
+          side: "right" as const,
+          topVh: 56,
           text: "Now, it's also my profession.",
           focus: span(p, LINE_2[0], LINE_2[1] - 0.04),
           opacity: Math.min(n2In, n2Out),
@@ -217,10 +221,11 @@ export default function CordSection({
           data-narration
           style={{
             position: "absolute",
-            right: "56%",
-            top: "44vh",
+            ...(beat.side === "left"
+              ? { right: "56%", textAlign: "right" as const }
+              : { left: "56%", textAlign: "left" as const }),
+            top: `${beat.topVh}vh`,
             width: "34vw",
-            textAlign: "right",
             fontFamily: sans,
             fontWeight: NARRATION_WEIGHT,
             fontSize: "clamp(18px, 2vw, 40px)",

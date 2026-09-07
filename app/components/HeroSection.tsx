@@ -17,6 +17,8 @@ import { SplitText } from "gsap/SplitText";
 import { Flip } from "gsap/Flip";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
 import DepthCards from "./DepthCards";
+import ReelStrip from "./ReelStrip";
+import CordSection from "./CordSection";
 import NarrationLine from "./NarrationLine";
 import "./hero-fonts.css";
 import "./hero-hint.css";
@@ -187,7 +189,22 @@ export const STAGE_H = 1080;
 //   spread+push  149vh  (the fan opens into the row and the row comes up
 //                       to full size — one move, ending exactly on
 //                       ReelStrip's steady frame)
-const SCROLL_LENGTH_VH = 480;
+// ONE TRACK, ONE PINNED PANE, for the hero, the strip and the cord.
+//
+// They used to be three consecutive sections, each with its own sticky
+// pane. Consecutive sticky panes always overlap: for the 100vh in which
+// the outgoing one unsticks and scrolls up, the incoming one is already
+// pinned below it and BOTH are on screen. That is what produced a second
+// strip under the first, and a third under that — the seams were pixel
+// exact and it made no difference, because the problem was never the seam.
+// There is no seam now: it is one pane and one progress.
+const HERO_VH = 480;
+const REELS_VH = 900;
+const CORD_VH = 1200;
+const SCROLL_LENGTH_VH = HERO_VH + REELS_VH + CORD_VH;
+// Beat boundaries as shares of the whole track.
+const HERO_SPAN = HERO_VH / SCROLL_LENGTH_VH;
+const REELS_SPAN_END = (HERO_VH + REELS_VH) / SCROLL_LENGTH_VH;
 const HERO_BEATS_END = 0.397;
 // Where the camera push finishes, as a share of the post-beats tail.
 const ZOOM_END = 0.349;
@@ -228,7 +245,10 @@ const CAMERA_MAX_ZOOM = 46;
 // scrollY makes the animation advance in visible chunks — the single
 // biggest reason the sequence read as stepped rather than continuous.
 // Low enough that the motion still feels directly attached to the wheel.
-const SCROLL_SMOOTH_TAU = 0.085;
+// Was 0.085, which on the A push read as the image trailing the wheel
+// rather than as easing. Short enough now to feel attached to the input,
+// long enough that a wheel notch is still a glide and not a step.
+const SCROLL_SMOOTH_TAU = 0.045;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
@@ -529,10 +549,15 @@ export default function HeroSection() {
 
   // The beats play across the first HERO_BEATS_END of the track; the rest
   // of it is the camera move. One scroll progress, two consumers.
-  const p = SCROLL_TO_P(clamp01(scrollP / HERO_BEATS_END));
+  // The hero's own progress through its slice of the shared track.
+  const heroP = clamp01(scrollP / HERO_SPAN);
+  const reelsP = clamp01((scrollP - HERO_SPAN) / (REELS_SPAN_END - HERO_SPAN));
+  const cordP = clamp01((scrollP - REELS_SPAN_END) / (1 - REELS_SPAN_END));
+
+  const p = SCROLL_TO_P(clamp01(heroP / HERO_BEATS_END));
   // THE transition progress. Camera zoom, camera position, reel x, reel
   // opacity and reel entrance scale are all functions of this one value.
-  const transitionP = clamp01((scrollP - HERO_BEATS_END) / (1 - HERO_BEATS_END));
+  const transitionP = clamp01((heroP - HERO_BEATS_END) / (1 - HERO_BEATS_END));
 
   const breath = Math.sin(t * 0.055 * Math.PI * 2) * 0.014;
   const drift = Math.sin(t * 0.04 * Math.PI * 2) * 10;
@@ -732,6 +757,11 @@ export default function HeroSection() {
             // arrive from far back on Z while the camera is still inside
             // the A, so the letter has to pass over them as it leaves.
             zIndex: 2,
+            // ...but it must stop SWALLOWING the pointer once the letter
+            // has gone. The stage covers the pane, so while it was
+            // interactive the cards beneath it never received a mouseenter
+            // and the fan simply did not respond to hover.
+            pointerEvents: transitionP > 0.04 ? "none" : "auto",
           }}
         >
           {/* CAMERA. The whole composition is scaled about a point inside
@@ -942,6 +972,10 @@ export default function HeroSection() {
             It starts at 85% of the A push, so the two overlap — the stack
             is already coming forward while the last edges of the letter
             are still leaving frame. Same single progress drives both. */}
+        {/* Only while the hero owns the frame. Past its slice the strip
+            draws these same eight cards in the same places, and leaving
+            both mounted meant drawing them twice. */}
+        {scrollP <= HERO_SPAN + 0.002 && (
         <DepthCards
           progress={clamp01(
             (transitionP - CARDS_START) / (ARRANGE_START - CARDS_START)
@@ -949,6 +983,22 @@ export default function HeroSection() {
           arrange={clamp01((transitionP - ARRANGE_START) / (1 - ARRANGE_START))}
           sans={SANS}
         />
+        )}
+
+        {/* The strip, in the SAME pane. The fan hands over to it at the
+            hero's last frame; nothing scrolls between them. */}
+        {scrollP > HERO_SPAN + 0.002 && scrollP < REELS_SPAN_END + 0.004 && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
+            <ReelStrip progress={reelsP} />
+          </div>
+        )}
+
+        {/* And the cord beat, same pane again. */}
+        {scrollP > REELS_SPAN_END - 0.004 && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
+            <CordSection progress={cordP} sans={SANS} />
+          </div>
+        )}
       </div>
     </div>
   );
