@@ -43,6 +43,49 @@ const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
 
 export { CARD_H_VH, STRIP_CENTRE_VH, GAP_VH };
 
+// How much of the strip's scroll the entry occupies: the row arrives
+// already assembled but pulled back, and pushes in to full size before
+// the scrub starts.
+export const STRIP_ENTRY = 0.16;
+
+/**
+ * How far left the row is nudged while it is still pulled back, so the
+ * assembled run sits in the middle of the frame instead of hanging off
+ * card 0 to the right. Eases to zero as the entry finishes, which is what
+ * keeps the hand-off from the fan exact.
+ */
+export function stripEntryShift(vw: number, vh: number) {
+  const { centres, total } = layout(REELS);
+  // Centre the WHOLE assembled run, not just its first few pieces: at the
+  // entry scale all eight are in frame, so anchoring on card 0 left the
+  // row hanging off to the right.
+  const runCentreVh = total / 2;
+  return -(runCentreVh - centres[0]) * (vh / 100) * stripEntryScale(vw, vh);
+}
+
+/** Lift while the row is pulled back, so it sits centred rather than low. */
+export function stripEntryLift(vh: number) {
+  return -((STRIP_CENTRE_VH - 50) / 100) * vh;
+}
+
+/**
+ * The scale the strip arrives at. Chosen so the first four pieces are all
+ * in frame, because that is what makes the fan's arrival read as "these
+ * became a row" rather than as one card filling the screen. The pivot is
+ * card 0's centre, which is the point the strip holds fixed.
+ */
+export function stripEntryScale(vw: number, vh: number) {
+  const { widths, centres } = layout(REELS);
+  const toPx = (v: number) => (v / 100) * vh;
+  const rightReach = toPx(centres[3] + widths[3] / 2 - centres[0]);
+  const leftReach = toPx(widths[0] / 2);
+  return Math.min(
+    1,
+    (vw * 0.47) / Math.max(1, rightReach),
+    (vw * 0.47) / Math.max(1, leftReach)
+  );
+}
+
 /** Card widths and their centre offsets along the strip, in vh units. */
 export function layout(reels: Reel[]) {
   const widths = reels.map((r) => CARD_H_VH * r.ratio);
@@ -72,9 +115,17 @@ export default function ReelStrip({ progress }: { progress: number }) {
     return () => window.removeEventListener("resize", read);
   }, []);
 
+  // The entry: the assembled row pushes in from the scale the fan handed
+  // it over at. The scrub only starts once it has arrived, so the first
+  // thing this section does is finish the previous section's sentence.
+  const entryT = easeInOutSine(clamp01(p / STRIP_ENTRY));
+  const scale = stripEntryScale(vw, vh) + (1 - stripEntryScale(vw, vh)) * entryT;
+
   // Which card is centred. Eased so each card settles rather than sliding
   // past at constant speed.
-  const focus = easeInOutSine(p) * (REELS.length - 1);
+  const focus =
+    easeInOutSine(clamp01((p - STRIP_ENTRY) / (1 - STRIP_ENTRY))) *
+    (REELS.length - 1);
   const lo = Math.floor(focus);
   const hi = Math.min(REELS.length - 1, lo + 1);
   const frac = focus - lo;
@@ -104,6 +155,8 @@ export default function ReelStrip({ progress }: { progress: number }) {
           top: `${STRIP_CENTRE_VH - CARD_H_VH / 2 - 14}vh`,
           textAlign: "center",
           pointerEvents: "none",
+          opacity: entryT,
+          transition: "opacity 200ms ease",
         }}
       >
         <div
@@ -136,7 +189,13 @@ export default function ReelStrip({ progress }: { progress: number }) {
           position: "absolute",
           top: `${STRIP_CENTRE_VH}vh`,
           left: 0,
-          transform: `translate3d(${offsetPx.toFixed(1)}px, -50%, 0)`,
+          // Scaled about the focused card's own centre, which is the point
+          // offsetPx has already parked at the middle of the frame — so the
+          // entry pushes in without the row sliding sideways.
+          transformOrigin: `${toPx(centreVh).toFixed(1)}px ${(toPx(CARD_H_VH) / 2).toFixed(1)}px`,
+          transform: `translate3d(${(offsetPx + stripEntryShift(vw, vh) * (1 - entryT)).toFixed(
+            1
+          )}px, calc(-50% + ${(stripEntryLift(vh) * (1 - entryT)).toFixed(1)}px), 0) scale(${scale.toFixed(4)})`,
           display: "flex",
           alignItems: "center",
           gap: `${GAP_VH}vh`,

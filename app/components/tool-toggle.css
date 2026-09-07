@@ -44,10 +44,8 @@
   overflow: hidden;
   background: var(--toggle-surface);
   box-shadow:
-    -8px -4px 8px 0px var(--toggle-light),
-    8px 4px 12px 0px var(--toggle-shadow),
-    4px 4px 4px 0px var(--toggle-shadow) inset,
-    -4px -4px 4px 0px var(--toggle-light) inset;
+    3px 3px 5px 0px var(--toggle-shadow) inset,
+    -3px -3px 5px 0px var(--toggle-light) inset;
   transition: background-color 0.4s ease, box-shadow 0.4s ease;
 }
 
@@ -83,8 +81,8 @@
   border-radius: 15px;
   transform: translate3d(-75%, 0, 0);
   box-shadow:
-    -8px -4px 8px 0px var(--toggle-light),
-    8px 4px 12px 0px var(--toggle-shadow);
+    0 1px 2px 0 rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.35) inset;
 }
 
 .tt-state:checked ~ .tt-indicator {

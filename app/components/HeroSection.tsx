@@ -178,20 +178,20 @@ export const STAGE_H = 1080;
 // Budget, in viewport heights of actual scrolling (track minus the 100vh
 // sticky pane), so "a scroll" means one viewport height:
 //   beats        151vh  (unchanged, the pacing already verified)
-//   A push       120vh  (was 200vh — the push read as a long haul rather
-//                        than an entrance, so it is now a firm 2 scrolls)
+//   A push        80vh  (was 200vh, then 120vh — still read as a haul.
+//                        Two scrolls of a laptop viewport, no more.)
 //   fan settles   30vh  (overlapping the tail of the push)
 //   arrange      199vh  (~2 scrolls: the fan becomes the strip)
 const SCROLL_LENGTH_VH = 600;
 const HERO_BEATS_END = 0.302;
 // Where the camera push finishes, as a share of the post-beats tail.
-const ZOOM_END = 0.344;
+const ZOOM_END = 0.229;
 // The stack starts coming forward at 80% of the push, so the fan is
 // already on its way in while the last of the letter is leaving frame.
 const CARDS_START = ZOOM_END * 0.8;
 // The fan holds from here, then arranges itself into the strip across the
 // remaining two scrolls.
-const ARRANGE_START = 0.43;
+const ARRANGE_START = 0.38;
 
 // Camera push into the A's triangular negative space.
 //

@@ -222,7 +222,7 @@ const PAGE_MAX = "mx-auto w-full max-w-[1500px]";
 const LABEL_STYLE = {
   fontFamily: SANS,
   fontWeight: 700,
-  fontSize: "clamp(14px, 1.15vw, 18px)",
+  fontSize: "clamp(15px, 1.32vw, 21px)",
   letterSpacing: "0.17em",
   textTransform: "uppercase",
   color: "#fff",
@@ -724,7 +724,7 @@ export default function AboutSection() {
             what changed is where the space inside it goes: the columns
             take it and the gap gives it up, so the portrait sits beside
             the copy instead of across a void from it. */}
-        <div className="mt-20 flex flex-col gap-12 sm:mt-24 sm:grid sm:grid-cols-[minmax(0,1.12fr)_minmax(0,1fr)] sm:items-start sm:gap-[clamp(32px,4vw,72px)]">
+        <div className="mt-20 flex flex-col gap-12 sm:mt-24 sm:grid sm:grid-cols-[minmax(0,1.78fr)_minmax(0,1fr)] sm:items-start sm:gap-[clamp(32px,4vw,72px)]">
           <div ref={bodyRevealRef} className="min-w-0">
             <p style={LABEL_STYLE}>{ABOUT_LABEL}</p>
 
@@ -743,8 +743,8 @@ export default function AboutSection() {
                   fontWeight: i === 0 ? 400 : 300,
                   fontSize:
                     i === 0
-                      ? "clamp(17px, 1.42vw, 22px)"
-                      : "clamp(15px, 1.02vw, 17px)",
+                      ? "clamp(19px, 1.62vw, 26px)"
+                      : "clamp(16px, 1.2vw, 20px)",
                   lineHeight: i === 0 ? 1.42 : 1.78,
                   letterSpacing: i === 0 ? "0.005em" : "0.045em",
                   color: i === 0 ? "rgba(255,255,255,0.94)" : "rgba(255,255,255,0.7)",
@@ -762,7 +762,7 @@ export default function AboutSection() {
           {/* Tilt plus the glare strips the tilt produces. The same
               treatment every card and placeholder on the site gets. */}
           <HoverCard
-            className="w-[clamp(180px,58vw,260px)] shrink-0 self-center sm:mt-[3.2rem] sm:w-full sm:self-start"
+            className="w-[clamp(180px,58vw,260px)] shrink-0 self-center sm:w-full sm:self-start"
             aspect={1}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}

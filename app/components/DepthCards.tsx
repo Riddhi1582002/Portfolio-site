@@ -28,6 +28,9 @@ import {
   layout,
   CARD_H_VH,
   STRIP_CENTRE_VH,
+  stripEntryScale,
+  stripEntryShift,
+  stripEntryLift,
 } from "./ReelStrip";
 import {
   NARRATION_COLOR,
@@ -53,8 +56,9 @@ const STEP_Y = -7;
 // Shared yaw. Positive brings each card's LEFT edge toward the camera,
 // which is the face we see the light catch in the reference.
 const YAW_DEG = 24;
-// Card thickness, in px at the reference width.
-const THICK = 16;
+// Card thickness, in px at the reference width. Thick enough that the lit
+// side is a face you read rather than a hairline.
+const THICK = 22;
 // Where the fan sits in the frame: right of centre and a little low, so
 // the narration has the upper middle to itself.
 const FAN_CX = 0.6;
@@ -82,6 +86,7 @@ export default function DepthCards({
   const lead = clamp01(progress);
   const arr = easeInOutCubic(clamp01(arrange));
   const [vp, setVp] = useState({ vw: 1440, vh: 900 });
+  const [hover, setHover] = useState<number | null>(null);
 
   useEffect(() => {
     const read = () => setVp({ vw: window.innerWidth, vh: window.innerHeight });
@@ -100,6 +105,15 @@ export default function DepthCards({
   const stripOffset = vw / 2 - toPx(centres[0]);
   const stripTop = toPx(STRIP_CENTRE_VH);
   const stripH = toPx(CARD_H_VH);
+  // The strip is handed over at the same reduced scale ReelStrip enters
+  // at, so the fan resolves into a ROW you can see rather than into one
+  // card filling the frame. Everything scales about card 0's centre,
+  // which is the point both sections park at the middle of the screen.
+  const entryS = stripEntryScale(vw, vh);
+  const entryShift = stripEntryShift(vw, vh);
+  const entryLift = stripEntryLift(vh);
+  const pivotX = vw / 2;
+  const pivotY = stripTop;
 
   return (
     <div
@@ -139,19 +153,43 @@ export default function DepthCards({
           const entryZ = -2400 * k * (1 - t);
 
           // --- strip pose ---
-          const pw = toPx(widths[i]);
-          const px = stripOffset + toPx(centres[i]) - pw / 2;
-          const py = stripTop - stripH / 2;
+          // Portrait pieces do not squash into portrait: the card TURNS.
+          // The element stays a landscape slab and rotates a quarter turn,
+          // so its bounding box becomes the portrait box the strip wants
+          // and the piece reads as having been rotated into place.
+          const portrait = REELS[i].ratio < 1;
+          const pwBox = toPx(widths[i]);
+          const phBox = stripH;
+          // element size before the quarter turn
+          const pw = portrait ? phBox : pwBox;
+          const ph = portrait ? pwBox : phBox;
+          const spin = portrait ? 90 : 0;
+
+          const rawX = stripOffset + toPx(centres[i]) - pwBox / 2;
+          const rawY = stripTop - phBox / 2;
+          // scaled about card 0's centre, exactly as ReelStrip does it
+          const boxX = pivotX + (rawX - pivotX) * entryS + entryShift;
+          const boxY = pivotY + (rawY - pivotY) * entryS + entryLift;
+          const boxW = pwBox * entryS;
+          const boxH = phBox * entryS;
+          // the element's own size is the box, un-turned
+          const elW = (portrait ? phBox : pwBox) * entryS;
+          const elH = (portrait ? pwBox : phBox) * entryS;
+          // a turned element is centred on the same box centre
+          const px = boxX + boxW / 2 - elW / 2;
+          const py = boxY + boxH / 2 - elH / 2;
           const distance = i; // ReelStrip's focus is card 0 on its first frame
           const stripDim = Math.max(0.32, 1 - distance * 0.34);
 
           // --- blend ---
-          const w = mix(sw, pw, arr);
-          const h = mix(sh, stripH, arr);
+          const hovered = hover === i && arr < 0.02 && t > 0.85;
+          const w = mix(sw, elW, arr);
+          const h = mix(sh, elH, arr);
           const x = mix(sx, px, arr);
           const y = mix(sy, py, arr);
-          const z = mix(sz + entryZ, 0, arr);
+          const z = mix(sz + entryZ, 0, arr) + (hovered ? 70 * k : 0);
           const yaw = mix(YAW_DEG, 0, arr);
+          const roll = mix(0, spin, arr);
           const thick = mix(THICK * k, 0, arr);
           const opacity = mix(t, stripDim, arr);
 
@@ -163,14 +201,25 @@ export default function DepthCards({
             height: h,
             transform: `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, ${z.toFixed(
               2
-            )}px) rotateY(${yaw.toFixed(2)}deg)`,
+            )}px) rotateY(${yaw.toFixed(2)}deg) rotateZ(${roll.toFixed(2)}deg)`,
             transformStyle: "preserve-3d",
             opacity,
             willChange: "transform, opacity",
+            pointerEvents: arr < 0.02 && t > 0.85 ? "auto" : "none",
+            transition: "filter 260ms ease",
+            filter: hovered
+              ? `brightness(1.5) drop-shadow(0 0 ${34 * k}px rgba(255,255,255,0.3))`
+              : "none",
           };
 
           return (
-            <div key={REELS[i].id} data-depth-card={i} style={wrap}>
+            <div
+              key={REELS[i].id}
+              data-depth-card={i}
+              style={wrap}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover((v) => (v === i ? null : v))}
+            >
               {/* The face. Lit from the right, so the fan has a direction
                   to it and the cards behind fall away into the dark. */}
               <div
@@ -178,13 +227,16 @@ export default function DepthCards({
                   position: "absolute",
                   inset: 0,
                   borderRadius: mix(6, 14, arr),
-                  background: `linear-gradient(100deg,
-                    rgba(6,6,8,1) 0%,
-                    rgba(11,12,14,1) 52%,
-                    rgba(19,20,24,1) 86%,
-                    rgba(31,33,39,1) 100%)`,
-                  border: "1px solid rgba(255,255,255,0.055)",
-                  boxShadow: `0 ${26 * k}px ${58 * k}px rgba(0,0,0,0.8)`,
+                  background: `linear-gradient(102deg,
+                    rgba(13,14,17,1) 0%,
+                    rgba(24,26,31,1) 40%,
+                    rgba(44,47,55,1) 74%,
+                    rgba(78,83,95,1) 94%,
+                    rgba(103,109,124,1) 100%)`,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  boxShadow: `0 ${26 * k}px ${58 * k}px rgba(0,0,0,0.8),
+                    inset 0 1px 0 rgba(255,255,255,0.34),
+                    inset 0 -1px 0 rgba(0,0,0,0.5)`,
                   backfaceVisibility: "hidden",
                 }}
               />
@@ -202,9 +254,10 @@ export default function DepthCards({
                     transformOrigin: "left center",
                     transform: "rotateY(-90deg)",
                     background: `linear-gradient(to left,
-                      rgba(196,201,214,0.98) 0%,
-                      rgba(120,125,137,0.95) 40%,
-                      rgba(52,55,63,0.95) 100%)`,
+                      rgba(232,236,246,1) 0%,
+                      rgba(168,174,188,1) 34%,
+                      rgba(86,91,102,1) 72%,
+                      rgba(44,47,54,1) 100%)`,
                     backfaceVisibility: "hidden",
                   }}
                 />
