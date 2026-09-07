@@ -2,6 +2,10 @@ import HeroVideoBackground from "./components/HeroVideoBackground";
 import HeroSection from "./components/HeroSection";
 import ReelSection from "./components/ReelSection";
 import CordSectionWrapper from "./components/CordSectionWrapper";
+import {
+  PencilSectionWrapper,
+  CanvasSectionWrapper,
+} from "./components/StageFourWrappers";
 
 export default function Home() {
   return (
@@ -23,8 +27,14 @@ export default function Home() {
           narration beats, and arrives at the bulb. */}
       <CordSectionWrapper />
 
-      {/* NEXT: LAYERS. The arc of work around the bulb, then the pencil
-          beat, the eye match cut and the infinite canvas. Plugs in here. */}
+      {/* The pencil beat, and the match cut out of it: a dark disc on the
+          placeholder grows past the frame and the page is inside it. */}
+      <PencilSectionWrapper />
+
+      {/* The infinite canvas. A plane the reader drags, with ART on it
+          behind the work; the last stretch of scroll flies into the
+          wordmark and the page returns to the hero. */}
+      <CanvasSectionWrapper />
     </div>
   );
 }
