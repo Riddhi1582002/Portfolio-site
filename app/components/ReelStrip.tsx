@@ -43,6 +43,15 @@ const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
 
 export { CARD_H_VH, STRIP_CENTRE_VH, GAP_VH };
 
+// THE card face, for every beat that draws these eight pieces: the strip,
+// the camera roll and the fan. It lived in three places with three
+// different gradients, which is why the strip visibly "became a different
+// design" the moment the roll took over. One definition, no cross-fade.
+export const CARD_FACE_BG =
+  "linear-gradient(150deg, #191a1e 0%, #111216 55%, #0a0b0d 100%)";
+export const CARD_FACE_BORDER = "1px solid rgba(255,255,255,0.09)";
+export const CARD_RADIUS = 14;
+
 // How much of the strip's scroll the entry occupies: the row arrives
 // already assembled but pulled back, and pushes in to full size before
 // the scrub starts.
@@ -232,9 +241,8 @@ export default function ReelStrip({ progress }: { progress: number }) {
                   style={{
                     width: "100%",
                     height: "100%",
-                    background:
-                      "linear-gradient(150deg, #191a1e 0%, #111216 55%, #0a0b0d 100%)",
-                    border: "1px solid rgba(255,255,255,0.09)",
+                    background: CARD_FACE_BG,
+                    border: CARD_FACE_BORDER,
                   }}
                 />
               </HoverCard>

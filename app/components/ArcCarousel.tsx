@@ -39,9 +39,9 @@ const ARC_STEP_DEG = 30;
 const ARC_LEAD = 2.6;
 
 // The one measurement everything else follows from.
-const CARD_SHARE = 0.3; // of the viewport's shorter side
+const CARD_SHARE = 0.44; // of the viewport's shorter side
 const CARD_MIN_PX = 110;
-const CARD_MAX_PX = 300;
+const CARD_MAX_PX = 430;
 // Ring radius, in card edges. The chord between neighbours is
 // 2 * R * sin(15deg) = 0.518 * R = 1.35 card edges, so two cards at the
 // front of the ring clear each other by about a third of their width.
@@ -113,11 +113,10 @@ export default function ArcCarousel({
         // depth is the perspective's, not a hand-tuned scale ramp.
         perspective: `${(radius * 2).toFixed(0)}px`,
         perspectiveOrigin: `50% ${ringVh}vh`,
-        // Behind the bulb. The ring turns around it, and CSS cannot
-        // interleave a sibling element into a 3D stacking context, so the
-        // bulb stays the nearest object and the arc reads as swinging
-        // past behind it — which is also what keeps the dimming visible.
-        zIndex: 1,
+        // IN FRONT of the bulb. The pieces come forward and pass across
+        // it; the bulb reads through the gaps between them and dims as
+        // they arrive, which is what hands the light over.
+        zIndex: 5,
         pointerEvents: p > 0.02 && p < 0.98 ? "auto" : "none",
         visibility: p <= 0.005 ? "hidden" : "visible",
         transformStyle: "preserve-3d",

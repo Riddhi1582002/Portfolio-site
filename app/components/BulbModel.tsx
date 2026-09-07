@@ -17,6 +17,8 @@
 import { useEffect, useRef } from "react";
 
 const MODEL_URL = "/model/bulb.glb";
+// Share of the model's own height to lift, so its wire clears the frame.
+const WIRE_LIFT = 0.3;
 
 export default function BulbModel({
   litness,
@@ -59,10 +61,24 @@ export default function BulbModel({
       const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
       camera.position.set(0, 0, 4.2);
 
-      const key = new THREE.PointLight(0xfff2d8, 6, 20);
-      key.position.set(0, 0.2, 0.4);
-      scene.add(key);
-      scene.add(new THREE.AmbientLight(0x8899bb, 0.35));
+      // The filament: a small bright source sitting INSIDE the glass, so
+      // the light comes from within the bulb and falls off through it.
+      // The old rig lit the model from a point in front of it, which is
+      // why it read as a prop with a lamp pointed at it.
+      const filament = new THREE.PointLight(0xffd9a3, 8, 9, 2);
+      filament.position.set(0, -0.25, 0);
+      scene.add(filament);
+      // A tiny emissive core, so there is something to actually see
+      // glowing at the centre of the glass.
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(0.13, 24, 16),
+        new THREE.MeshBasicMaterial({ color: 0xfff0d0, transparent: true, opacity: 0.95 })
+      );
+      core.position.copy(filament.position);
+      scene.add(core);
+      // Just enough ambient that an unlit bulb is a shape rather than a
+      // hole in the frame.
+      scene.add(new THREE.AmbientLight(0x8fa2c4, 0.22));
 
       const emissives: import("three").MeshStandardMaterial[] = [];
       let root: import("three").Object3D | null = null;
@@ -77,12 +93,22 @@ export default function BulbModel({
         const scale = 2.4 / Math.max(size.x, size.y, size.z || 1);
         root.scale.setScalar(scale);
         root.position.sub(centre.multiplyScalar(scale));
+        // The GLB carries its own hanging wire above the cap. On the page
+        // that showed as a thin dark thread between where the white cord
+        // stopped and where the bulb started — the bulb looked dropped in
+        // below the line rather than hung from it. Lift the model so the
+        // wire leaves the top of the canvas and the cap sits just inside
+        // it, which is where CordSection ends the cord.
+        root.position.y += size.y * scale * WIRE_LIFT;
         root.traverse((o) => {
           const mesh = o as import("three").Mesh;
           if (!mesh.isMesh) return;
           const mat = mesh.material as import("three").MeshStandardMaterial;
           if (mat && "emissive" in mat) {
             mat.emissive = new THREE.Color(0xffc978);
+            // Glass, not painted plastic: a little transmission-ish
+            // roughness so the core behind it reads through.
+            if ("roughness" in mat) mat.roughness = Math.min(mat.roughness ?? 0.5, 0.35);
             emissives.push(mat);
           }
         });
@@ -118,8 +144,17 @@ export default function BulbModel({
         // emissive floor keeps the glass glowing however far litness drops,
         // which made the dim state look merely a little warmer rather than
         // switched off.
-        key.intensity = 0.25 + lit * 8.5;
-        for (const m of emissives) m.emissiveIntensity = lit * 2.4;
+        // Inverse-square falloff means the intensity has to climb hard for
+        // the glass to read as lit from inside.
+        filament.intensity = 0.2 + lit * 34;
+        (core.material as import("three").MeshBasicMaterial).opacity = 0.1 + lit * 0.85;
+        core.scale.setScalar(0.85 + lit * 0.5);
+        // Low on purpose. A strong emissive lights every facet of the
+        // glass equally, which is what made the bulb read as a flat pale
+        // shape rather than as glass with a source behind it. The falloff
+        // from the filament does the modelling; the emissive only keeps
+        // the glass from going black where the light does not reach.
+        for (const m of emissives) m.emissiveIntensity = lit * 0.5;
         if (root && !reduced) root.rotation.y += 0.0016;
         renderer.render(scene, camera);
       };

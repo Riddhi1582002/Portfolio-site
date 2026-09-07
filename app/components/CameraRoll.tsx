@@ -37,7 +37,15 @@
 //
 // The line's own geometry is never drawn: it IS the cards, seen edge on.
 
-import { REELS, layout, CARD_H_VH, STRIP_CENTRE_VH } from "./ReelStrip";
+import {
+  REELS,
+  layout,
+  CARD_H_VH,
+  STRIP_CENTRE_VH,
+  CARD_FACE_BG,
+  CARD_FACE_BORDER,
+  CARD_RADIUS,
+} from "./ReelStrip";
 
 // Where each movement runs, as a share of this beat's progress.
 const SWING = [0, 0.52] as const;
@@ -53,6 +61,8 @@ const THICK = 7;
 // How far past the last card's outer edge the eye backs off before it is
 // looking down the run.
 const BACKOFF_PX = 260;
+const SIDE_BG =
+  "linear-gradient(to bottom, rgba(255,255,255,0.86) 0%, #fff 12%, #fff 88%, rgba(255,255,255,0.86) 100%)";
 
 /** The on-screen width of the edge-on line, so the cord can match it. */
 export function lineWidthPx(vh: number) {
@@ -87,6 +97,13 @@ export default function CameraRoll({
   const settleT = easeInOutSine(span(p, SETTLE[0], SETTLE[1]));
 
   const orbit = SWING_DEG * swingT + (90 - SWING_DEG) * settleT;
+  // 0 while square on, 1 once the eye has turned far enough for the side
+  // faces to have any width on screen at all.
+  const turned = clamp01((orbit - 6) / 26);
+  const edgeGlow =
+    turned <= 0.001
+      ? "none"
+      : `0 0 ${(26 * turned).toFixed(1)}px rgba(255,255,255,${(0.35 * turned).toFixed(3)})`;
   // Pan: the eye is square on to card 0 where the strip left it, and
   // tracks along the run as it swings so it ends up level with the middle
   // of the row rather than off its end. It also rises during the roll,
@@ -175,10 +192,9 @@ export default function CameraRoll({
                 style={{
                   position: "absolute",
                   inset: 0,
-                  borderRadius: 14,
-                  background:
-                    "linear-gradient(150deg, #212328 0%, #16171c 55%, #0d0e11 100%)",
-                  border: "1px solid rgba(255,255,255,0.13)",
+                  borderRadius: CARD_RADIUS,
+                  background: CARD_FACE_BG,
+                  border: CARD_FACE_BORDER,
                   transform: `translateZ(${THICK / 2}px)`,
                   backfaceVisibility: "hidden",
                 }}
@@ -194,9 +210,13 @@ export default function CameraRoll({
                   height: "100%",
                   transformOrigin: "left center",
                   transform: `rotateY(-90deg) translateZ(${THICK / 2}px)`,
-                  background:
-                    "linear-gradient(to bottom, rgba(255,255,255,0.86) 0%, #fff 12%, #fff 88%, rgba(255,255,255,0.86) 100%)",
-                  boxShadow: "0 0 26px rgba(255,255,255,0.35)",
+                  background: SIDE_BG,
+                  // Scaled by the turn. A box-shadow paints even when its
+                  // element projects to zero width, so a fixed one bled a
+                  // thick white halo down both sides of every card while
+                  // the camera was still square on — edges that are meant
+                  // to exist only from the side, visible head on.
+                  boxShadow: edgeGlow,
                 }}
               />
               <div
@@ -208,9 +228,13 @@ export default function CameraRoll({
                   height: "100%",
                   transformOrigin: "right center",
                   transform: `rotateY(90deg) translateZ(${THICK / 2}px)`,
-                  background:
-                    "linear-gradient(to bottom, rgba(255,255,255,0.86) 0%, #fff 12%, #fff 88%, rgba(255,255,255,0.86) 100%)",
-                  boxShadow: "0 0 26px rgba(255,255,255,0.35)",
+                  background: SIDE_BG,
+                  // Scaled by the turn. A box-shadow paints even when its
+                  // element projects to zero width, so a fixed one bled a
+                  // thick white halo down both sides of every card while
+                  // the camera was still square on — edges that are meant
+                  // to exist only from the side, visible head on.
+                  boxShadow: edgeGlow,
                 }}
               />
             </div>

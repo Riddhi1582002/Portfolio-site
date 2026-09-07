@@ -39,6 +39,18 @@ const ARC_START = 0.54;
 // Geometry of the bulb, kept here because the arc has to be centred on it.
 const BULB_TOP_VH = 172;
 const TRAVEL_VH = 150;
+// The bulb's box. Much larger than before — it was reading as a lamp seen
+// from across a room rather than the thing the whole beat arrives at.
+const BULB_VH_MAX = 78;
+const BULB_VW_MAX = 66;
+// How far down its own box the cap sits once BulbModel has lifted the
+// model's wire out of frame. The cord ends here, so the bulb hangs off the
+// line instead of appearing below where the line stops.
+// Measured off the rendered canvas: with BulbModel's wire lift, the cap's
+// top edge sits about 13% down the bulb's own box. The cord runs to there
+// so the model's remaining wire is covered rather than left showing as a
+// thin thread between the line and the bulb.
+const CAP_RATIO = 0.14;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
@@ -100,7 +112,10 @@ export default function CordSection({
 
   // Bulb size follows `min(46vh, 42vw)`; the arc is centred on it, so the
   // same expression has to be evaluated here in vh.
-  const bulbSizeVh = Math.min(46, (42 * viewport.vw) / Math.max(1, viewport.vh));
+  const bulbSizeVh = Math.min(
+    BULB_VH_MAX,
+    (BULB_VW_MAX * viewport.vw) / Math.max(1, viewport.vh)
+  );
   const bulbCentreVh = BULB_TOP_VH - travel * TRAVEL_VH + bulbSizeVh / 2;
 
   // The wash in the room lags the model slightly, so the bulb reads as
@@ -123,8 +138,12 @@ export default function CordSection({
           position: "absolute",
           left: "50%",
           top: 0,
-          // Ends where the bulb hangs, rather than running past it.
-          height: "176vh",
+          // Runs down to the CAP, not to some point above it. The bulb's
+          // own wire used to show as a thin dark thread between where this
+          // line stopped and where the bulb began; BulbModel now lifts
+          // that wire out of frame and the line comes all the way down to
+          // meet the cap.
+          height: `${(BULB_TOP_VH + bulbSizeVh * CAP_RATIO).toFixed(2)}vh`,
           // No longer collapsing from card width: the camera move already
           // did that with real geometry. This is the line it arrived at.
           width: lineWidthPx(viewport.vh),
@@ -138,6 +157,12 @@ export default function CordSection({
           // sits, so it would otherwise cut the work in half.
           opacity: handoff * (1 - 0.78 * presence),
           borderRadius: 2,
+          // ABOVE the bulb's canvas. The model's own wire is opaque
+          // geometry, so with the bulb on top it painted over the last
+          // stretch of this line and the line appeared to stop short,
+          // leaving a thin gold thread down to the cap. The cord now
+          // covers that thread and ends on the cap itself.
+          zIndex: 3,
           willChange: "transform, width",
         }}
       />
@@ -150,12 +175,13 @@ export default function CordSection({
           position: "absolute",
           left: "50%",
           top: `${BULB_TOP_VH}vh`,
-          width: "min(46vh, 42vw)",
+          width: `min(${BULB_VH_MAX}vh, ${BULB_VW_MAX}vw)`,
           aspectRatio: "1",
           transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
           opacity: bulbIn,
-          // Above the cord, so the cord reads as attaching behind the cap
-          // rather than crossing the glass.
+          // Above the cord so the line reads as attaching behind the cap,
+          // but BELOW the arc: the pieces swing in front of the bulb, not
+          // behind it.
           zIndex: 2,
           willChange: "transform, opacity",
           pointerEvents: "none",
