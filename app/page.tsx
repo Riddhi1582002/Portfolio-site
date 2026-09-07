@@ -1,4 +1,5 @@
 import HeroVideoBackground from "./components/HeroVideoBackground";
+import SmoothScroll from "./components/SmoothScroll";
 import HeroSection from "./components/HeroSection";
 import {
   PencilSectionWrapper,
@@ -8,7 +9,13 @@ import {
 export default function Home() {
   return (
     <div>
+      {/* OUTSIDE the smooth wrapper. ScrollSmoother transforms the content,
+          and a transformed ancestor becomes the containing block for
+          position:fixed — inside it this backdrop would scroll away. */}
       <HeroVideoBackground />
+
+      <SmoothScroll>
+
 
 
       {/* ONE pinned pane for the hero, the strip and the cord. They were
@@ -27,6 +34,7 @@ export default function Home() {
           behind the work; the last stretch of scroll flies into the
           wordmark and the page returns to the hero. */}
       <CanvasSectionWrapper />
+      </SmoothScroll>
     </div>
   );
 }

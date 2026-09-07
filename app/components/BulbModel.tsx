@@ -17,8 +17,7 @@
 import { useEffect, useRef } from "react";
 
 const MODEL_URL = "/model/bulb.glb";
-// Share of the model's own height to lift, so its wire clears the frame.
-const WIRE_LIFT = 0.3;
+
 
 export default function BulbModel({
   litness,
@@ -93,13 +92,9 @@ export default function BulbModel({
         const scale = 2.4 / Math.max(size.x, size.y, size.z || 1);
         root.scale.setScalar(scale);
         root.position.sub(centre.multiplyScalar(scale));
-        // The GLB carries its own hanging wire above the cap. On the page
-        // that showed as a thin dark thread between where the white cord
-        // stopped and where the bulb started — the bulb looked dropped in
-        // below the line rather than hung from it. Lift the model so the
-        // wire leaves the top of the canvas and the cap sits just inside
-        // it, which is where CordSection ends the cord.
-        root.position.y += size.y * scale * WIRE_LIFT;
+        // The supplied model has no cord of its own, so nothing needs
+        // lifting out of frame: it is framed centred and the white line
+        // meets its cap directly.
         root.traverse((o) => {
           const mesh = o as import("three").Mesh;
           if (!mesh.isMesh) return;

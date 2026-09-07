@@ -18,6 +18,7 @@ import { Flip } from "gsap/Flip";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
 import DepthCards from "./DepthCards";
 import { SMOOTHER_ACTIVE } from "./SmoothScroll";
+import usePinnedPane from "./usePinnedPane";
 import ReelStrip from "./ReelStrip";
 import CordSection from "./CordSection";
 import NarrationLine from "./NarrationLine";
@@ -309,6 +310,8 @@ export function glowShadow(g: number) {
 export default function HeroSection() {
   const router = useRouter();
   const trackRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  usePinnedPane(trackRef, paneRef);
   const artRef = useRef<HTMLDivElement>(null);
   const contactRef = useRef<HTMLDivElement>(null);
   const [scrollP, setScrollP] = useState(0); // 0..1 smoothed scroll fraction through the track
@@ -735,9 +738,11 @@ export default function HeroSection() {
       style={{ height: `${SCROLL_LENGTH_VH}vh`, position: "relative", zIndex: 1 }}
     >
       <div
+        ref={paneRef}
         style={{
-          position: "sticky",
-          top: 0,
+          // Pinned by ScrollTrigger, not by `position: sticky` — see
+          // usePinnedPane. Layout is otherwise identical.
+          position: "relative",
           height: "100vh",
           overflow: "hidden",
           // Transparent, not #000 — HeroVideoBackground is a

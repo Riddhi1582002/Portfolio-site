@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SMOOTHER_ACTIVE } from "./SmoothScroll";
+import usePinnedPane from "./usePinnedPane";
 
 const SMOOTH_TAU = 0.09;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -30,6 +31,8 @@ export default function PinnedSection({
   background?: string;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  usePinnedPane(trackRef, paneRef);
   const [progress, setProgress] = useState(0);
   const targetRef = useRef(0);
   const smoothRef = useRef(0);
@@ -92,9 +95,11 @@ export default function PinnedSection({
       style={{ position: "relative", height: `${lengthVh}vh`, zIndex: 1 }}
     >
       <div
+        ref={paneRef}
         style={{
-          position: "sticky",
-          top: 0,
+          // Pinned by ScrollTrigger, not by `position: sticky` — see
+          // usePinnedPane for why. Layout is otherwise identical.
+          position: "relative",
           height: "100vh",
           overflow: "hidden",
           background,

@@ -27,15 +27,14 @@ import { ScrollSmoother } from "gsap/ScrollSmoother";
  * Whether the page is being smoothed here. The scroll-driven sections read
  * this and skip their own easing so the two cannot compound.
  */
-// FALSE until the pins are converted. ScrollSmoother translates
-// #smooth-content, and `position: sticky` does not survive inside a
-// transformed container — measured at scrollY 4000, the hero's pane sat at
-// top:-4000 instead of 0, i.e. every pinned beat scrolled away. The whole
-// sequence is built on those panes, so this stays off rather than ship a
-// site where nothing pins. The supported fix is to replace the three
-// sticky panes with ScrollTrigger `pin: true`, which IS transform-based
-// and composes with ScrollSmoother; that is a separate change.
-export const SMOOTHER_ACTIVE = false;
+// The three panes are pinned by ScrollTrigger now rather than by
+// `position: sticky`, which is what this needed: sticky does not survive
+// inside ScrollSmoother's transformed content, but ScrollTrigger's pinning
+// is itself transform-based and composes with it.
+//
+// The scroll-driven beats read this and skip their own easing, so the page
+// is smoothed exactly once.
+export const SMOOTHER_ACTIVE = true;
 
 // Conservative on purpose. High enough to take the step out of a wheel
 // notch, low enough that the page never feels like it is catching up.

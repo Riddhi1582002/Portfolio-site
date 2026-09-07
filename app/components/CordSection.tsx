@@ -46,11 +46,10 @@ const BULB_VW_MAX = 66;
 // How far down its own box the cap sits once BulbModel has lifted the
 // model's wire out of frame. The cord ends here, so the bulb hangs off the
 // line instead of appearing below where the line stops.
-// Measured off the rendered canvas: with BulbModel's wire lift, the cap's
-// top edge sits about 13% down the bulb's own box. The cord runs to there
-// so the model's remaining wire is covered rather than left showing as a
-// thin thread between the line and the bulb.
-const CAP_RATIO = 0.14;
+// Where the cap's top edge sits down the bulb's own box. The cord runs to
+// exactly there, so the line meets the cap and the bulb hangs off it.
+// Re-measured against the supplied cordless model.
+const CAP_RATIO = 0.2;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;

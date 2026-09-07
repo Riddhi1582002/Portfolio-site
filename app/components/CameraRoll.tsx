@@ -4,36 +4,28 @@
 //
 // The cards do not move. They sit at the world positions the strip left
 // them in — same order, same widths, same gaps, same vertical placement —
-// and nothing in the scene is touched for the whole beat. What animates is
-// the eye.
+// and no card is translated, rotated or resized for the whole beat. What
+// animates is the eye.
 //
-// A CSS 3D scene has no camera object, so the camera is expressed the only
-// way it can be: the world carries the INVERSE of the camera's transform,
+// THE MOVE, as specified: rotate the camera -90 degrees on X, then -90
+// degrees on Y.
 //
-//     translateZ(dolly) · rotateX(-pitch) · rotateY(-yaw) · translate(-eye)
+// A CSS 3D scene has no camera object, so the eye is expressed the only
+// way it can be: the world carries the INVERSE of the camera's transform.
+// With the camera's own rotation C = Rx(ax) . Ry(ay), the world is drawn
+// with C-inverse = Ry(-ay) . Rx(-ax), i.e.
 //
-// read left to right as bring the eye to the origin, undo its heading and
-// tilt, then stand back. Change pitch, yaw or the eye's position and the
-// camera moves; nothing in the scene does.
+//     translateZ(dolly) . rotateY(-ay) . rotateX(-ax) . translate(-eye)
 //
-// TWO MOVEMENTS
+// read left to right as bring the eye to the origin, undo its heading,
+// undo its tilt, then stand back. ax runs 0 -> -90 across the first
+// movement and ay runs 0 -> -90 across the second, exactly as asked.
 //
-//   1. The eye rises, turns a quarter turn onto the run, and tilts DOWN
-//      onto it — a top view. The row recedes away up the frame, and each
-//      card shows its TOP edge as a white line. This is the beat that
-//      reads as "the strip now runs up and down".
-//
-//   2. The eye levels off and closes in. Now it is looking straight along
-//      the run: each card presents its SIDE, the nearest occludes the
-//      seven behind it, and the thickness resolves into one thin white
-//      vertical line, full height, centred.
-//
-// WHY NOT A CAMERA ROLL. Rolling the eye a quarter turn does make the run
-// stand vertically — and then makes the ending impossible. A card seen
-// edge on is already a tall thin sliver, so the roll lays that sliver on
-// its side and the beat ends on a horizontal bar. Worse, after a roll the
-// camera's up axis IS the run's axis, so the turn onto the run is a gimbal
-// lock. Rise-and-tilt gives the same reading and leaves the ending intact.
+// The eye also has to be somewhere sensible or it ends up inside the
+// geometry: it stays with the last card and backs off past that card's
+// outer edge as it turns, and closes in at the end so the final line runs
+// the full height of the frame. Those are translations of the eye, not of
+// the cards.
 //
 // EVERY edge face carries backface culling. Without it the far side of the
 // box renders straight through the card, so the moment the eye turned even
@@ -50,16 +42,14 @@ import {
   CARD_RADIUS,
 } from "./ReelStrip";
 
-// Where each movement runs, as a share of this beat's progress.
-const SWING = [0, 0.52] as const;
-const SETTLE = [0.5, 0.94] as const;
-// Short of edge on, so the run is still legible as a row of cards
-// standing on end before it collapses to the line.
-const SWING_DEG = 74;
+// Where each movement runs, as a share of this beat's progress. They meet
+// with a small overlap so the second begins as the first is settling.
+const TILT_X = [0, 0.52] as const;
+const TURN_Y = [0.48, 0.94] as const;
 
-// How far the eye turns onto the run, and how far it tilts down onto it.
-// The eye's rise, in card heights.
-const RISE_RATIO = 0.42;
+// The two rotations, in degrees, exactly as specified.
+const CAM_X_DEG = -90;
+const CAM_Y_DEG = -90;
 
 const PERSPECTIVE = 1700;
 // Card thickness in world px — the line's width when seen edge on.
@@ -98,14 +88,12 @@ export default function CameraRoll({
   const toPx = (v: number) => (v / 100) * vh;
   const cardH = toPx(CARD_H_VH);
 
-  const riseT = easeInOutSine(span(p, SWING[0], SWING[1]));
-  const levelT = easeInOutSine(span(p, SETTLE[0], SETTLE[1]));
+  const tiltT = easeInOutSine(span(p, TILT_X[0], TILT_X[1]));
+  const turnT = easeInOutSine(span(p, TURN_Y[0], TURN_Y[1]));
 
-  // One axis. Adding a downward tilt to get a literal "top view" put the
-  // eye above and past the run and the frame went black — see the note at
-  // the head of this file about why the two readings cannot both hold.
-  const yaw = SWING_DEG * riseT + (90 - SWING_DEG) * levelT;
-  const pitch = 0;
+  // The camera's own rotation. First -90 on X, then -90 on Y.
+  const ax = CAM_X_DEG * tiltT;
+  const ay = CAM_Y_DEG * turnT;
 
   // The eye stays with the last card and backs off past its outer edge, so
   // once it has turned it is looking straight down the run with that card
@@ -121,23 +109,24 @@ export default function CameraRoll({
   // view the eye has to be behind and above the run's end so the whole row
   // recedes away up the frame. Leaving it at the last card's centre put
   // the eye inside that card and the top view was one slab filling frame.
-  const camX = startX + (endX - startX) * levelT;
+  const camX = startX + (endX - startX) * turnT;
 
-  // Where the strip sits vertically, then the rise, then back to level.
+  // Where the strip sits vertically at the start; the eye comes back to
+  // level as it turns, so the finished line is centred.
   const camY0 = -((STRIP_CENTRE_VH - 50) / 100) * vh;
-  const camY = (camY0 - cardH * RISE_RATIO * riseT) * (1 - levelT);
+  const camY = camY0 * (1 - turnT);
 
   // Pull the scene forward until the nearest card's side runs the full
   // height of the frame. At depth BACKOFF the card renders at
   // P / (P - (dolly - BACKOFF)), so solve that for the height we want.
   const targetScale = (vh * 1.06) / cardH;
   const dollyEnd = BACKOFF_PX + PERSPECTIVE * (1 - 1 / targetScale);
-  const dolly = dollyEnd * levelT;
+  const dolly = dollyEnd * turnT;
 
   // The edges only glow once the eye has actually turned. A box-shadow
   // paints even when its element projects to zero width, so an ungated one
   // bled a halo down every card while the camera was still square on.
-  const turned = clamp01((Math.abs(yaw) + Math.abs(pitch) - 5) / 30);
+  const turned = clamp01((Math.abs(ax) + Math.abs(ay) - 5) / 30);
   const edgeGlow =
     turned <= 0.001
       ? "none"
@@ -163,9 +152,10 @@ export default function CameraRoll({
           width: 0,
           height: 0,
           transformStyle: "preserve-3d",
-          transform: `translate3d(0px, 0px, ${dolly.toFixed(2)}px) rotateX(${(-pitch).toFixed(
+          // C-inverse: undo the heading, then the tilt, then stand back.
+          transform: `translate3d(0px, 0px, ${dolly.toFixed(2)}px) rotateY(${(-ay).toFixed(
             3
-          )}deg) rotateY(${(-yaw).toFixed(3)}deg) translate3d(${(-camX).toFixed(
+          )}deg) rotateX(${(-ax).toFixed(3)}deg) translate3d(${(-camX).toFixed(
             2
           )}px, ${(-camY).toFixed(2)}px, 0px)`,
           willChange: "transform",
