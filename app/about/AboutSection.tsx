@@ -180,7 +180,7 @@ const TILE_GAP = 22;
 // hover lift both extend well past the tile vertically, and at the old
 // 10px they were sliced off flat above and below. Padding opens the box,
 // the equal negative margin takes the space back out of the layout.
-const TRACK_BLEED = 64;
+const TRACK_BLEED = 78;
 const TILE_STEP = TILE_SIZE + TILE_GAP;
 // One full lap is exactly one copy of the list — tile N+1 of the doubled
 // track lands where tile 1 started, gap included, so the wrap is invisible.
@@ -222,8 +222,8 @@ const PAGE_MAX = "mx-auto w-full max-w-[1500px]";
 const LABEL_STYLE = {
   fontFamily: SANS,
   fontWeight: 700,
-  fontSize: "clamp(12px, 0.95vw, 15px)",
-  letterSpacing: "0.18em",
+  fontSize: "clamp(14px, 1.15vw, 18px)",
+  letterSpacing: "0.17em",
   textTransform: "uppercase",
   color: "#fff",
 } as const;
@@ -274,10 +274,15 @@ function ToolTile({
       style={{
         width: TILE_SIZE,
         height: TILE_H,
+        // Two cast shadows at rest, not one: a tight contact shadow just
+        // under the tile and a wider, softer one further down. That pair is
+        // what reads as a solid object on a surface — a single mid-blur
+        // shadow reads as a sticker. Hover deepens both and adds the
+        // atmospheric halo in the category's accent.
         filter: hovered
-          ? `drop-shadow(0 16px 26px rgba(0,0,0,0.62)) drop-shadow(0 0 15px rgba(255,255,255,0.28)) drop-shadow(0 0 40px rgba(${accent},0.26))`
-          : "drop-shadow(0 7px 12px rgba(0,0,0,0.55)) drop-shadow(0 0 9px rgba(255,255,255,0.13))",
-        transform: hovered ? "translateY(-7px) scale(1.045)" : "translateY(0) scale(1)",
+          ? `drop-shadow(0 4px 6px rgba(0,0,0,0.6)) drop-shadow(0 20px 34px rgba(0,0,0,0.7)) drop-shadow(0 0 18px rgba(255,255,255,0.32)) drop-shadow(0 0 54px rgba(${accent},0.34))`
+          : "drop-shadow(0 2px 3px rgba(0,0,0,0.6)) drop-shadow(0 9px 17px rgba(0,0,0,0.6)) drop-shadow(0 0 10px rgba(255,255,255,0.14))",
+        transform: hovered ? "translateY(-9px) scale(1.05)" : "translateY(0) scale(1)",
         transition:
           "transform 340ms cubic-bezier(0.22,0.7,0.24,1), filter 340ms ease",
       }}
@@ -326,8 +331,8 @@ function ToolTile({
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "linear-gradient(155deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.05) 26%, rgba(255,255,255,0) 48%, rgba(0,0,0,0.16) 100%)",
-            opacity: hovered ? 0.85 : 1,
+              "linear-gradient(155deg, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0.07) 28%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 100%)",
+            opacity: hovered ? 0.8 : 1,
             transition: "opacity 340ms ease",
           }}
         />
@@ -337,8 +342,10 @@ function ToolTile({
           aria-hidden
           className="pointer-events-none absolute inset-0"
           style={{
-            boxShadow:
-              "inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(0,0,0,0.28)",
+            boxShadow: hovered
+              ? "inset 0 1px 0 rgba(255,255,255,0.42), inset 0 -1px 0 rgba(0,0,0,0.34)"
+              : "inset 0 1px 0 rgba(255,255,255,0.3), inset 0 -1px 0 rgba(0,0,0,0.3)",
+            transition: "box-shadow 340ms ease",
           }}
         />
       </div>
@@ -489,6 +496,15 @@ function ToolsCarousel({
           // layout so the row still sits where the grid puts it.
           paddingBlock: TRACK_BLEED,
           marginBlock: -TRACK_BLEED,
+          // The negative margin pulls this box UP over the heading row —
+          // that is what gives the glow its room — but the box is also the
+          // drag surface, so it was sitting on top of the toggle and the
+          // heading and swallowing every click on them. (elementsFromPoint
+          // at the pill's centre returned this div first and the checkbox
+          // second.) Pointer events move to the track below, which is the
+          // cards themselves: the bleed becomes transparent to clicks and
+          // the drag still starts wherever a reader would actually grab.
+          pointerEvents: "none",
           maskImage:
             "linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%)",
           WebkitMaskImage:
@@ -504,6 +520,9 @@ function ToolsCarousel({
           style={{
             gap: TILE_GAP,
             willChange: "transform",
+            // The window above is pointer-events:none; the cards take the
+            // events and they bubble back up to its drag handlers.
+            pointerEvents: "auto",
             // Without this a drag selects the alt text of every tile it
             // passes over.
             userSelect: "none",
@@ -699,8 +718,14 @@ export default function AboutSection() {
             items-start, so the photo hangs from the top of the text block
             rather than floating at its centre; the small top offset lands
             it beside the intro line rather than beside the label. */}
-        <div className="mt-20 flex flex-col gap-12 sm:mt-24 sm:flex-row sm:items-start sm:justify-between sm:gap-16">
-          <div ref={bodyRevealRef} className="flex-1 sm:max-w-[58ch]">
+        {/* A real two-column grid rather than two narrow flex children
+            pushed apart by justify-between. The row still spans the same
+            container, and both outer edges still land on the page grid —
+            what changed is where the space inside it goes: the columns
+            take it and the gap gives it up, so the portrait sits beside
+            the copy instead of across a void from it. */}
+        <div className="mt-20 flex flex-col gap-12 sm:mt-24 sm:grid sm:grid-cols-[minmax(0,1.12fr)_minmax(0,1fr)] sm:items-start sm:gap-[clamp(32px,4vw,72px)]">
+          <div ref={bodyRevealRef} className="min-w-0">
             <p style={LABEL_STYLE}>{ABOUT_LABEL}</p>
 
             {ABOUT_PARAS.map((para, i) => (
@@ -718,7 +743,7 @@ export default function AboutSection() {
                   fontWeight: i === 0 ? 400 : 300,
                   fontSize:
                     i === 0
-                      ? "clamp(19px, 1.75vw, 27px)"
+                      ? "clamp(17px, 1.42vw, 22px)"
                       : "clamp(15px, 1.02vw, 17px)",
                   lineHeight: i === 0 ? 1.42 : 1.78,
                   letterSpacing: i === 0 ? "0.005em" : "0.045em",
@@ -737,7 +762,7 @@ export default function AboutSection() {
           {/* Tilt plus the glare strips the tilt produces. The same
               treatment every card and placeholder on the site gets. */}
           <HoverCard
-            className="w-[clamp(180px,58vw,260px)] shrink-0 self-center sm:mt-[3.2rem] sm:w-[clamp(200px,24vw,380px)] sm:self-start"
+            className="w-[clamp(180px,58vw,260px)] shrink-0 self-center sm:mt-[3.2rem] sm:w-full sm:self-start"
             aspect={1}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}

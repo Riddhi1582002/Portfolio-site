@@ -31,7 +31,13 @@ export default function ToolToggle({
   id?: string;
 }) {
   return (
-    <label className="tt-label" htmlFor={id}>
+    // NOT a wrapping label. A label that contains the input forwards its
+    // own activation to that input, so a click landing on the input itself
+    // was counted twice against the controlled checkbox and the pill
+    // toggled on but never back off. The container is an inert span; the
+    // input takes clicks on the pill natively, and the text is a separate
+    // non-wrapping label pointing at it by id — one activation each.
+    <span className="tt-label">
       {/* The accent travels with the state rather than being passed in:
           there are exactly two categories, and the control is the thing
           that knows which one is showing. */}
@@ -45,7 +51,9 @@ export default function ToolToggle({
         />
         <span className="tt-indicator" />
       </span>
-      <span className="tt-text">{labelText}</span>
-    </label>
+      <label className="tt-text" htmlFor={id}>
+        {labelText}
+      </label>
+    </span>
   );
 }
