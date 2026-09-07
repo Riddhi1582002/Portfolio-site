@@ -11,6 +11,7 @@
 // section can be captured exactly rather than scrolled to approximately.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { SMOOTHER_ACTIVE } from "./SmoothScroll";
 
 const SMOOTH_TAU = 0.09;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -64,7 +65,8 @@ export default function PinnedSection({
     const tick = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
-      const k = 1 - Math.exp(-dt / SMOOTH_TAU);
+      // See SmoothScroll: one smoother, not two in series.
+      const k = SMOOTHER_ACTIVE ? 1 : 1 - Math.exp(-dt / SMOOTH_TAU);
       const next = smoothRef.current + (targetRef.current - smoothRef.current) * k;
       smoothRef.current =
         Math.abs(targetRef.current - next) < 0.0002 ? targetRef.current : next;

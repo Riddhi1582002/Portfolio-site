@@ -17,6 +17,7 @@ import { SplitText } from "gsap/SplitText";
 import { Flip } from "gsap/Flip";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
 import DepthCards from "./DepthCards";
+import { SMOOTHER_ACTIVE } from "./SmoothScroll";
 import ReelStrip from "./ReelStrip";
 import CordSection from "./CordSection";
 import NarrationLine from "./NarrationLine";
@@ -534,7 +535,10 @@ export default function HeroSection() {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       const target = scrollTargetRef.current;
-      const k = 1 - Math.exp(-dt / SCROLL_SMOOTH_TAU);
+      // One smoother only. With ScrollSmoother mounted the document is
+      // already eased, and easing again here is what made the A push feel
+      // like it was trailing the wheel.
+      const k = SMOOTHER_ACTIVE ? 1 : 1 - Math.exp(-dt / SCROLL_SMOOTH_TAU);
       const next = scrollSmoothRef.current + (target - scrollSmoothRef.current) * k;
       // Snap once close enough, so the tail of the ease cannot leave the
       // sequence parked a hair short of a checkpoint.

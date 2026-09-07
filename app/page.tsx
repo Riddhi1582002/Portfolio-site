@@ -10,6 +10,7 @@ export default function Home() {
     <div>
       <HeroVideoBackground />
 
+
       {/* ONE pinned pane for the hero, the strip and the cord. They were
           three consecutive pinned sections, and consecutive sticky panes
           always overlap during the hand-off — both on screen at once,
