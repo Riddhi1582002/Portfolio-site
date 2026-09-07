@@ -1,25 +1,23 @@
 "use client";
 
-// The eight pieces, arriving out of the depths and then arranging
-// themselves into the strip.
+// The eight pieces: they come forward out of the depths behind the A,
+// spread into a row, and that row pushes in to become the strip.
 //
-// TWO POSES, ONE SET OF ELEMENTS.
+// ONE MOVE, NOT TWO.
 //
-//   stack  — the fanned row from the reference: the pieces recede back and
-//            to the left on a shared yaw, so what you see is the front
-//            card's face and the lit left edges of the seven behind it.
-//   strip  — exactly where ReelStrip puts the same eight cards on its
-//            first frame.
+// This used to hand REELS an assembled-but-pulled-back row and let REELS
+// push it in, which meant you saw the strip form, then saw it form again.
+// The whole move lives here now and REELS opens at rest:
 //
-// `arrange` interpolates between them, so the hand-off into REELS is not a
-// cut: the last frame the hero draws and the first frame the strip draws
-// are the same picture. The strip pose is computed from ReelStrip's own
-// layout function rather than copied, so the two cannot drift apart.
+//   arrive  — the cards travel forward on Z while the camera is still
+//             inside the A. They are BEHIND the letter, so the wordmark
+//             passes over them as it leaves.
+//   spread  — the fan opens into the row, card by card.
+//   push    — the row comes up to full size and lands exactly on
+//             ReelStrip's steady frame.
 //
-// The cards are real boxes, not planes. Each one carries a face and a
-// left-hand edge in a preserve-3d wrapper, so the thickness is geometry
-// that catches the key light — which is what makes the fan read as a row
-// of objects rather than a stack of decals.
+// The strip pose is computed from ReelStrip's own layout function rather
+// than copied, so the two cannot drift apart.
 
 import { useEffect, useState, type CSSProperties } from "react";
 import NarrationLine from "./NarrationLine";
@@ -40,31 +38,35 @@ import {
   NARRATION_WEIGHT,
 } from "./HeroSection";
 
-// Eight, to match the strip they become. All 16:9 in this scene — the
-// portrait pieces take their real ratio only once they are in the strip,
-// by which point they are off to the side.
 const CARD_COUNT = REELS.length;
 
 // The fan, in px on a 1440-wide reference frame and scaled from there.
 const REF_VW = 1440;
-// Front card's width.
-const FRONT_W = 470;
-// Step back and to the left, per card.
-const STEP_X = -86;
-const STEP_Z = -116;
-const STEP_Y = -7;
+const FRONT_W = 505;
+// Step back and to the left, per card. Tighter than a fanned deck: in the
+// reference only a narrow sliver of each card behind shows.
+const STEP_X = -74;
+const STEP_Z = -128;
+const STEP_Y = -5;
 // Shared yaw. Positive brings each card's LEFT edge toward the camera,
-// which is the face we see the light catch in the reference.
-const YAW_DEG = 24;
-// Card thickness, in px at the reference width. Thick enough that the lit
-// side is a face you read rather than a hairline.
-const THICK = 22;
-// Where the fan sits in the frame: right of centre and a little low, so
-// the narration has the upper middle to itself.
-const FAN_CX = 0.6;
-const FAN_CY = 0.53;
+// which is the face the light catches in the reference.
+const YAW_DEG = 30;
+// A touch of tilt, so the row is read from very slightly above rather
+// than dead level — the receding bottom edges in the reference.
+const PITCH_DEG = -3.5;
+const THICK = 24;
+const FAN_CX = 0.58;
+const FAN_CY = 0.52;
 
-const STAGGER = 0.055;
+// The arrival is staggered per card; so is the spread, which is what
+// stops the fan snapping into a row in one block.
+const ARRIVE_STAGGER = 0.055;
+// Small on purpose. A wide stagger left one card still sweeping across
+// its neighbour after that neighbour had settled, which is the crossing
+// that read as a glitch mid-spread.
+const SPREAD_STAGGER = 0.026;
+// Where the spread ends and the push-in begins, within `arrange`.
+const SPREAD_END = 0.66;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -79,12 +81,12 @@ export default function DepthCards({
 }: {
   /** 0 = far back and unseen, 1 = fully arrived in the fan. */
   progress: number;
-  /** 0 = the fan, 1 = ReelStrip's first frame. */
+  /** 0 = the fan, 1 = ReelStrip's steady frame. */
   arrange?: number;
   sans: string;
 }) {
   const lead = clamp01(progress);
-  const arr = easeInOutCubic(clamp01(arrange));
+  const arr = clamp01(arrange);
   const [vp, setVp] = useState({ vw: 1440, vh: 900 });
   const [hover, setHover] = useState<number | null>(null);
 
@@ -101,19 +103,21 @@ export default function DepthCards({
   // --- the strip pose, straight out of ReelStrip's own maths -------------
   const { widths, centres } = layout(REELS);
   const toPx = (v: number) => (v / 100) * vh;
-  // ReelStrip at progress 0 centres card 0.
   const stripOffset = vw / 2 - toPx(centres[0]);
   const stripTop = toPx(STRIP_CENTRE_VH);
   const stripH = toPx(CARD_H_VH);
-  // The strip is handed over at the same reduced scale ReelStrip enters
-  // at, so the fan resolves into a ROW you can see rather than into one
-  // card filling the frame. Everything scales about card 0's centre,
-  // which is the point both sections park at the middle of the screen.
-  const entryS = stripEntryScale(vw, vh);
-  const entryShift = stripEntryShift(vw, vh);
-  const entryLift = stripEntryLift(vh);
+
+  // The push-in: the row arrives pulled back and centred, then comes up to
+  // full size. At push = 1 every offset is zero, which is what makes the
+  // last frame here identical to ReelStrip's first.
+  const push = easeInOutCubic(clamp01((arr - SPREAD_END) / (1 - SPREAD_END)));
+  const s = mix(stripEntryScale(vw, vh), 1, push);
+  const shiftX = stripEntryShift(vw, vh) * (1 - push);
+  const liftY = stripEntryLift(vh) * (1 - push);
   const pivotX = vw / 2;
   const pivotY = stripTop;
+
+  const hoverable = arr < 0.02 && lead > 0.85;
 
   return (
     <div
@@ -121,77 +125,76 @@ export default function DepthCards({
       style={{
         position: "absolute",
         inset: 0,
-        zIndex: 4,
+        // BEHIND the wordmark. The cards are already travelling forward
+        // while the camera is still inside the A, and the letter passes
+        // over them on its way out of frame.
+        zIndex: 0,
         pointerEvents: "none",
-        visibility: lead <= 0.02 ? "hidden" : "visible",
+        visibility: lead <= 0.01 ? "hidden" : "visible",
       }}
     >
-      {/* The fan. Its own perspective, so the depth is the camera's and
-          not a hand-tuned scale ramp. */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          perspective: `${1500 * k}px`,
+          perspective: `${1400 * k}px`,
           perspectiveOrigin: `${FAN_CX * 100}% ${FAN_CY * 100}%`,
           transformStyle: "preserve-3d",
         }}
       >
         {Array.from({ length: CARD_COUNT }, (_, i) => {
-          // Later cards start further back and arrive later.
-          const t = easeOutCubic(
-            clamp01((lead - i * STAGGER) / (1 - STAGGER * (CARD_COUNT - 1)))
+          const arrive = easeOutCubic(
+            clamp01((lead - i * ARRIVE_STAGGER) / (1 - ARRIVE_STAGGER * (CARD_COUNT - 1)))
+          );
+          // The front card leads the spread and the back of the fan
+          // follows, so the row assembles rather than snapping.
+          const spread = easeInOutCubic(
+            clamp01(
+              (arr / SPREAD_END - i * SPREAD_STAGGER) /
+                (1 - SPREAD_STAGGER * (CARD_COUNT - 1))
+            )
           );
 
-          // --- stack pose ---
-          const sw = FRONT_W * k;
-          const sh = sw * (9 / 16);
-          const sx = FAN_CX * vw - sw / 2 + i * STEP_X * k;
-          const sy = FAN_CY * vh - sh / 2 + i * STEP_Y * k;
-          const sz = i * STEP_Z * k;
-          // The entrance: the card comes forward from far behind.
-          const entryZ = -2400 * k * (1 - t);
+          // --- fan pose ---
+          const fw = FRONT_W * k;
+          const fh = fw * (9 / 16);
+          const fx = FAN_CX * vw - fw / 2 + i * STEP_X * k;
+          const fy = FAN_CY * vh - fh / 2 + i * STEP_Y * k;
+          const fz = i * STEP_Z * k - 2600 * k * (1 - arrive);
 
           // --- strip pose ---
-          // Portrait pieces do not squash into portrait: the card TURNS.
-          // The element stays a landscape slab and rotates a quarter turn,
-          // so its bounding box becomes the portrait box the strip wants
-          // and the piece reads as having been rotated into place.
+          // Portrait pieces do not squash: the card TURNS a quarter turn,
+          // so its bounding box becomes the portrait box the strip wants.
           const portrait = REELS[i].ratio < 1;
           const pwBox = toPx(widths[i]);
-          const phBox = stripH;
-          // element size before the quarter turn
-          const pw = portrait ? phBox : pwBox;
-          const ph = portrait ? pwBox : phBox;
-          const spin = portrait ? 90 : 0;
-
           const rawX = stripOffset + toPx(centres[i]) - pwBox / 2;
-          const rawY = stripTop - phBox / 2;
-          // scaled about card 0's centre, exactly as ReelStrip does it
-          const boxX = pivotX + (rawX - pivotX) * entryS + entryShift;
-          const boxY = pivotY + (rawY - pivotY) * entryS + entryLift;
-          const boxW = pwBox * entryS;
-          const boxH = phBox * entryS;
-          // the element's own size is the box, un-turned
-          const elW = (portrait ? phBox : pwBox) * entryS;
-          const elH = (portrait ? pwBox : phBox) * entryS;
-          // a turned element is centred on the same box centre
+          const rawY = stripTop - stripH / 2;
+          const boxX = pivotX + (rawX - pivotX) * s + shiftX;
+          const boxY = pivotY + (rawY - pivotY) * s + liftY;
+          const boxW = pwBox * s;
+          const boxH = stripH * s;
+          const elW = (portrait ? stripH : pwBox) * s;
+          const elH = (portrait ? pwBox : stripH) * s;
           const px = boxX + boxW / 2 - elW / 2;
           const py = boxY + boxH / 2 - elH / 2;
-          const distance = i; // ReelStrip's focus is card 0 on its first frame
-          const stripDim = Math.max(0.32, 1 - distance * 0.34);
+          const stripDim = Math.max(0.32, 1 - i * 0.34);
 
           // --- blend ---
-          const hovered = hover === i && arr < 0.02 && t > 0.85;
-          const w = mix(sw, elW, arr);
-          const h = mix(sh, elH, arr);
-          const x = mix(sx, px, arr);
-          const y = mix(sy, py, arr);
-          const z = mix(sz + entryZ, 0, arr) + (hovered ? 70 * k : 0);
-          const yaw = mix(YAW_DEG, 0, arr);
-          const roll = mix(0, spin, arr);
-          const thick = mix(THICK * k, 0, arr);
-          const opacity = mix(t, stripDim, arr);
+          const hovered = hover === i && hoverable;
+          const w = mix(fw, elW, spread);
+          const h = mix(fh, elH, spread);
+          const x = mix(fx, px, spread);
+          const y = mix(fy, py, spread);
+          const z = mix(fz, 0, spread) + (hovered ? 80 * k : 0);
+          const yaw = mix(YAW_DEG, 0, spread);
+          const pitch = mix(PITCH_DEG, 0, spread);
+          const roll = mix(0, portrait ? 90 : 0, spread);
+          const thick = Math.max(0.01, mix(THICK * k, 0, spread));
+          const opacity = mix(arrive, stripDim, spread);
+          // The front of the fan is lit; the ones behind fall away. That
+          // contrast is most of what makes the reference read as depth.
+          const litFan = 1 - Math.min(0.62, i * 0.11);
+          const lit = mix(litFan, 1, spread) * (hovered ? 1.45 : 1);
 
           const wrap: CSSProperties = {
             position: "absolute",
@@ -201,15 +204,18 @@ export default function DepthCards({
             height: h,
             transform: `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, ${z.toFixed(
               2
-            )}px) rotateY(${yaw.toFixed(2)}deg) rotateZ(${roll.toFixed(2)}deg)`,
+            )}px) rotateY(${yaw.toFixed(2)}deg) rotateX(${pitch.toFixed(
+              2
+            )}deg) rotateZ(${roll.toFixed(2)}deg)`,
             transformStyle: "preserve-3d",
             opacity,
+            filter: `brightness(${lit.toFixed(3)})`,
             willChange: "transform, opacity",
-            pointerEvents: arr < 0.02 && t > 0.85 ? "auto" : "none",
-            transition: "filter 260ms ease",
-            filter: hovered
-              ? `brightness(1.5) drop-shadow(0 0 ${34 * k}px rgba(255,255,255,0.3))`
-              : "none",
+            pointerEvents: hoverable ? "auto" : "none",
+            // Short, so the lift answers the pointer rather than trailing
+            // it. Only the hover properties transition; the scroll-driven
+            // transform is written every frame and must not be eased twice.
+            transition: "filter 120ms linear",
           };
 
           return (
@@ -220,62 +226,76 @@ export default function DepthCards({
               onMouseEnter={() => setHover(i)}
               onMouseLeave={() => setHover((v) => (v === i ? null : v))}
             >
-              {/* The face. Lit from the right, so the fan has a direction
-                  to it and the cards behind fall away into the dark. */}
               <div
                 style={{
                   position: "absolute",
                   inset: 0,
-                  borderRadius: mix(6, 14, arr),
-                  background: `linear-gradient(102deg,
-                    rgba(13,14,17,1) 0%,
-                    rgba(24,26,31,1) 40%,
-                    rgba(44,47,55,1) 74%,
-                    rgba(78,83,95,1) 94%,
-                    rgba(103,109,124,1) 100%)`,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  boxShadow: `0 ${26 * k}px ${58 * k}px rgba(0,0,0,0.8),
-                    inset 0 1px 0 rgba(255,255,255,0.34),
-                    inset 0 -1px 0 rgba(0,0,0,0.5)`,
+                  borderRadius: mix(7, 14, spread),
+                  overflow: "hidden",
+                  background: `linear-gradient(104deg,
+                    rgba(16,17,21,1) 0%,
+                    rgba(28,30,36,1) 38%,
+                    rgba(52,56,66,1) 70%,
+                    rgba(96,102,117,1) 92%,
+                    rgba(132,139,157,1) 100%)`,
+                  border: "1px solid rgba(255,255,255,0.17)",
+                  boxShadow: `0 ${28 * k}px ${62 * k}px rgba(0,0,0,0.82),
+                    inset 0 1px 0 rgba(255,255,255,0.42),
+                    inset 0 -1px 0 rgba(0,0,0,0.55)`,
                   backfaceVisibility: "hidden",
                 }}
-              />
-              {/* The left-hand edge: the card's real thickness, turned 90
-                  degrees so it faces the key. This is the bright sliver
-                  that runs down the left of every card in the reference. */}
-              {thick > 0.4 && (
+              >
+                {/* An inset panel, so the slab reads as a screen with a
+                    bezel rather than a solid tile. Real work replaces it. */}
                 <div
                   style={{
                     position: "absolute",
-                    left: 0,
-                    top: 0,
-                    width: thick,
-                    height: "100%",
-                    transformOrigin: "left center",
-                    transform: "rotateY(-90deg)",
-                    background: `linear-gradient(to left,
-                      rgba(232,236,246,1) 0%,
-                      rgba(168,174,188,1) 34%,
-                      rgba(86,91,102,1) 72%,
-                      rgba(44,47,54,1) 100%)`,
-                    backfaceVisibility: "hidden",
+                    inset: `${Math.max(2, 7 * k)}px`,
+                    borderRadius: mix(4, 9, spread),
+                    background: `linear-gradient(112deg,
+                      rgba(10,11,14,1) 0%,
+                      rgba(18,20,25,1) 55%,
+                      rgba(34,37,45,1) 100%)`,
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
                   }}
                 />
-              )}
+              </div>
+
+              {/* The card's real thickness, turned a quarter turn out of
+                  the face's plane so it shares the cards' 3D space. This
+                  is the bright sliver running down the left of every card
+                  in the reference. */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  width: thick,
+                  height: "100%",
+                  transformOrigin: "left center",
+                  transform: "rotateY(-90deg)",
+                  background: `linear-gradient(to left,
+                    rgba(244,247,255,1) 0%,
+                    rgba(186,192,206,1) 30%,
+                    rgba(98,104,116,1) 68%,
+                    rgba(46,49,57,1) 100%)`,
+                  opacity: spread > 0.985 ? 0 : 1,
+                  backfaceVisibility: "hidden",
+                }}
+              />
             </div>
           );
         })}
       </div>
 
-      {/* The narration, in FRONT of the fan. It is a later sibling of the
-          perspective container rather than a child of it, so it is not in
-          the cards' 3D space and cannot be intersected by them. */}
+      {/* The narration, in FRONT of the fan. A later sibling of the
+          perspective container, so it is not in the cards' 3D space. */}
       <div
         style={{
           position: "absolute",
           left: 0,
           right: 0,
-          top: "38%",
+          top: "36%",
           textAlign: "center",
           paddingInline: "6vw",
           fontFamily: sans,
@@ -284,13 +304,12 @@ export default function DepthCards({
           letterSpacing: NARRATION_TRACKING,
           color: NARRATION_COLOR,
           textShadow: NARRATION_GLOW,
-          // Gone by the time the cards start arranging themselves.
           opacity:
-            easeOutCubic(clamp01((lead - 0.3) / 0.4)) * (1 - clamp01(arrange / 0.35)),
+            easeOutCubic(clamp01((lead - 0.34) / 0.4)) * (1 - clamp01(arr / 0.3)),
         }}
       >
         <NarrationLine
-          progress={clamp01((lead - 0.3) / 0.45)}
+          progress={clamp01((lead - 0.34) / 0.45)}
           text="I work with various mediums, here's motion."
         />
       </div>

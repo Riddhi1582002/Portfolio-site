@@ -178,20 +178,24 @@ export const STAGE_H = 1080;
 // Budget, in viewport heights of actual scrolling (track minus the 100vh
 // sticky pane), so "a scroll" means one viewport height:
 //   beats        151vh  (unchanged, the pacing already verified)
-//   A push        80vh  (was 200vh, then 120vh — still read as a haul.
-//                        Two scrolls of a laptop viewport, no more.)
-//   fan settles   30vh  (overlapping the tail of the push)
-//   arrange      199vh  (~2 scrolls: the fan becomes the strip)
-const SCROLL_LENGTH_VH = 600;
-const HERO_BEATS_END = 0.302;
+//   A push        80vh  (two scrolls)
+//   arrive         —    OVERLAPS the push from its very start: the cards
+//                       are already coming forward on Z, behind the A,
+//                       while the camera is still inside the letter. They
+//                       used to start at 80% of the push, which left a
+//                       stretch of pushing into plain black.
+//   spread+push  149vh  (the fan opens into the row and the row comes up
+//                       to full size — one move, ending exactly on
+//                       ReelStrip's steady frame)
+const SCROLL_LENGTH_VH = 480;
+const HERO_BEATS_END = 0.397;
 // Where the camera push finishes, as a share of the post-beats tail.
-const ZOOM_END = 0.229;
-// The stack starts coming forward at 80% of the push, so the fan is
-// already on its way in while the last of the letter is leaving frame.
-const CARDS_START = ZOOM_END * 0.8;
-// The fan holds from here, then arranges itself into the strip across the
-// remaining two scrolls.
-const ARRANGE_START = 0.38;
+const ZOOM_END = 0.349;
+// The cards begin their travel forward immediately, so the push and the
+// arrival are the same stretch of scrolling rather than two in sequence.
+const CARDS_START = 0.02;
+// The fan holds briefly, then becomes the strip.
+const ARRANGE_START = 0.42;
 
 // Camera push into the A's triangular negative space.
 //
@@ -724,6 +728,10 @@ export default function HeroSection() {
             height: STAGE_H,
             transform: `scale(${stageScale})`,
             flexShrink: 0,
+            // Above the card stack, which sits at z-index 0: the pieces
+            // arrive from far back on Z while the camera is still inside
+            // the A, so the letter has to pass over them as it leaves.
+            zIndex: 2,
           }}
         >
           {/* CAMERA. The whole composition is scaled about a point inside

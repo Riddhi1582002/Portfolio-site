@@ -46,7 +46,7 @@ export { CARD_H_VH, STRIP_CENTRE_VH, GAP_VH };
 // How much of the strip's scroll the entry occupies: the row arrives
 // already assembled but pulled back, and pushes in to full size before
 // the scrub starts.
-export const STRIP_ENTRY = 0.16;
+export const STRIP_ENTRY = 0;
 
 /**
  * How far left the row is nudged while it is still pulled back, so the
@@ -118,14 +118,13 @@ export default function ReelStrip({ progress }: { progress: number }) {
   // The entry: the assembled row pushes in from the scale the fan handed
   // it over at. The scrub only starts once it has arrived, so the first
   // thing this section does is finish the previous section's sentence.
-  const entryT = easeInOutSine(clamp01(p / STRIP_ENTRY));
-  const scale = stripEntryScale(vw, vh) + (1 - stripEntryScale(vw, vh)) * entryT;
+  // Always 1: the arrival is the previous section's job now.
+  const entryT = 1;
+  const scale = 1;
 
   // Which card is centred. Eased so each card settles rather than sliding
   // past at constant speed.
-  const focus =
-    easeInOutSine(clamp01((p - STRIP_ENTRY) / (1 - STRIP_ENTRY))) *
-    (REELS.length - 1);
+  const focus = easeInOutSine(p) * (REELS.length - 1);
   const lo = Math.floor(focus);
   const hi = Math.min(REELS.length - 1, lo + 1);
   const frac = focus - lo;
