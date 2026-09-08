@@ -163,12 +163,15 @@ export default function PencilSection({
             height: frame.cardH,
             marginLeft: -frame.cardW / 2,
             marginTop: -frame.cardH / 2,
-            borderRadius: 12 * frame.scale,
+            // These four are the gallery's own card, at this beat's scale —
+            // the cut between the beats is geometry, so they have to stay
+            // in step with InfiniteCanvas's Placeholder.
+            borderRadius: 10 * frame.scale,
             background: "linear-gradient(150deg, #212328 0%, #16171c 55%, #0d0e11 100%)",
-            border: `${Math.max(1, frame.scale)}px solid rgba(255,255,255,0.12)`,
-            boxShadow: `0 0 ${(34 * frame.scale).toFixed(0)}px rgba(255,255,255,0.09), 0 ${(
-              18 * frame.scale
-            ).toFixed(0)}px ${(50 * frame.scale).toFixed(0)}px rgba(0,0,0,0.7)`,
+            border: `${Math.max(1, frame.scale)}px solid rgba(255,255,255,0.1)`,
+            boxShadow: `0 0 ${(18 * frame.scale).toFixed(0)}px rgba(255,255,255,0.05), 0 ${(
+              10 * frame.scale
+            ).toFixed(0)}px ${(30 * frame.scale).toFixed(0)}px rgba(0,0,0,0.6)`,
             opacity: cardIn,
             willChange: "opacity",
             pointerEvents: "none",

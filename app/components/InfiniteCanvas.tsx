@@ -1,95 +1,189 @@
 "use client";
 
-// The infinite canvas, and the way home.
+// THE GALLERY, and the way home.
 //
-// A plane you drag. ART sits on that plane behind the work, so panning
-// moves the wordmark too and the canvas reads as one surface rather than
-// cards floating over a fixed backdrop.
+// The model is three layers, and only one of them ever moves:
 //
-// "Infinite" is a real wrap, not a very large plane: the cards live in one
-// CELL, and a 3x3 block of that cell is drawn around wherever the pan
-// currently is. The pan offset is taken modulo the cell before it is
-// applied, so the plane can be dragged forever in any direction and the
-// content is always there — no edges, no bounds, and only nine cells'
-// worth of DOM however far the reader travels.
+//   1. A FIXED rounded viewport. It is a window cut in the black, with
+//      overflow hidden. It never pans, never scales, never rotates.
+//   2. FIXED "ART", on that window's own layer, behind the work. It sits
+//      at one screen position for the whole beat — the position the hero
+//      wordmark occupies on page one — and stays there while the work
+//      slides over it, covering and revealing it.
+//   3. ONE MOVING COMPOSITION. Every image is a child of a single plane.
+//      Dragging translates that plane and nothing else, so the images
+//      keep their relative positions exactly and the window stays put.
 //
-// Clicking a card opens it. The opened card has a back: the arrow flips it
-// 180 degrees on Y, which is why the two faces are separate elements in a
-// preserve-3d parent rather than one element whose contents get swapped.
+// There is no camera pan, no scene move, no masonry, no grid, no carousel
+// and no per-card dragging. The composition is authored by hand, in cell
+// coordinates, with an intentional irregular arrangement and a deliberate
+// clear space at its middle (see GAP) that the return transition flies
+// through.
 //
-// The last stretch of the section's scroll flies into the ART on the
-// plane, and at the top of that move the page returns to the hero — the
-// loop the sequence closes on.
+// "Infinite" is a real wrap, not a very large plane: the work lives in one
+// CELL, and only as many copies of that cell as the window can actually
+// see are drawn around wherever the pan currently is. The pan offset is
+// taken modulo the cell before it is applied, so the plane can be dragged
+// forever in any direction and the images are always there — no edges, no
+// bounds, and a handful of cells' worth of DOM however far the reader
+// travels.
+//
+// Clicking an image (a click, not a drag) expands it in place: the card
+// grows from the exact box it occupied in the composition to a focused
+// card at the middle of the window, with the rest of the gallery still
+// visible behind it. A small arrow at its top-right turns it over on Y to
+// its details, and closing sends it back to the box it came from.
+//
+// Scrolling UP out of the settled gallery does not reverse the page. It
+// runs a dedicated return transition: scrolling is locked, the gesture
+// drives the camera forward through the gap between the images toward the
+// ART that was always there, and only once that has visually arrived is
+// the page's own scroll position reset to the top.
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ART_FONT, glowShadow } from "./HeroSection";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ART_FONT,
+  ART_FONT_SIZE,
+  ART_Y_REST,
+  GLOW_STRENGTH,
+  STAGE_H,
+  STAGE_W,
+  glowShadow,
+} from "./HeroSection";
 import { BULB_GLASS_RATIO, bulbSizePx } from "./CordSection";
 
-// One repeating cell of the plane, in canvas px.
-const CELL_W = 1720;
-const CELL_H = 1180;
+// One repeating cell of the composition, in canvas px.
+//
+// Six columns and three bands. The reference's arrangement is not a grid
+// and not masonry: the columns are at fixed x, every image in a band
+// shares a TOP, and the heights vary freely — so the black falls where
+// the short images are, and the bands are pitched off the tallest image
+// in each. One slot is deliberately left empty (band C, column 3); that
+// void is the clear space the return transition flies through.
+const CELL_W = 1620;
+const CELL_H = 1083;
 
-// The work on the plane, positioned within one cell. Mixed ratios, the
-// same neutral placeholder language as every other section.
-type Piece = { id: string; x: number; y: number; w: number; ratio: number };
+/**
+ * One image in the composition.
+ *
+ * x, y, w and h are INDEPENDENT on purpose: no aspect ratio is imposed
+ * anywhere in this file, so replacing a placeholder with real artwork is
+ * a matter of editing four numbers and the content, and nothing else in
+ * the layout moves. `tone` only varies the placeholder shading so the
+ * arrangement reads as work rather than as eighteen identical rectangles.
+ */
+type Piece = {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  tone: number;
+  title: string;
+  meta: string;
+};
+
+// The composition, authored by hand. Column x/width and band tops are
+// commented on each row so a piece can be moved or resized without having
+// to re-derive the arrangement.
+//
+//   columns  x:   0 / 278 / 536 / 826 / 1076 / 1362
+//            w: 236 / 210 / 250 / 200 /  246 /  218
+//   bands    y:  40 (max h 315) / 401 (max h 330) / 777 (max h 300)
+//   the next cell's band A sits at 1123 = CELL_H + 40, so the vertical
+//   gutter across the wrap is the same 46 as everywhere else.
 const PIECES: Piece[] = [
-  { id: "c1", x: 90, y: 90, w: 380, ratio: 16 / 9 },
-  { id: "c2", x: 560, y: 60, w: 250, ratio: 9 / 16 },
-  { id: "c3", x: 900, y: 150, w: 330, ratio: 1 },
-  { id: "c4", x: 1320, y: 80, w: 300, ratio: 4 / 5 },
-  { id: "c5", x: 150, y: 620, w: 300, ratio: 1 },
-  { id: "c6", x: 540, y: 700, w: 380, ratio: 16 / 9 },
-  { id: "c7", x: 1010, y: 640, w: 250, ratio: 9 / 16 },
-  { id: "c8", x: 1350, y: 760, w: 320, ratio: 3 / 2 },
+  // Band A
+  { id: "a0", x: 0, y: 40, w: 236, h: 300, tone: 0, title: "First Light", meta: "Print / 2024" },
+  { id: "a1", x: 278, y: 40, w: 210, h: 150, tone: 2, title: "Held Note", meta: "Editorial / 2024" },
+  { id: "a2", x: 536, y: 40, w: 250, h: 315, tone: 1, title: "Long Exposure", meta: "Film / 2023" },
+  { id: "a3", x: 826, y: 40, w: 200, h: 150, tone: 3, title: "Paper Cut", meta: "Poster / 2025" },
+  { id: "a4", x: 1076, y: 40, w: 246, h: 260, tone: 2, title: "Slow Pan", meta: "Motion / 2024" },
+  { id: "a5", x: 1362, y: 40, w: 218, h: 190, tone: 0, title: "Offcut", meta: "Sketch / 2023" },
+  // Band B
+  { id: "b0", x: 0, y: 401, w: 236, h: 150, tone: 3, title: "Half Frame", meta: "Photo / 2023" },
+  { id: "b1", x: 278, y: 401, w: 210, h: 290, tone: 0, title: "Night Study", meta: "Identity / 2024" },
+  { id: "b2", x: 536, y: 401, w: 250, h: 190, tone: 2, title: "Cross Fade", meta: "Film / 2025" },
+  { id: "b3", x: 826, y: 401, w: 200, h: 330, tone: 1, title: "Standing Wave", meta: "Campaign / 2025" },
+  { id: "b4", x: 1076, y: 401, w: 246, h: 150, tone: 3, title: "Margin", meta: "Book / 2024" },
+  { id: "b5", x: 1362, y: 401, w: 218, h: 300, tone: 2, title: "Tonal Range", meta: "Type / 2024" },
+  // Band C. Column 3 is empty on purpose — see GAP.
+  { id: "c0", x: 0, y: 777, w: 236, h: 250, tone: 1, title: "Contact Sheet", meta: "Photo / 2024" },
+  { id: "c1", x: 278, y: 777, w: 210, h: 170, tone: 3, title: "Endnote", meta: "Print / 2023" },
+  // THE piece the iris sits on — see IRIS_PIECE_ID.
+  { id: "c2", x: 536, y: 777, w: 250, h: 140, tone: 0, title: "Filament", meta: "Motion / 2025" },
+  { id: "c4", x: 1076, y: 777, w: 246, h: 300, tone: 2, title: "Wide Cut", meta: "Broadcast / 2025" },
+  { id: "c5", x: 1362, y: 777, w: 218, h: 160, tone: 1, title: "Colophon", meta: "Packaging / 2023" },
 ];
+
+// The empty slot in band C, in cell coordinates. The nearest image edge is
+// ~145 canvas px away in every direction (verified against PIECES), which
+// is what makes the return transition a flight BETWEEN the images rather
+// than through one of them.
+const GAP = { x: 926, y: 955 };
 
 // THE piece the iris sits on: the black disc the previous beat leaves the
 // frame on is the pupil painted on this card, and the zoom out starts
 // hard against it. PencilSection draws its last frame from the same
 // numbers, so the swap between the two is geometry, not a cross-fade.
-const IRIS_PIECE_ID = "c6";
+const IRIS_PIECE_ID = "c2";
 /** The iris's diameter as a share of its card's height. */
 const IRIS_RATIO = 0.78;
 /** How much of the reveal the camera spends pulling back. */
-const REVEAL_END = 0.2;
+const REVEAL_END = 0.5;
 
-// Where the flight home begins, as a share of the section's progress.
-const HOME_FROM = 0.72;
-// The plane is at rest until then, so the reader has the whole first
-// stretch to drag around in.
+// ART's size in the settled gallery, as a share of the size page one
+// gives it. The return transition multiplies it back out to exactly 1.
+const ART_REST_RATIO = 0.28;
+// Where the settled gallery starts listening for the return gesture, as a
+// share of the section's progress. Well clear of the pull-back, so
+// scrolling back up part-way through the reveal still simply reverses it.
+const ARM_FROM = 0.8;
+// How far the camera travels forward on the way home. Enough that the
+// nearest image has passed the frame's corner at every viewport size the
+// site is checked at — see the clearance table in the layout check: the
+// worst case (2560x1440) needs 10.1x, and this leaves headroom.
+const DOLLY_MAX = 18;
+// Wheel pixels for the whole return. A trackpad flick is ~400-900px, so
+// the move is one decisive gesture rather than a scrub.
+const RETURN_WHEEL_PX = 1100;
+const RETURN_TOUCH_PX = 620;
+const RETURN_KEY_STEP = 0.22;
+
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const span = (v: number, a: number, b: number) => clamp01((v - a) / (b - a));
-const easeInCubic = (t: number) => t * t * t;
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+const easeInOutCubic = (t: number) =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 // A drag shorter than this is a click, not a pan.
 const CLICK_SLOP_PX = 5;
 
-// The plane is laid out in fixed canvas px, so without this a 380px piece
-// and a 400px ART sat on a 320px phone larger than the screen — one card
-// visible and no sense of a canvas at all. The whole plane is scaled to
-// the viewport instead of reflowing it, so the composition of the cell is
-// identical everywhere and only its size changes.
+// The composition is laid out in fixed canvas px, so without this a 420px
+// piece sat on a 320px phone larger than the screen — one image visible
+// and no sense of a composition at all. The whole plane is scaled to the
+// viewport instead of reflowing it, so the arrangement is identical
+// everywhere and only its size changes.
 const FIT_REFERENCE_VW = 1440;
 const FIT_MIN = 0.42;
 
-/** The viewport fit the plane always carries. */
+/** The viewport fit the composition always carries. */
 export function galleryFit(vw: number) {
   return Math.min(1, Math.max(FIT_MIN, vw / FIT_REFERENCE_VW));
 }
 
 /**
  * The frame the zoom out starts from, in screen px: the iris card scaled
- * until it overfills the viewport, with the iris centred in it.
+ * until the iris painted on it is exactly the size the bulb's underside
+ * was, with the iris centred in the viewport.
  *
- * The scale is solved rather than picked so that at the start of the move
- * the card covers the frame on BOTH axes — otherwise the pull-back opens
- * on the card's edge and the cut from the previous beat is visible.
+ * PencilSection draws its final card from these same numbers, so the cut
+ * between the two beats is geometry rather than a cross-fade.
  */
 export function irisFrame(vw: number, vh: number) {
   const piece = PIECES.find((x) => x.id === IRIS_PIECE_ID)!;
   const fit = galleryFit(vw);
   const cardW = piece.w * fit;
-  const cardH = (piece.w / piece.ratio) * fit;
+  const cardH = piece.h * fit;
   // The circle is the BULB, at the size the bulb actually is on screen —
   // it is the same object, seen from underneath, so it cannot change size
   // as it darkens. The card follows from it at the ratio it already had,
@@ -104,7 +198,27 @@ export function irisFrame(vw: number, vh: number) {
     cardW: cardW * scale,
     cardH: cardH * scale,
     iris,
-    irisPlane: (piece.w / piece.ratio) * IRIS_RATIO,
+    irisPlane: piece.h * IRIS_RATIO,
+  };
+}
+
+/**
+ * Where page one's wordmark actually is, in screen px.
+ *
+ * The hero composes on a 1920x1080 stage fitted like `object-fit: contain`
+ * and centred in the pane, with ART's line box centred at stage y
+ * 540 + ART_Y_REST. Deriving the gallery's ART from the same numbers is
+ * what lets the return transition ARRIVE on the hero rather than dissolve
+ * into it: at the end of the move this element is the same face, the same
+ * size, in the same place, so resetting the page underneath it changes
+ * nothing on screen.
+ */
+function heroArt(vw: number, vh: number) {
+  const stage = Math.min(vw / STAGE_W, vh / STAGE_H);
+  return {
+    stage,
+    fontPx: ART_FONT_SIZE * stage,
+    centerY: vh / 2 + ART_Y_REST * stage,
   };
 }
 
@@ -117,34 +231,100 @@ const ringDelta = (a: number, b: number, m: number) => {
   return d;
 };
 
+const TONES = [
+  "linear-gradient(150deg, #212328 0%, #16171c 55%, #0d0e11 100%)",
+  "linear-gradient(120deg, #1d2027 0%, #14161b 60%, #0b0c0f 100%)",
+  "linear-gradient(200deg, #24262b 0%, #181a1f 50%, #0e0f13 100%)",
+  "linear-gradient(165deg, #1a1c22 0%, #121318 58%, #090a0d 100%)",
+];
+
 function Placeholder({
-  radius = 12,
+  tone = 0,
+  radius = 10,
   hovered = false,
+  label,
+  labelSize = 15,
+  labelOpacity = 1,
 }: {
+  tone?: number;
   radius?: number;
   hovered?: boolean;
+  label?: string;
+  labelSize?: number;
+  labelOpacity?: number;
 }) {
   return (
     <div
       style={{
+        position: "relative",
         width: "100%",
         height: "100%",
         borderRadius: radius,
-        background: "linear-gradient(150deg, #212328 0%, #16171c 55%, #0d0e11 100%)",
-        border: `1px solid rgba(255,255,255,${hovered ? 0.24 : 0.12})`,
-        // A lift and a brighter glow, not the pointer tilt the other cards
-        // get: a tilt tracking the pointer would fight the pan happening
-        // under the same gesture.
+        overflow: "hidden",
+        background: TONES[tone % TONES.length],
+        border: `1px solid rgba(255,255,255,${hovered ? 0.22 : 0.1})`,
+        // Flat, like the reference. The composition is dense — 38 to 50
+        // canvas px between images — and the old 34px white bloom filled
+        // every one of those gutters with haze. A whisper of lift on
+        // hover instead of the pointer tilt the other sections use: a
+        // tilt tracking the pointer would fight the pan happening under
+        // the same gesture.
         boxShadow: hovered
-          ? "0 0 46px rgba(255,255,255,0.2), 0 22px 60px rgba(0,0,0,0.75)"
-          : "0 0 34px rgba(255,255,255,0.09), 0 18px 50px rgba(0,0,0,0.7)",
-        transform: hovered ? "translateY(-4px)" : "translateY(0)",
+          ? "0 0 22px rgba(255,255,255,0.11), 0 12px 34px rgba(0,0,0,0.7)"
+          : "0 0 18px rgba(255,255,255,0.05), 0 10px 30px rgba(0,0,0,0.6)",
+        transform: hovered ? "translateY(-3px)" : "translateY(0)",
         transition:
           "transform 300ms cubic-bezier(0.22,0.7,0.24,1), box-shadow 300ms ease, border-color 300ms ease",
       }}
-    />
+    >
+      {label && (
+        <>
+          {/* A short scrim under the caption, not over the whole image:
+              the caption has to stay legible on artwork of any value once
+              the placeholders are replaced. */}
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: labelSize * 4.2,
+              background:
+                "linear-gradient(to top, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.28) 45%, rgba(0,0,0,0) 100%)",
+              opacity: labelOpacity,
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: labelSize * 0.95,
+              right: labelSize * 0.7,
+              bottom: labelSize * 0.8,
+              fontWeight: 600,
+              fontSize: labelSize,
+              lineHeight: 1.2,
+              letterSpacing: "0.005em",
+              color: "rgba(255,255,255,0.94)",
+              opacity: labelOpacity,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              userSelect: "none",
+              pointerEvents: "none",
+            }}
+          >
+            {label}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
+
+/** An expanded piece, plus the exact screen box it grew out of. */
+type Opened = { piece: Piece; key: string; from: DOMRect };
 
 export default function InfiniteCanvas({
   progress,
@@ -164,9 +344,13 @@ export default function InfiniteCanvas({
   const movedRef = useRef(0);
   const lastRef = useRef({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
-  const [opened, setOpened] = useState<Piece | null>(null);
-  // Keyed by cell AND piece: the same piece is drawn nine times, so keying
-  // on its id alone lit every copy at once.
+  const [opened, setOpened] = useState<Opened | null>(null);
+  // 0 = still in the composition, 1 = fully expanded. Driven by a CSS
+  // transition rather than a rAF loop: the card is one element and the
+  // browser can run the whole grow on the compositor.
+  const [openT, setOpenT] = useState(0);
+  // Keyed by cell AND piece: the same piece is drawn several times, so
+  // keying on its id alone lit every copy at once.
   const [hovered, setHovered] = useState<string | null>(null);
   const [flipped, setFlipped] = useState(false);
 
@@ -174,17 +358,16 @@ export default function InfiniteCanvas({
   const fitRef = useRef(fit);
   fitRef.current = fit;
 
-  // THE ZOOM OUT.
+  // THE ZOOM OUT (unchanged in kind: this is the existing entry transition).
   //
   // The previous beat hands over a frame that is one thing: the iris,
   // hard against the lens, on the card it is painted on. Nothing in the
-  // gallery moves for this — the camera pulls back, so the whole plane
-  // (cards, ART and all) scales down together about the frame's centre
-  // and the rest of the work arrives from outside the frame because it
-  // was always there.
-  const frame = irisFrame(vw, vh);
+  // gallery moves for this — the camera pulls back, so the whole
+  // composition scales down about the frame's centre and the rest of the
+  // work arrives from outside the frame because it was always there.
+  const frame = useMemo(() => irisFrame(vw, vh), [vw, vh]);
   const revealT = easeOutCubic(span(p, 0, REVEAL_END));
-  // Geometric, not linear: a linear pull-back from 5x reads as the cards
+  // Geometric, not linear: a linear pull-back from 5x reads as the images
   // rushing away and then crawling. Interpolating the LOG of the scale
   // makes each moment of the move cover the same proportion of distance,
   // which is what a real dolly looks like.
@@ -192,27 +375,69 @@ export default function InfiniteCanvas({
   const revealing = revealT < 0.999;
   // The iris fades out as the camera gets back: once its card is one of
   // several on screen it should read as a piece of work, not as the
-  // thing we came through. Full while we are still inside it, gone by
-  // the time the gallery is at rest.
+  // thing we came through.
   const irisFade = span(revealScale, 1.0, 1.85);
 
-  // The flight home. Scroll drives it; the plane is untouched before it.
-  const homeT = easeInCubic(span(p, HOME_FROM, 1));
-  // ART is on the plane, so it flies with it — but faster, so the move
-  // reads as going INTO the wordmark rather than the plane merely growing.
-  const planeScale = 1 + homeT * 5;
-  const artScale = 1 + homeT * 16;
-  const veil = span(p, HOME_FROM + 0.16, 0.97);
+  // ── THE RETURN TRANSITION ───────────────────────────────────────────
+  // A dedicated state, not reverse scrolling. `returnTargetRef` is what
+  // the gesture has asked for; `returnT` is what is rendered, easing
+  // toward it so a chunky wheel notch is a glide. See the handlers below.
+  const [returning, setReturning] = useState(false);
+  const [returnT, setReturnT] = useState(0);
+  const returningRef = useRef(false);
+  const returnTargetRef = useRef(0);
+  const returnTRef = useRef(0);
+
+  const camT = easeInOutCubic(returnT);
+  // A real dolly: the composition is near the lens and rushes past it,
+  // ART is far behind and swells slowly. Same camera, two depths, which
+  // is what makes the move read as travelling THROUGH the gap rather
+  // than as the plane merely growing.
+  const dolly = returning ? Math.exp(Math.log(DOLLY_MAX) * camT) : 1;
+
+  const hero = useMemo(() => heroArt(vw, vh), [vw, vh]);
+  // ART's size on the way home is solved, not tweened to a guess: at
+  // camT = 1 it is EXACTLY the hero's, so the page-one reset underneath
+  // it is invisible.
+  const artK = Math.exp(Math.log(1 / ART_REST_RATIO) * camT);
+  const artFontPx = hero.fontPx * ART_REST_RATIO * artK;
+  // In the gallery it sits at the WINDOW's centre — the composition is
+  // scaled about that point, so the camera travels straight down the axis
+  // the clear space is on. It is fixed there for the whole beat; the only
+  // thing that ever moves it is the arrival, which carries it the last few
+  // dozen pixels onto page one's own position. That drift is part of the
+  // camera move, not a separate animation: at camT = 1 it is exact.
+  const artCentreY = vh / 2 + (hero.centerY - vh / 2) * camT;
+  const artIn = span(revealT, 0.5, 1);
+  // Bright enough to read as the wordmark it is — the reference's word is
+  // solid white behind the work, not a watermark — but still clearly
+  // BEHIND the images. It reaches full strength exactly as the camera
+  // arrives, which is what makes the handover to page one a no-op.
+  const artOpacity = (0.36 + 0.64 * easeOutCubic(camT)) * artIn;
+
+  // The rounded window itself. It opens out of the previous beat's
+  // full-bleed black as the pull-back lands, and opens back OUT to full
+  // bleed as the camera leaves through it on the way home.
+  const frameMax = useMemo(() => {
+    const m = Math.min(vw, vh);
+    return {
+      inset: Math.round(Math.min(30, Math.max(8, m * 0.028))),
+      radius: Math.round(Math.min(34, Math.max(14, m * 0.036))),
+    };
+  }, [vw, vh]);
+  const frameT = span(revealT, 0.55, 1) * (1 - easeOutCubic(span(returnT, 0, 0.4)));
+  const frameInset = frameMax.inset * frameT;
+  const frameRadius = frameMax.radius * frameT;
 
   // HOW MANY CELLS TO DRAW.
   //
   // A fixed 3x3 block was nine copies of everything at every moment of
-  // the beat, including the flight home where the plane is scaled six
-  // times and one cell covers the frame several times over. The visible
+  // the beat, including the flight home where the plane is scaled many
+  // times over and one cell covers the frame several times. The visible
   // slice of the plane is vw/eff by vh/eff, and the wrapped offset is
   // somewhere inside one cell, so the block only ever has to span that
   // slice plus the cell it starts in.
-  const eff = planeScale * revealScale * fit;
+  const eff = dolly * revealScale * fit;
   const cellRange = (extent: number, cell: number) => {
     const half = extent / (2 * eff);
     const lo = Math.floor((extent / 2 - half) / cell);
@@ -224,35 +449,26 @@ export default function InfiniteCanvas({
   const cols = revealScale > 2 ? [0] : cellRange(vw, CELL_W);
   const rows = revealScale > 2 ? [0] : cellRange(vh, CELL_H);
 
-  // The pan settles onto the ART FAST, in the first sixth of the flight,
-  // while the zoom is still shallow — so the move reads as the camera
-  // finding the wordmark and then diving into it. Tying the pan to the
-  // zoom's own easing instead meant it was only ~70% of the way onto
-  // target by the time the veil closed, and the dive landed on whatever
-  // the reader had dragged to.
-  const panHomeT = easeOutCubic(span(p, HOME_FROM, HOME_FROM + 0.05));
+  // The pan settles onto the GAP fast, in the first third of the return,
+  // while the dolly is still shallow — so the move reads as the camera
+  // lining up on the clear space and then travelling through it.
+  const panHomeT = easeOutCubic(span(returnT, 0, 0.32));
   const homeRef = useRef(panHomeT);
   homeRef.current = panHomeT;
+
   // The plane offset the pull-back is centred on: the iris card's middle
   // at the middle of the frame.
   //
   // NOT wrapped to the cell. The pull-back draws the centre cell only, so
   // the offset has to be the one that puts THAT copy of the card under the
   // lens; taking it modulo the cell can name the copy one cell over, which
-  // is off screen — on a 1920 frame it put the iris 9,700px to the left.
-  // Wrapping resumes when the reveal ends and the full block is drawn
-  // again, and the two offsets are the same position by then.
+  // is off screen. Wrapping resumes when the reveal ends and the full
+  // block is drawn again, and the two offsets are the same position by then.
   const irisX = frame.piece.x + frame.piece.w / 2 - vw / 2;
-  const irisY = frame.piece.y + frame.piece.w / frame.piece.ratio / 2 - vh / 2;
+  const irisY = frame.piece.y + frame.piece.h / 2 - vh / 2;
 
   // Writing the transform from a ref keeps a drag off React's render path;
-  // at 8 cells of content a state update per pointermove is visible.
-  // The flight has to land on the ART, not on whatever the reader happened
-  // to drag to. The wrapper scales about the viewport centre, so a plane
-  // point P sits at the centre exactly when the plane's translate is
-  // (C - P); with the ART at the middle of its cell that gives one target
-  // offset, and the rendered offset eases onto it as the flight runs —
-  // taking the short way round the wrap so it never unwinds a whole cell.
+  // at fourteen pieces per cell a state update per pointermove is visible.
   const write = useCallback(() => {
     const plane = planeRef.current;
     if (!plane) return;
@@ -267,41 +483,69 @@ export default function InfiniteCanvas({
     const h = homeRef.current;
     const wx = mod(panRef.current.x, CELL_W);
     const wy = mod(panRef.current.y, CELL_H);
-    const tx = mod(CELL_W / 2 - vw / 2, CELL_W);
-    const ty = mod(CELL_H / 2 - vh / 2, CELL_H);
+    // Where the plane has to sit for the GAP to be dead centre. Taken the
+    // short way round the wrap so the approach never unwinds a whole cell.
+    const tx = mod(GAP.x - vw / 2, CELL_W);
+    const ty = mod(GAP.y - vh / 2, CELL_H);
     const ox = wx + ringDelta(wx, tx, CELL_W) * h;
     const oy = wy + ringDelta(wy, ty, CELL_H) * h;
     plane.style.transform = `translate3d(${(-ox).toFixed(2)}px, ${(-oy).toFixed(2)}px, 0)`;
   }, [vw, vh, revealing, irisX, irisY]);
 
-  // Re-render the plane whenever the flight advances or the frame resizes,
+  // Re-write the plane whenever the return advances or the frame resizes,
   // not only when the pointer moves it.
   useEffect(() => {
     write();
   }, [write, panHomeT, revealScale]);
 
-  // Hand the pan over at the value the reveal left it on, so the first
-  // drag after the gallery arrives does not snap the plane back to 0,0.
+  // THE SETTLE.
+  //
+  // The pull-back has to end on the iris card, dead centre — that is the
+  // match cut. But the iris card is then parked exactly over ART, so the
+  // frame the reader is handed has the wordmark hidden behind a
+  // placeholder. So the composition keeps moving for a moment after the
+  // camera stops: it slides the ~280px that puts its clear space over
+  // ART, and the gallery comes to rest on a frame that reads.
+  //
+  // Only until the reader takes hold of it. One drag and this stops
+  // writing the pan for good — nothing should move the composition out
+  // from under a hand that is on it.
+  const untouchedRef = useRef(true);
+  const settleT = easeInOutCubic(span(p, REVEAL_END, REVEAL_END + 0.22));
   useEffect(() => {
-    if (!revealing) return;
-    panRef.current = { x: irisX, y: irisY };
-  }, [revealing, irisX, irisY]);
+    if (revealing) {
+      // Hand the pan over at the value the reveal left it on, so the
+      // first drag after the gallery arrives does not snap it to 0,0.
+      panRef.current = { x: irisX, y: irisY };
+      untouchedRef.current = true;
+      return;
+    }
+    if (!untouchedRef.current) return;
+    panRef.current = {
+      x: irisX + (GAP.x - vw / 2 - irisX) * settleT,
+      y: irisY + (GAP.y - vh / 2 - irisY) * settleT,
+    };
+    write();
+  }, [revealing, irisX, irisY, settleT, vw, vh, write]);
 
+  // ── DRAGGING THE COMPOSITION ────────────────────────────────────────
+  //
   // Pointer capture is taken only once the gesture is actually a drag.
   //
   // Capturing on pointerdown looks harmless but silently breaks opening a
   // card: while a pointer is captured the browser retargets the resulting
   // `click` to the capturing element, so the click landed on the pan
   // surface and never reached the piece under the finger. Deferring the
-  // capture past the slop means a tap is an ordinary click on the card,
+  // capture past the slop means a tap is an ordinary click on the image,
   // and a drag still captures the moment it becomes one — which is what
   // keeps the pan alive when the pointer leaves the surface mid-throw.
   const capturedRef = useRef(false);
 
+  const interactive = !revealing && !returning && !opened;
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
-    // Nothing is draggable while the camera is still pulling back.
-    if (revealing) return;
+    if (!interactive) return;
     draggingRef.current = true;
     capturedRef.current = false;
     movedRef.current = 0;
@@ -315,13 +559,14 @@ export default function InfiniteCanvas({
     const dy = e.clientY - lastRef.current.y;
     lastRef.current = { x: e.clientX, y: e.clientY };
     movedRef.current += Math.hypot(dx, dy);
+    if (movedRef.current > CLICK_SLOP_PX) untouchedRef.current = false;
     if (!capturedRef.current && movedRef.current > CLICK_SLOP_PX) {
       capturedRef.current = true;
       e.currentTarget.setPointerCapture(e.pointerId);
     }
-    // Divided by the fit so the plane tracks the finger 1:1 on screen:
-    // at 0.42 a screen pixel is 2.4 canvas px, and without this the plane
-    // would crawl behind the pointer on a phone.
+    // Divided by the fit so the composition tracks the finger 1:1 on
+    // screen: at 0.42 a screen pixel is 2.4 canvas px, and without this
+    // the plane would crawl behind the pointer on a phone.
     panRef.current.x -= dx / fitRef.current;
     panRef.current.y -= dy / fitRef.current;
     write();
@@ -337,242 +582,544 @@ export default function InfiniteCanvas({
     capturedRef.current = false;
   };
 
+  // ── EXPANDING A PIECE ───────────────────────────────────────────────
+  //
+  // The expanded card is laid out at its FINAL box and transformed back
+  // onto the box the image occupied in the composition, then released to
+  // identity — so the grow and the close are one transform transition on
+  // one element and the card lands exactly on the image it came from,
+  // whatever the pan and the fit happen to be.
+  const openTarget = useMemo(() => {
+    if (!opened) return null;
+    const { piece } = opened;
+    const s = Math.min((vw * 0.66) / piece.w, (vh * 0.7) / piece.h, 3.2);
+    const w = piece.w * s;
+    const h = piece.h * s;
+    return { w, h, left: (vw - w) / 2, top: (vh - h) / 2 };
+  }, [opened, vw, vh]);
+
+  const openFrom = useMemo(() => {
+    if (!opened || !openTarget) return null;
+    const { from } = opened;
+    return {
+      dx: from.left + from.width / 2 - (openTarget.left + openTarget.w / 2),
+      dy: from.top + from.height / 2 - (openTarget.top + openTarget.h / 2),
+      s: openTarget.w > 0 ? from.width / openTarget.w : 1,
+    };
+  }, [opened, openTarget]);
+
+  // Release the transform on the frame AFTER the one that mounted the card
+  // at its origin box, so the browser has an old value to transition from.
+  useEffect(() => {
+    if (!opened) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setOpenT(1));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [opened]);
+
+  const closeOpened = useCallback(() => {
+    setFlipped(false);
+    setOpenT(0);
+  }, [setFlipped, setOpenT]);
+
+  // Unmount only once the card has finished travelling back.
+  const onCardTransitionEnd = (e: React.TransitionEvent) => {
+    if (e.propertyName === "transform" && openT === 0) setOpened(null);
+  };
+
   // Close on Escape, like any other overlay.
   useEffect(() => {
     if (!opened) return;
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") setOpened(null);
+      if (ev.key === "Escape") closeOpened();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [opened]);
+  }, [opened, closeOpened]);
 
-  // Reset the flip whenever a different piece is opened, so a card never
-  // opens already showing its back.
+  // The captured origin box is in screen coordinates, so a resize would
+  // send the card back to a box that no longer exists.
   useEffect(() => {
-    setFlipped(false);
-  }, [opened]);
+    if (!opened) return;
+    const onResize = () => closeOpened();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [opened, closeOpened]);
 
-  // The loop. Once the flight has arrived, the page goes back to the hero.
-  // Armed only on the way DOWN and re-armed only after leaving the end, so
-  // scrolling back up out of the canvas does not trigger it.
-  const armedRef = useRef(true);
+  // ── THE RETURN GESTURE ──────────────────────────────────────────────
+  //
+  // Armed only once the gallery has fully settled, and only while nothing
+  // is expanded. Everything below intercepts the gesture BEFORE the page
+  // can act on it, so the scroll container never starts unwinding toward
+  // page one on its own.
+  const armed = p >= ARM_FROM && !opened;
+  const armedRef = useRef(armed);
   useEffect(() => {
-    if (p < 0.9) {
-      armedRef.current = true;
-      return;
-    }
-    if (p >= 0.995 && armedRef.current) {
-      armedRef.current = false;
-      window.scrollTo({ top: 0, behavior: "auto" });
-    }
-  }, [p]);
+    armedRef.current = armed;
+  }, [armed]);
 
-  const openW = Math.min(vw * 0.72, vh * 0.72 * (16 / 9));
+  const beginReturn = useCallback((amount: number) => {
+    returningRef.current = true;
+    returnTargetRef.current = clamp01(amount);
+    setReturning(true);
+  }, []);
+
+  const cancelReturn = useCallback(() => {
+    returningRef.current = false;
+    returnTargetRef.current = 0;
+    setReturning(false);
+    setReturnT(0);
+  }, []);
+
+  const advance = useCallback(
+    (delta: number) => {
+      const next = clamp01(returnTargetRef.current + delta);
+      returnTargetRef.current = next;
+      if (next <= 0 && returnTRef.current <= 0.002) cancelReturn();
+    },
+    [cancelReturn]
+  );
+
+  useEffect(() => {
+    // Non-passive and in the capture phase: preventDefault has to run
+    // before the document scrolls, and before ScrollSmoother sees it.
+    const opts: AddEventListenerOptions = { passive: false, capture: true };
+
+    const wheelPx = (e: WheelEvent) =>
+      e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * vh : e.deltaY;
+
+    const onWheel = (e: WheelEvent) => {
+      if (returningRef.current) {
+        e.preventDefault();
+        advance(-wheelPx(e) / RETURN_WHEEL_PX);
+        return;
+      }
+      if (!armedRef.current) return;
+      const dy = wheelPx(e);
+      if (dy >= 0) return; // downward scrolling is left alone
+      e.preventDefault();
+      beginReturn(-dy / RETURN_WHEEL_PX);
+    };
+
+    // Touch: the composition owns one-finger gestures (that is the drag),
+    // so the return is a two-finger vertical swipe — the same fingers a
+    // trackpad scroll uses. Once the transition is running every touch is
+    // swallowed, which is the lock.
+    let touchY: number | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      touchY =
+        returningRef.current || (armedRef.current && e.touches.length >= 2)
+          ? e.touches[0].clientY
+          : null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (returningRef.current) {
+        e.preventDefault();
+        if (touchY == null) touchY = e.touches[0].clientY;
+        const dy = e.touches[0].clientY - touchY;
+        touchY = e.touches[0].clientY;
+        advance(dy / RETURN_TOUCH_PX);
+        return;
+      }
+      if (!armedRef.current || e.touches.length < 2 || touchY == null) return;
+      const dy = e.touches[0].clientY - touchY;
+      touchY = e.touches[0].clientY;
+      if (dy <= 0) return; // fingers moving down = scrolling up
+      e.preventDefault();
+      beginReturn(dy / RETURN_TOUCH_PX);
+    };
+    const onTouchEnd = () => {
+      touchY = null;
+    };
+
+    const UP = ["ArrowUp", "PageUp", "Home"];
+    const DOWN = ["ArrowDown", "PageDown", "End", " ", "Spacebar"];
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (returningRef.current) {
+        if (UP.includes(e.key)) {
+          e.preventDefault();
+          advance(RETURN_KEY_STEP);
+        } else if (DOWN.includes(e.key)) {
+          e.preventDefault();
+          advance(-RETURN_KEY_STEP);
+        }
+        return;
+      }
+      if (!armedRef.current || !UP.includes(e.key)) return;
+      e.preventDefault();
+      beginReturn(RETURN_KEY_STEP);
+    };
+
+    window.addEventListener("wheel", onWheel, opts);
+    window.addEventListener("touchstart", onTouchStart, opts);
+    window.addEventListener("touchmove", onTouchMove, opts);
+    window.addEventListener("touchend", onTouchEnd, opts);
+    window.addEventListener("touchcancel", onTouchEnd, opts);
+    window.addEventListener("keydown", onKeyDown, opts);
+    return () => {
+      window.removeEventListener("wheel", onWheel, opts);
+      window.removeEventListener("touchstart", onTouchStart, opts);
+      window.removeEventListener("touchmove", onTouchMove, opts);
+      window.removeEventListener("touchend", onTouchEnd, opts);
+      window.removeEventListener("touchcancel", onTouchEnd, opts);
+      window.removeEventListener("keydown", onKeyDown, opts);
+    };
+  }, [advance, beginReturn, vh]);
+
+  // The rendered value eases toward what the gesture asked for. Without
+  // this the camera advances in wheel-notch steps, which is exactly the
+  // stepped feel the rest of the sequence goes to some trouble to avoid.
+  useEffect(() => {
+    if (!returning) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const k = 1 - Math.exp(-dt / 0.075);
+      setReturnT((prev) => {
+        const target = returnTargetRef.current;
+        const next = prev + (target - prev) * k;
+        const settled = Math.abs(target - next) < 0.0008 ? target : next;
+        returnTRef.current = settled;
+        return settled;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [returning]);
+
+  // While the transition runs the page must not move under it. The
+  // handlers above already swallow every scroll gesture; pausing the
+  // smoother as well means anything that gets past them (a scrollbar
+  // drag, a programmatic scroll) cannot advance the sequence either.
+  useEffect(() => {
+    if (!returning) return;
+    let smoother: { paused: (v?: boolean) => unknown } | null = null;
+    let cancelled = false;
+    import("gsap/ScrollSmoother")
+      .then((m) => {
+        if (cancelled) return;
+        smoother = m.ScrollSmoother.get() ?? null;
+        smoother?.paused(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      smoother?.paused(false);
+    };
+  }, [returning]);
+
+  // ARRIVAL. The move has visually completed — ART is the hero's ART, at
+  // the hero's size, in the hero's place — so the page's own scroll
+  // position can now be reset underneath it without anything changing on
+  // screen. Nothing is faded and nothing is duplicated: the same element
+  // simply stops being this section's and starts being page one's.
+  useEffect(() => {
+    if (!returning || returnT < 0.999) return;
+    let cancelled = false;
+    import("gsap/ScrollSmoother")
+      .then((m) => {
+        if (cancelled) return;
+        const s = m.ScrollSmoother.get();
+        if (s) {
+          s.paused(false);
+          // scrollTop() jumps. scrollTo(0, true) would play the whole
+          // sequence backwards over the smoother's 0.72s.
+          s.scrollTop(0);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (cancelled) return;
+        window.scrollTo(0, 0);
+        returningRef.current = false;
+        returnTargetRef.current = 0;
+        setReturning(false);
+        setReturnT(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [returning, returnT]);
+
+  const hintOpacity =
+    opened || returning ? 0 : span(revealT, 0.92, 1);
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#000" }}>
+      {/* THE FIXED ROUNDED VIEWPORT. It clips, and that is all it does —
+          it is never transformed, so the window is genuinely fixed and
+          the composition genuinely moves inside it. */}
       <div
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onDragStart={(e) => e.preventDefault()}
+        data-canvas="viewport"
         style={{
           position: "absolute",
-          inset: 0,
-          cursor: revealing ? "default" : dragging ? "grabbing" : "grab",
-          touchAction: "none",
-          // The whole plane grows on the flight home, on top of the
-          // viewport fit it always carries.
-          transform: `scale(${(planeScale * revealScale * fit).toFixed(4)})`,
-          transformOrigin: "50% 50%",
-          willChange: "transform",
+          inset: frameInset,
+          borderRadius: frameRadius,
+          overflow: "hidden",
+          background: "#000",
         }}
       >
-        {/* The plane. Offset by the pan, wrapped to one cell. */}
+        {/* Everything inside is laid out in VIEWPORT coordinates, not in
+            the window's, by pulling the inset back out. The rounded frame
+            can then open and close without moving a single pixel of the
+            composition or of ART. */}
         <div
-          ref={planeRef}
-          data-canvas="plane"
-          style={{ position: "absolute", left: 0, top: 0, willChange: "transform" }}
+          style={{
+            position: "absolute",
+            left: -frameInset,
+            top: -frameInset,
+            width: vw,
+            height: vh,
+          }}
         >
-          {/* Nine cells, so whatever the wrapped offset is the viewport is
-              covered on every side. */}
-          {rows.map((row) =>
-            cols.map((col) => (
-              <div
-                key={`${row}:${col}`}
-                data-canvas="cell"
-                style={{
-                  position: "absolute",
-                  left: col * CELL_W,
-                  top: row * CELL_H,
-                  width: CELL_W,
-                  height: CELL_H,
-                }}
-              >
-                {/* ART, on the plane and behind the work. Not drawn at
-                    all while the camera is hard in on the iris: the card
-                    covers it, and a 400px face scaled five times is a
-                    large raster for something nobody can see. */}
-                {revealScale < 2.6 && (
-                <div
-                  aria-hidden
-                  data-canvas="art"
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    top: "50%",
-                    textAlign: "center",
-                    transform: `translateY(-50%) scale(${(artScale / planeScale).toFixed(3)})`,
-                    fontFamily: ART_FONT,
-                    fontWeight: 400,
-                    fontSize: 400,
-                    lineHeight: 0.86,
-                    letterSpacing: "0.005em",
-                    color: "#fff",
-                    opacity:
-                      (0.13 + homeT * 0.8) * clamp01((2.6 - revealScale) / 0.9),
-                    // CONSTANT. The flight home scales this face to
-                    // several thousand pixels, and a four-layer glow that
-                    // changes every frame means re-rendering type that
-                    // size with four blurs, once per cell, per frame.
-                    textShadow: glowShadow(1),
-                    willChange: "opacity, transform",
-                    userSelect: "none",
-                    pointerEvents: "none",
-                  }}
-                >
-                  ART
-                </div>
-                )}
+          {/* ART. On the WINDOW's layer, behind the work, at one screen
+              position for the whole beat — the position page one's
+              wordmark occupies. The images slide over it; it never moves
+              with them. Not drawn while the camera is still hard in on
+              the iris, where the card covers it completely. */}
+          {revealScale < 2.6 && (
+            <div
+              aria-hidden
+              data-canvas="art"
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: artCentreY,
+                transform: "translateY(-50%)",
+                textAlign: "center",
+                fontFamily: ART_FONT,
+                fontWeight: 400,
+                fontSize: artFontPx,
+                lineHeight: 0.86,
+                letterSpacing: "0.005em",
+                color: "#fff",
+                opacity: artOpacity * clamp01((2.6 - revealScale) / 0.9),
+                // CONSTANT, and at the hero's own strength. Regenerating a
+                // four-layer glow every frame on type this size is the
+                // most expensive thing that could happen during the move,
+                // and matching page one exactly is what lets the handover
+                // at the end be a no-op rather than a cross-fade.
+                textShadow: glowShadow(1.15 * GLOW_STRENGTH),
+                userSelect: "none",
+                pointerEvents: "none",
+              }}
+            >
+              ART
+            </div>
+          )}
 
-                {PIECES.map((piece) => (
+          {/* THE MOVING COMPOSITION. One plane; the drag translates it and
+              nothing else. The scale is the viewport fit, the pull-back,
+              and the return's dolly — all about the window's centre. */}
+          <div
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onDragStart={(e) => e.preventDefault()}
+            style={{
+              position: "absolute",
+              inset: 0,
+              cursor: !interactive ? "default" : dragging ? "grabbing" : "grab",
+              touchAction: "none",
+              transform: `scale(${eff.toFixed(4)})`,
+              transformOrigin: "50% 50%",
+              willChange: "transform",
+              pointerEvents: opened ? "none" : "auto",
+            }}
+          >
+            <div
+              ref={planeRef}
+              data-canvas="plane"
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                fontFamily: sans,
+                willChange: "transform",
+              }}
+            >
+              {rows.map((row) =>
+                cols.map((col) => (
                   <div
-                    key={piece.id}
-                    data-canvas="piece"
-                    onClick={() => {
-                      if (movedRef.current <= CLICK_SLOP_PX) setOpened(piece);
-                    }}
-                    onMouseEnter={() => setHovered(`${row}:${col}:${piece.id}`)}
-                    onMouseLeave={() => setHovered(null)}
+                    key={`${row}:${col}`}
+                    data-canvas="cell"
                     style={{
                       position: "absolute",
-                      left: piece.x,
-                      top: piece.y,
-                      width: piece.w,
-                      height: piece.w / piece.ratio,
-                      cursor: "pointer",
-                      // The beat before this one hands over a frame with
-                      // ONE card on black. The pull-back starts close but
-                      // not that close, so without this the neighbours
-                      // are already in shot at the cut and pop in. They
-                      // arrive with the move instead.
-                      opacity:
-                        piece.id === IRIS_PIECE_ID ? 1 : span(revealT, 0.04, 0.42),
+                      left: col * CELL_W,
+                      top: row * CELL_H,
+                      width: CELL_W,
+                      height: CELL_H,
                     }}
                   >
-                    <Placeholder hovered={hovered === `${row}:${col}:${piece.id}`} />
-                    {piece.id === IRIS_PIECE_ID && irisFade > 0.001 && (
-                      // The pupil the camera came out through. It is a
-                      // disc ON the card, at the card's own centre, so
-                      // pulling back shrinks it exactly as it shrinks
-                      // everything else — the match cut holds because
-                      // nothing about it is animated separately.
-                      <div
-                        aria-hidden
-                        data-canvas="iris"
-                        style={{
-                          position: "absolute",
-                          left: "50%",
-                          top: "50%",
-                          width: frame.irisPlane,
-                          height: frame.irisPlane,
-                          marginLeft: -frame.irisPlane / 2,
-                          marginTop: -frame.irisPlane / 2,
-                          borderRadius: "50%",
-                          background: "#000",
-                          boxShadow: `0 0 0 ${(1.2 / revealScale).toFixed(3)}px rgba(255,255,255,${(
-                            0.42 * irisFade
-                          ).toFixed(3)}), 0 0 ${(18 / revealScale).toFixed(
-                            2
-                          )}px rgba(255,255,255,${(0.2 * irisFade).toFixed(3)})`,
-                          opacity: irisFade,
-                          pointerEvents: "none",
-                        }}
-                      />
-                    )}
+                    {PIECES.map((piece) => {
+                      const key = `${row}:${col}:${piece.id}`;
+                      return (
+                        <div
+                          key={piece.id}
+                          data-canvas="piece"
+                          data-piece={piece.id}
+                          onClick={(e) => {
+                            // A drag, not a click.
+                            if (movedRef.current > CLICK_SLOP_PX) return;
+                            setOpened({
+                              piece,
+                              key,
+                              from: e.currentTarget.getBoundingClientRect(),
+                            });
+                            setFlipped(false);
+                            setOpenT(0);
+                          }}
+                          onMouseEnter={() => setHovered(key)}
+                          onMouseLeave={() => setHovered(null)}
+                          style={{
+                            position: "absolute",
+                            left: piece.x,
+                            top: piece.y,
+                            width: piece.w,
+                            height: piece.h,
+                            cursor: "pointer",
+                            // The expanded card IS this image, so the copy
+                            // it grew out of must not sit under it.
+                            visibility: opened?.key === key ? "hidden" : "visible",
+                            // The beat before this one hands over a frame
+                            // with ONE card on black. The pull-back starts
+                            // close but not that close, so without this the
+                            // neighbours are already in shot at the cut and
+                            // pop in. They arrive with the move instead.
+                            opacity:
+                              piece.id === IRIS_PIECE_ID
+                                ? 1
+                                : span(revealT, 0.04, 0.42),
+                          }}
+                        >
+                          <Placeholder
+                            tone={piece.tone}
+                            hovered={hovered === key}
+                            label={piece.title}
+                            labelOpacity={
+                              piece.id === IRIS_PIECE_ID
+                                ? span(revealT, 0.35, 0.7)
+                                : 1
+                            }
+                          />
+                          {piece.id === IRIS_PIECE_ID && irisFade > 0.001 && (
+                            // The pupil the camera came out through. It is
+                            // a disc ON the card, at the card's own centre,
+                            // so pulling back shrinks it exactly as it
+                            // shrinks everything else — the match cut holds
+                            // because nothing about it is animated
+                            // separately.
+                            <div
+                              aria-hidden
+                              data-canvas="iris"
+                              style={{
+                                position: "absolute",
+                                left: "50%",
+                                top: "50%",
+                                width: frame.irisPlane,
+                                height: frame.irisPlane,
+                                marginLeft: -frame.irisPlane / 2,
+                                marginTop: -frame.irisPlane / 2,
+                                borderRadius: "50%",
+                                background: "#000",
+                                boxShadow: `0 0 0 ${(1.2 / revealScale).toFixed(
+                                  3
+                                )}px rgba(255,255,255,${(0.42 * irisFade).toFixed(
+                                  3
+                                )}), 0 0 ${(18 / revealScale).toFixed(
+                                  2
+                                )}px rgba(255,255,255,${(0.2 * irisFade).toFixed(3)})`,
+                                opacity: irisFade,
+                                pointerEvents: "none",
+                              }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            ))
-          )}
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Hint, only while the plane is the thing to use. */}
+      {/* Hint, only while the composition is the thing to use. */}
       <div
+        data-canvas="hint"
         style={{
           position: "absolute",
           left: 0,
           right: 0,
-          bottom: "5vh",
+          bottom: `calc(3vh + ${frameInset}px)`,
           textAlign: "center",
           fontFamily: sans,
           fontWeight: 300,
           fontSize: 13,
           letterSpacing: "0.16em",
           textTransform: "uppercase",
-          color: "rgba(255,255,255,0.4)",
-          opacity:
-            (1 - span(p, HOME_FROM - 0.12, HOME_FROM)) *
-            (opened ? 0 : 1) *
-            span(revealT, 0.9, 1),
+          color: "rgba(255,255,255,0.46)",
+          // The composition is dense enough that this lands on a card as
+          // often as on black.
+          textShadow: "0 1px 10px rgba(0,0,0,0.9)",
+          opacity: hintOpacity,
           transition: "opacity 240ms ease",
           pointerEvents: "none",
+          zIndex: 4,
         }}
       >
-        Drag to explore
+        {armed ? "Drag to explore · Scroll up to return" : "Drag to explore"}
       </div>
 
-      {/* The flight's veil: the frame goes to black at the top of the move
-          so the return to the hero is a cut, not a jump. */}
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "#000",
-          opacity: veil,
-          pointerEvents: "none",
-          zIndex: 5,
-        }}
-      />
-
-      {/* An opened piece. Two faces in a preserve-3d parent, so the arrow
-          turns the card over rather than swapping its contents. */}
-      {opened && (
-        <div
-          onClick={() => setOpened(null)}
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 6,
-            display: "grid",
-            placeItems: "center",
-            background: "rgba(0,0,0,0.72)",
-            backdropFilter: "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)",
-          }}
-        >
+      {/* AN EXPANDED PIECE.
+          The gallery stays visible behind it — a light scrim, no blur —
+          because the card is meant to read as one image lifted out of the
+          composition rather than as a modal over a hidden page. */}
+      {opened && openTarget && openFrom && (
+        <>
           <div
-            onClick={(e) => e.stopPropagation()}
+            data-canvas="scrim"
+            onClick={closeOpened}
             style={{
-              width: openW,
-              aspectRatio: String(opened.ratio),
-              maxHeight: "76vh",
+              position: "absolute",
+              inset: 0,
+              zIndex: 6,
+              background: "rgba(0,0,0,0.42)",
+              opacity: openT,
+              transition: "opacity 520ms cubic-bezier(0.22,0.7,0.24,1)",
+            }}
+          />
+          <div
+            data-canvas="opened"
+            onTransitionEnd={onCardTransitionEnd}
+            style={{
+              position: "absolute",
+              left: openTarget.left,
+              top: openTarget.top,
+              width: openTarget.w,
+              height: openTarget.h,
+              zIndex: 7,
               perspective: "1600px",
+              transformOrigin: "50% 50%",
+              transform:
+                openT === 1
+                  ? "translate3d(0px, 0px, 0) scale(1)"
+                  : `translate3d(${openFrom.dx.toFixed(2)}px, ${openFrom.dy.toFixed(
+                      2
+                    )}px, 0) scale(${openFrom.s.toFixed(4)})`,
+              transition: "transform 560ms cubic-bezier(0.22,0.7,0.24,1)",
+              willChange: "transform",
             }}
           >
             <div
@@ -583,78 +1130,123 @@ export default function InfiniteCanvas({
                 height: "100%",
                 transformStyle: "preserve-3d",
                 transform: `rotateY(${flipped ? 180 : 0}deg)`,
-                transition: "transform 640ms cubic-bezier(0.22,0.7,0.24,1)",
+                transition: "transform 700ms cubic-bezier(0.22,0.7,0.24,1)",
               }}
             >
-              <div style={{ position: "absolute", inset: 0, backfaceVisibility: "hidden" }}>
-                <Placeholder radius={16} />
-              </div>
               <div
                 style={{
                   position: "absolute",
                   inset: 0,
                   backfaceVisibility: "hidden",
-                  transform: "rotateY(180deg)",
-                  borderRadius: 16,
-                  padding: "clamp(20px, 3vw, 42px)",
-                  background:
-                    "linear-gradient(150deg, #191a1e 0%, #111216 55%, #0a0b0d 100%)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  fontFamily: sans,
-                  color: "rgba(255,255,255,0.62)",
-                  fontWeight: 300,
-                  fontSize: "clamp(13px, 1vw, 16px)",
-                  lineHeight: 1.7,
-                  letterSpacing: "0.04em",
+                  WebkitBackfaceVisibility: "hidden",
                 }}
               >
-                <p style={{ color: "#fff", fontWeight: 500, letterSpacing: "0.02em" }}>
-                  Piece details
+                <Placeholder
+                  tone={opened.piece.tone}
+                  radius={16}
+                  label={opened.piece.title}
+                  labelSize={Math.round(
+                    Math.max(14, Math.min(22, openTarget.w * 0.028))
+                  )}
+                />
+              </div>
+              <div
+                data-canvas="back"
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  backfaceVisibility: "hidden",
+                  WebkitBackfaceVisibility: "hidden",
+                  transform: "rotateY(180deg)",
+                  borderRadius: 16,
+                  padding: "clamp(18px, 3vw, 42px)",
+                  background:
+                    "linear-gradient(150deg, #191a1e 0%, #111216 55%, #0a0b0d 100%)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  fontFamily: sans,
+                  color: "rgba(255,255,255,0.72)",
+                  fontWeight: 300,
+                  fontSize: "clamp(12px, 1vw, 16px)",
+                  lineHeight: 1.7,
+                  letterSpacing: "0.04em",
+                  overflow: "hidden",
+                  // Bottom-anchored, so the title lands where the front's
+                  // caption was and the turn reads as the same card rather
+                  // than a different panel.
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <p
+                  style={{
+                    color: "#fff",
+                    fontWeight: 500,
+                    fontSize: "clamp(16px, 1.6vw, 26px)",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {opened.piece.title}
                 </p>
-                <p style={{ marginTop: 12 }}>
+                <p
+                  style={{
+                    marginTop: 6,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.16em",
+                    fontSize: "clamp(10px, 0.8vw, 12px)",
+                    color: "rgba(255,255,255,0.42)",
+                  }}
+                >
+                  {opened.piece.meta}
+                </p>
+                <p style={{ marginTop: 14 }}>
                   Placeholder for the notes on this piece — brief, role, tools, year.
                 </p>
               </div>
             </div>
-          </div>
 
-          {/* The arrow. Turns the card over. */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setFlipped((v) => !v);
-            }}
-            aria-label={flipped ? "Show the front" : "Show the back"}
-            style={{
-              position: "absolute",
-              right: "6vw",
-              top: "50%",
-              transform: "translateY(-50%)",
-              width: 52,
-              height: 52,
-              borderRadius: "50%",
-              display: "grid",
-              placeItems: "center",
-              background: "rgba(255,255,255,0.07)",
-              border: "1px solid rgba(255,255,255,0.22)",
-              color: "#fff",
-              cursor: "pointer",
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path
-                d={flipped ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
+            {/* The arrow, small and at the card's own top-right. Outside
+                the flipper, so it stays put while the card turns over. */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFlipped((v) => !v);
+              }}
+              aria-label={flipped ? "Show the piece" : "Show the details"}
+              data-canvas="flip-arrow"
+              style={{
+                position: "absolute",
+                top: 12,
+                right: 12,
+                width: 34,
+                height: 34,
+                borderRadius: "50%",
+                display: "grid",
+                placeItems: "center",
+                background: "rgba(12,13,16,0.55)",
+                border: "1px solid rgba(255,255,255,0.24)",
+                color: "#fff",
+                cursor: "pointer",
+                padding: 0,
+                opacity: openT,
+                transition: "opacity 320ms ease 180ms, background 200ms ease",
+                backdropFilter: "blur(4px)",
+                WebkitBackdropFilter: "blur(4px)",
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d={flipped ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

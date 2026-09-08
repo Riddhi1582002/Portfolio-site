@@ -92,12 +92,15 @@ const TAG1_Y_REST = 320;
 const TAG1_Y_MID = 196;
 const NAME_SIZE_REST = 46;
 const NAME_SIZE_MID = 60;
-const ART_Y_REST = 66;
+export const ART_Y_REST = 66;
 // Carries the remainder of the tagline-to-ART gap shift (see TAG1_Y_MID).
 // Mid-stage only — rest and deep are untouched, so the ART -> "is my peace"
 // gap this is being matched against stays exactly as it was.
 const ART_Y_MID = 132;
 export const ART_Y_DEEP = -60;
+// ART's authored face size, in stage units. Exported because the gallery's
+// return transition has to land on this exact size — see InfiniteCanvas.
+export const ART_FONT_SIZE = 462;
 const ART_SCALE_REST = 1;
 const ART_SCALE_MID = 1.36;
 export const ART_SCALE_DEEP = 1.94;
@@ -210,7 +213,12 @@ const CORD_VH = 1200;
 // over cleanly, and the pull-back out of the iris has to be able to
 // START on the frame the pencil beat ended on. One pane, one progress.
 const PENCIL_VH = 420;
-const CANVAS_VH = 500;
+// The gallery's track: the pull-back out of the iris, and then the
+// settled gallery. It no longer carries a scroll-driven flight home —
+// the return to page one is a dedicated gesture-driven transition (see
+// InfiniteCanvas), so the track only has to cover the pull-back plus
+// enough settled gallery for the return to be armed in.
+const CANVAS_VH = 220;
 const SCROLL_LENGTH_VH = HERO_VH + REELS_VH + CORD_VH + PENCIL_VH + CANVAS_VH;
 // Beat boundaries as shares of the whole track. Every beat keeps the
 // scroll length in vh it always had; only the track they sit on changed.
@@ -645,7 +653,7 @@ export default function HeroSection() {
   // is paused at (462 * 0.86 is ART's unscaled line-box height; halved
   // and scaled gives its current half-height at rest, translateY(-50%)
   // centered like ART itself).
-  const artBottomY = 540 + artY + ((462 * 0.86) / 2) * artScale;
+  const artBottomY = 540 + artY + ((ART_FONT_SIZE * 0.86) / 2) * artScale;
   const hintY = artBottomY + 40;
 
   // Split each narration line into a SplitText clip-mask once on mount.
@@ -869,7 +877,7 @@ export default function HeroSection() {
               textAlign: "center",
               fontFamily: ART_FONT,
               fontWeight: 400,
-              fontSize: 462,
+              fontSize: ART_FONT_SIZE,
               lineHeight: 0.86,
               letterSpacing: "0.005em",
               color: "#fff",
