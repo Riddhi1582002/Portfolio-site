@@ -38,21 +38,36 @@ import { useEffect, useRef } from "react";
 
 const MODEL_URL = "/model/bulb.glb";
 
-/** A soft round additive flare, drawn once into a canvas texture. */
+/**
+ * A small, tight additive core, drawn once into a canvas texture.
+ *
+ * The filament mesh's own emissive material was tried alone first — no
+ * separate sprite at all — but a coil is a THIN WIRE: however bright a
+ * material value it carries, it occupies very little of the frame, so the
+ * total light it visibly contributes stays small next to the glass around
+ * it and the bulb reads as barely lit. A real hot filament also has a
+ * bloom around the wire itself — the eye's own glare response to a small
+ * very bright source — and that is what this adds back: additive, so it
+ * only ever brightens, and sized and positioned to the coil itself (see
+ * `flare.scale`/`flare.position` in the render loop) rather than to the
+ * bulb as a whole, which is what keeps it reading as the filament's own
+ * glow and not as a separate glowing shape floating in the glass.
+ */
 function flareTexture(THREE: typeof import("three")) {
   const size = 256;
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d")!;
   const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  // A real flare is a small very bright core with a long, fast-falling
-  // skirt. Even stops give you a fuzzy ball instead.
-  g.addColorStop(0.0, "rgba(255,247,230,1)");
-  g.addColorStop(0.06, "rgba(255,232,190,0.85)");
-  g.addColorStop(0.16, "rgba(255,206,140,0.42)");
-  g.addColorStop(0.36, "rgba(255,186,110,0.14)");
-  g.addColorStop(0.62, "rgba(255,170,96,0.04)");
-  g.addColorStop(1.0, "rgba(255,160,90,0)");
+  // Tighter than a lens flare: almost all of the brightness sits in the
+  // first fifth of the radius, so at the small scale this is drawn at
+  // (see FLARE_MAX_SCALE) it reads as a hot core hugging the wire, not as
+  // a soft ball with real extent of its own.
+  g.addColorStop(0.0, "rgba(255,248,234,1)");
+  g.addColorStop(0.1, "rgba(255,234,194,0.75)");
+  g.addColorStop(0.24, "rgba(255,210,150,0.32)");
+  g.addColorStop(0.45, "rgba(255,196,124,0.09)");
+  g.addColorStop(1.0, "rgba(255,190,110,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
   const tex = new THREE.CanvasTexture(c);
@@ -228,8 +243,15 @@ export default function BulbModel({
       filamentCore.position.set(0, 0, 0);
       scene.add(filamentCore);
 
-      // The visible flare around the hot spot. Additive, so it adds light
-      // to the glass rather than covering it.
+      // The bloom right on the coil. A flat Sprite still reads as a
+      // separate object once it has any real extent of its own — that was
+      // "a random glowing circle" — but a THIN WIRE'S own emissive value,
+      // however high, occupies too little of the frame to visibly light
+      // the bulb at all: tried alone, the envelope stayed dark. The fix is
+      // scale, not presence: kept small enough (see FLARE_MAX_SCALE, a
+      // fraction of the filament coil's own measured size, not the bulb's)
+      // that it hugs the wire rather than floating clear of it, so it
+      // reads as the coil's own glare rather than as a second shape.
       const flare = new THREE.Sprite(
         new THREE.SpriteMaterial({
           map: flareTexture(THREE),
@@ -266,6 +288,9 @@ export default function BulbModel({
       const pivot = new THREE.Group();
       scene.add(pivot);
       let loaded = false;
+      // The filament coil's own measured extent, so the flare can be sized
+      // to IT rather than to an arbitrary constant — see FLARE_MAX_SCALE.
+      let flareBaseSize = 0.4;
 
       new GLTFLoader().load(MODEL_URL, (gltf) => {
         if (disposed) return;
@@ -371,6 +396,10 @@ export default function BulbModel({
         filament.position.copy(hotCentre);
         filamentCore.position.copy(hotCentre);
         flare.position.copy(hotCentre);
+        if (found) {
+          const hotSize = hot.getSize(new THREE.Vector3());
+          flareBaseSize = Math.max(hotSize.x, hotSize.y, hotSize.z);
+        }
         loaded = true;
       });
 
@@ -422,16 +451,26 @@ export default function BulbModel({
         // brightness.
         const on = Math.min(1, Math.max(0, (lit - 0.16) / 0.74));
         const glow = on * on;
-        // Raised from 25: the primary source reaching the glass and the
-        // room. A second, tight, short-range light (filamentCore) is what
-        // carries the extra bloom right at the coil without also pushing
-        // the emissive mesh past a flat white blob — that risk is capped
-        // by the emissive multiplier below staying moderate.
-        filament.intensity = glow * 32;
-        filamentCore.intensity = glow * 15;
-        (flare.material as import("three").SpriteMaterial).opacity = glow;
-        flare.scale.setScalar(0.5 + on * 1.25);
-        for (const m of emitters) m.emissiveIntensity = glow * 5.2;
+        // The primary source reaching the glass and the room, a second,
+        // tight, short-range light (filamentCore) for the extra bloom
+        // right at the coil, and the filament MESH's own emissive value —
+        // no separate sprite any more, so this last one carries the whole
+        // job of reading as "the light is coming from the filament
+        // itself". Filmic tone mapping is what makes pushing it this hard
+        // safe: it rolls a high emissive value off toward white rather
+        // than clipping, so the coil stays a bright, detailed shape
+        // instead of flattening into a blown-out blob the way a flat
+        // linear value would.
+        filament.intensity = glow * 36;
+        filamentCore.intensity = glow * 20;
+        for (const m of emitters) m.emissiveIntensity = glow * 12;
+        // The flare's own scale is a MULTIPLE of the coil's own measured
+        // size (flareBaseSize), not a constant — so it always sits close
+        // over the wire rather than growing into a shape with its own
+        // independent presence. 1.1-2x the coil's extent is enough to
+        // read as glare around it without ever reading as a separate disc.
+        (flare.material as import("three").SpriteMaterial).opacity = glow * 0.92;
+        flare.scale.setScalar(flareBaseSize * (1.1 + on * 0.9));
         // The room dims with the filament, reflections included.
         const room = 0.22 + on * 0.86;
         ambient.intensity = 0.065 * room;

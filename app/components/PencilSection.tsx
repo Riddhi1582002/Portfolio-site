@@ -106,9 +106,16 @@ export default function PencilSection({
   // start to frame.iris exactly as fallT reaches 1 — the same moment the
   // descent itself completes — so the two stay the same size, and the
   // same position, for as long as they overlap.
-  const CIRCLE_START_RATIO = 0.94;
+  // Full box width to start (a frontal bulb all but fills its own
+  // bounding box), and eased with fallT^1.7 rather than fallT itself: the
+  // foreshortening that shrinks the glass toward BULB_GLASS_RATIO is
+  // itself back-loaded into the last part of the pitch, not linear in it,
+  // so matching fallT one-for-one still left the circle visibly smaller
+  // than the bulb through the middle of the crossfade.
+  const CIRCLE_START_RATIO = 1;
+  const circleShrinkT = Math.pow(fallT, 1.7);
   const circleDia =
-    bulbPx * (CIRCLE_START_RATIO + (BULB_GLASS_RATIO - CIRCLE_START_RATIO) * fallT);
+    bulbPx * (CIRCLE_START_RATIO + (BULB_GLASS_RATIO - CIRCLE_START_RATIO) * circleShrinkT);
 
   // The cut. The card comes up first, then the circle darkens — so the
   // order the eye reads is "there is something behind this light", then

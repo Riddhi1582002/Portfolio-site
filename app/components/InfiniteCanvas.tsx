@@ -34,11 +34,12 @@
 // visible behind it. A small arrow at its top-right turns it over on Y to
 // its details, and closing sends it back to the box it came from.
 //
-// Scrolling UP out of the settled gallery does not reverse the page. It
-// runs a dedicated return transition: scrolling is locked, the gesture
-// drives the camera forward through the gap between the images toward the
-// ART that was always there, and only once that has visually arrived is
-// the page's own scroll position reset to the top.
+// Scrolling DOWN out of the settled gallery — past the natural end of the
+// page's own scroll track — does not do nothing and does not reverse the
+// page. It runs a dedicated return transition: scrolling is locked, the
+// gesture drives the camera forward through the gap between the images
+// toward the ART that was always there, and only once that has visually
+// arrived is the page's own scroll position reset to the top.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -136,11 +137,20 @@ const REVEAL_END = 0.5;
 // ART's size in the settled gallery, as a share of the size page one
 // gives it. The return transition multiplies it back out to exactly 1.
 const ART_REST_RATIO = 0.28;
+// Where the settled gallery starts listening for the return gesture, as a
+// share of the section's progress. Well clear of the pull-back, so
+// scrolling back up part-way through the reveal still simply reverses it.
+const ARM_FROM = 0.8;
 // How far the camera travels forward on the way home. Enough that the
 // nearest image has passed the frame's corner at every viewport size the
 // site is checked at — see the clearance table in the layout check: the
 // worst case (2560x1440) needs 10.1x, and this leaves headroom.
 const DOLLY_MAX = 18;
+// Wheel pixels for the whole return. A trackpad flick is ~400-900px, so
+// the move is one decisive gesture rather than a scrub.
+const RETURN_WHEEL_PX = 1100;
+const RETURN_TOUCH_PX = 620;
+const RETURN_KEY_STEP = 0.22;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const span = (v: number, a: number, b: number) => clamp01((v - a) / (b - a));
@@ -645,25 +655,125 @@ export default function InfiniteCanvas({
 
   // ── THE RETURN GESTURE ──────────────────────────────────────────────
   //
-  // Scrolling UP out of the settled gallery is no longer intercepted here.
-  // It used to be: any upward wheel/swipe/arrow-key while the gallery was
-  // settled armed a dedicated forward flight through the composition to
-  // ART and on to page one, in place of ordinary reverse scrolling. That
-  // made the FIRST upward gesture out of the gallery behave unlike every
-  // other beat boundary on the site — instead of stepping back into the
-  // immediately preceding scene, it sent the reader forward toward
-  // completion. Upward scroll now falls straight through to the page's own
-  // scroll handling, exactly like reverse navigation anywhere else in the
-  // sequence, and lands back in PencilSection the ordinary way.
-  //
-  // What follows — `returning`/`returnT` and everything downstream of them
-  // (the dolly, ART's arrival math, the rounded frame's own close) — is
-  // the transition ITSELF, not the trigger, and stays intact: nothing here
-  // ever sets `returning` true any more, so it is permanently the rest
-  // state, and the geometry it drives (ART's rest position and opacity,
-  // the frame staying open) is still exactly what the settled gallery
-  // needs. It is left in place rather than torn out so the transition
-  // remains available wherever it is actually required.
+  // Armed only once the gallery has fully settled, and only while nothing
+  // is expanded. Everything below intercepts the gesture BEFORE the page
+  // can act on it, so the scroll container never tries to navigate or
+  // reset on its own — there is nothing past the end of this track for it
+  // to do anyway, but a trackpad/touch bounce or a browser "pull" gesture
+  // at the scroll boundary is exactly what this pre-empts.
+  const armed = p >= ARM_FROM && !opened;
+  const armedRef = useRef(armed);
+  useEffect(() => {
+    armedRef.current = armed;
+  }, [armed]);
+
+  const beginReturn = useCallback((amount: number) => {
+    returningRef.current = true;
+    returnTargetRef.current = clamp01(amount);
+    setReturning(true);
+  }, []);
+
+  const cancelReturn = useCallback(() => {
+    returningRef.current = false;
+    returnTargetRef.current = 0;
+    setReturning(false);
+    setReturnT(0);
+  }, []);
+
+  const advance = useCallback(
+    (delta: number) => {
+      const next = clamp01(returnTargetRef.current + delta);
+      returnTargetRef.current = next;
+      if (next <= 0 && returnTRef.current <= 0.002) cancelReturn();
+    },
+    [cancelReturn]
+  );
+
+  useEffect(() => {
+    // Non-passive and in the capture phase: preventDefault has to run
+    // before the document scrolls, and before ScrollSmoother sees it.
+    const opts: AddEventListenerOptions = { passive: false, capture: true };
+
+    const wheelPx = (e: WheelEvent) =>
+      e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * vh : e.deltaY;
+
+    const onWheel = (e: WheelEvent) => {
+      if (returningRef.current) {
+        e.preventDefault();
+        advance(wheelPx(e) / RETURN_WHEEL_PX);
+        return;
+      }
+      if (!armedRef.current) return;
+      const dy = wheelPx(e);
+      if (dy <= 0) return; // upward scrolling is left alone
+      e.preventDefault();
+      beginReturn(dy / RETURN_WHEEL_PX);
+    };
+
+    // Touch: the composition owns one-finger gestures (that is the drag),
+    // so the return is a two-finger vertical swipe — the same fingers a
+    // trackpad scroll uses. Once the transition is running every touch is
+    // swallowed, which is the lock.
+    let touchY: number | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      touchY =
+        returningRef.current || (armedRef.current && e.touches.length >= 2)
+          ? e.touches[0].clientY
+          : null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (returningRef.current) {
+        e.preventDefault();
+        if (touchY == null) touchY = e.touches[0].clientY;
+        const dy = e.touches[0].clientY - touchY;
+        touchY = e.touches[0].clientY;
+        advance(-dy / RETURN_TOUCH_PX);
+        return;
+      }
+      if (!armedRef.current || e.touches.length < 2 || touchY == null) return;
+      const dy = e.touches[0].clientY - touchY;
+      touchY = e.touches[0].clientY;
+      if (dy >= 0) return; // fingers moving up = scrolling down
+      e.preventDefault();
+      beginReturn(-dy / RETURN_TOUCH_PX);
+    };
+    const onTouchEnd = () => {
+      touchY = null;
+    };
+
+    const DOWN = ["ArrowDown", "PageDown", "End", " ", "Spacebar"];
+    const UP = ["ArrowUp", "PageUp", "Home"];
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (returningRef.current) {
+        if (DOWN.includes(e.key)) {
+          e.preventDefault();
+          advance(RETURN_KEY_STEP);
+        } else if (UP.includes(e.key)) {
+          e.preventDefault();
+          advance(-RETURN_KEY_STEP);
+        }
+        return;
+      }
+      if (!armedRef.current || !DOWN.includes(e.key)) return;
+      e.preventDefault();
+      beginReturn(RETURN_KEY_STEP);
+    };
+
+    window.addEventListener("wheel", onWheel, opts);
+    window.addEventListener("touchstart", onTouchStart, opts);
+    window.addEventListener("touchmove", onTouchMove, opts);
+    window.addEventListener("touchend", onTouchEnd, opts);
+    window.addEventListener("touchcancel", onTouchEnd, opts);
+    window.addEventListener("keydown", onKeyDown, opts);
+    return () => {
+      window.removeEventListener("wheel", onWheel, opts);
+      window.removeEventListener("touchstart", onTouchStart, opts);
+      window.removeEventListener("touchmove", onTouchMove, opts);
+      window.removeEventListener("touchend", onTouchEnd, opts);
+      window.removeEventListener("touchcancel", onTouchEnd, opts);
+      window.removeEventListener("keydown", onKeyDown, opts);
+    };
+  }, [advance, beginReturn, vh]);
 
   // The rendered value eases toward what the gesture asked for. Without
   // this the camera advances in wheel-notch steps, which is exactly the
@@ -987,7 +1097,7 @@ export default function InfiniteCanvas({
           zIndex: 4,
         }}
       >
-        Drag to explore
+        {armed ? "Drag to explore · Scroll down to return" : "Drag to explore"}
       </div>
 
       {/* AN EXPANDED PIECE.

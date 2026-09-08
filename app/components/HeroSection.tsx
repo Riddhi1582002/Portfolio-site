@@ -7,7 +7,7 @@
 // design tool has no real scroll. This version drives the same three frames
 // (rest -> mid -> deep) off actual page scroll instead.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -346,6 +346,19 @@ export default function HeroSection() {
   usePinnedPane(trackRef, paneRef);
   const artRef = useRef<HTMLDivElement>(null);
   const contactRef = useRef<HTMLDivElement>(null);
+  // "Contact info": an underline on hover, and a small popup of the two
+  // ways to reach out on click. `contactCopied` names whichever one was
+  // just copied, for a brief confirmation, and clears itself.
+  const [contactHover, setContactHover] = useState(false);
+  const [contactPopupOpen, setContactPopupOpen] = useState(false);
+  // Two states so the pop-up can mount at its BELOW-rest, hidden starting
+  // point on one frame and only then transition up onto its landing line —
+  // the same before/after-a-frame trick InfiniteCanvas uses to open a
+  // gallery card (see openT there): flip the transform in the same render
+  // that mounts the element and there is nothing for the browser to
+  // transition FROM.
+  const [contactPopupEntered, setContactPopupEntered] = useState(false);
+  const [contactCopied, setContactCopied] = useState<"linkedin" | "gmail" | null>(null);
   const [scrollP, setScrollP] = useState(0); // 0..1 smoothed scroll fraction through the track
   const [t, setT] = useState(0); // seconds elapsed, for the idle breathing/drift motion
   // Raw scroll fraction (what the page actually is), vs scrollP (what is
@@ -774,7 +787,19 @@ export default function HeroSection() {
   // carry that point to the middle of the frame. Transform only.
   // The push owns the first ZOOM_END of the tail; the rest is the stack's.
   const cameraT = easeInOutSine(clamp01(transitionP / ZOOM_END));
-  const zoom = 1 + (CAMERA_MAX_ZOOM - 1) * cameraT;
+  // Geometric, not linear, in cameraT — the actual visible-motion fix, not
+  // a performance one. Interpolating the scale itself from 1 to 46 spends
+  // most of cameraT's range on the huge absolute jump from ~25x to 46x
+  // (which reads as almost nothing, since it is only an extra 1.8x) while
+  // the far more dramatic 1x-to-5x growth — the part the eye actually
+  // reads as "the push starting" — is compressed into a sliver at the
+  // very start. That mismatch between where the SCALE NUMBER moves fastest
+  // and where the ZOOM LOOKS fastest is what read as jerky: a rush, then a
+  // long crawl. Interpolating the LOG of the scale instead means each
+  // equal step of cameraT covers the same PROPORTION of zoom — a real
+  // dolly's own pacing, and the same fix already used for the gallery's
+  // own pull-back (see InfiniteCanvas's revealScale).
+  const zoom = Math.exp(Math.log(CAMERA_MAX_ZOOM) * cameraT);
   // Scaled BY the camera progress. Applying the full offset unconditionally
   // meant the hero composition sat translated off-centre before the
   // transition had started — the frame shift. At transitionP = 0 the camera
@@ -787,6 +812,67 @@ export default function HeroSection() {
   // cross-fade would have softened exactly the edges that need to stay
   // razor clean right up to the moment they exit.
   const cameraOpacity = 1;
+
+  // Closing resets both the open flag and the pop-up animation together —
+  // a plain callback, not derived reactively from `contactPopupOpen` in an
+  // effect, so re-opening always replays the pop rather than occasionally
+  // racing its own reset.
+  const closeContactPopup = useCallback(() => {
+    setContactPopupOpen(false);
+    setContactPopupEntered(false);
+  }, []);
+
+  // Close the contact popup on Escape or a click/tap outside it — the
+  // same conventions the gallery's own opened card and the site's other
+  // overlays use.
+  useEffect(() => {
+    if (!contactPopupOpen) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") closeContactPopup();
+    };
+    const onPointerDown = (ev: PointerEvent) => {
+      const host = contactRef.current;
+      if (host && ev.target instanceof Node && !host.contains(ev.target)) {
+        closeContactPopup();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    // Capture phase: the popup's own buttons call stopPropagation on their
+    // click, but a plain "outside" tap anywhere else still has to reach
+    // this before anything closer to the target does.
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [contactPopupOpen, closeContactPopup]);
+
+  // THE POP. Mounts sitting below its landing line, invisible; the very
+  // next frame releases it up onto that line — a real transition, not a
+  // CSS animation, so it always starts from the same place regardless of
+  // how the popup was opened.
+  useEffect(() => {
+    if (!contactPopupOpen) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setContactPopupEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [contactPopupOpen]);
+
+  const copyContact = (which: "linkedin" | "gmail") => {
+    const text =
+      which === "gmail" ? "rst15aug@gmail.com" : "www.linkedin.com/in/riddhi-thakkar-8800041b";
+    navigator.clipboard?.writeText(text).catch(() => {
+      // Clipboard access can be denied (permissions, insecure context);
+      // the popup staying open with nothing copied is the honest result.
+    });
+    setContactCopied(which);
+    window.setTimeout(() => setContactCopied((v) => (v === which ? null : v)), 1600);
+  };
 
   return (
     <div
@@ -1015,10 +1101,107 @@ export default function HeroSection() {
               whiteSpace: "nowrap",
               color: "#fff",
               opacity: contactOpacity,
-              pointerEvents: "none",
+              cursor: "pointer",
+              textDecoration: contactHover ? "underline" : "none",
+              textUnderlineOffset: "5px",
+              // Once faded out, this must not be an invisible-but-clickable
+              // element sitting over whatever the deep stage shows instead
+              // — the same guard the name link uses.
+              pointerEvents: contactOpacity < 0.05 ? "none" : "auto",
             }}
+            onMouseEnter={() => setContactHover(true)}
+            onMouseLeave={() => setContactHover(false)}
+            onClick={() => (contactPopupOpen ? closeContactPopup() : setContactPopupOpen(true))}
           >
             Contact info
+            {/* The popup: LinkedIn and Gmail, directly above the trigger.
+                Both icons mount below an invisible landing line and pop
+                straight up onto it — like toast popping out of a toaster
+                — then settle. `alignItems: flex-end` on the row is that
+                landing line: nothing marks it, but every icon's bottom
+                edge lands on the same one. */}
+            {contactPopupOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  bottom: "calc(100% + 14px)",
+                  display: "flex",
+                  alignItems: "flex-end",
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  background: "rgba(18,19,23,0.86)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  boxShadow: "0 12px 34px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,0,0,0.2)",
+                  backdropFilter: "blur(10px)",
+                  WebkitBackdropFilter: "blur(10px)",
+                  // Clips the icons' launch position (they start BELOW the
+                  // landing line, inside what reads as the toaster slot)
+                  // so the pop is a rise into view rather than a jump-cut.
+                  overflow: "hidden",
+                }}
+              >
+                {(
+                  [
+                    { key: "linkedin" as const, label: "LinkedIn", icon: "/icons/contact/linkedin.png" },
+                    { key: "gmail" as const, label: "Gmail", icon: "/icons/contact/gmail.png" },
+                  ]
+                ).map((item, i) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => copyContact(item.key)}
+                    aria-label={`Copy ${item.label} contact`}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 4,
+                      width: 56,
+                      padding: "8px 4px",
+                      borderRadius: 10,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background:
+                        contactCopied === item.key
+                          ? "rgba(255,255,255,0.16)"
+                          : "rgba(255,255,255,0.05)",
+                      color: "rgba(255,255,255,0.92)",
+                      fontFamily: SANS,
+                      fontSize: 11,
+                      fontWeight: 500,
+                      letterSpacing: "0.02em",
+                      cursor: "pointer",
+                      // THE POP: launches from below the landing line and
+                      // slightly small, overshoots a touch past it, then
+                      // settles — a back-out ease is what gives the
+                      // overshoot without a second, explicit keyframe.
+                      // Staggered per icon so they pop one after another
+                      // rather than both at once.
+                      transform: contactPopupEntered
+                        ? "translateY(0) scale(1)"
+                        : "translateY(26px) scale(0.8)",
+                      opacity: contactPopupEntered ? 1 : 0,
+                      transition:
+                        "transform 560ms cubic-bezier(0.2,1.8,0.32,1), opacity 260ms ease, background 160ms ease",
+                      transitionDelay: contactPopupEntered ? `${i * 90}ms` : "0ms",
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.icon}
+                      alt=""
+                      width={20}
+                      height={20}
+                      draggable={false}
+                      style={{ display: "block", borderRadius: 4 }}
+                    />
+                    <span>{contactCopied === item.key ? "Copied" : item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Easter-egg hint: two clicks on ART within 4s, no scroll in
