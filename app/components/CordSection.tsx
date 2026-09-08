@@ -29,7 +29,6 @@ import {
 const ROLL_END = 0.11;
 const LINE_1 = [0.13, 0.29] as const;
 const LINE_2 = [0.31, 0.46] as const;
-const BULB_IN = 0.44;
 // The camera stops travelling here: the bulb has arrived and holds still
 // for the rest of the section, so the arc turns around a fixed centre.
 const TRAVEL_END = 0.52;
@@ -64,7 +63,7 @@ const BULB_VW_MAX = 66;
 // units inside a view that is 2*4.2*tan(17.5deg) = 2.65 units tall, so the
 // model fills 90.6% of the box and the empty band above it is half of the
 // remainder. Measured against the render, not assumed.
-const CAP_RATIO = 0.052;
+export const CAP_RATIO = 0.052;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
@@ -114,7 +113,12 @@ export default function CordSection({
   const n2In = span(p, LINE_2[0], LINE_2[0] + 0.12);
   const n2Out = 1 - span(p, LINE_2[1] - 0.06, LINE_2[1]);
 
-  const bulbIn = span(p, BULB_IN, TRAVEL_END + 0.03);
+  // THE ENTRANCE. Tied to `travel` — how far the camera has actually come
+  // down the cord — rather than to a late window of `p`. Keyed this way,
+  // the bulb's own arrival is locked to the same motion that brings the
+  // line down, so the two read as one object entering together instead of
+  // a wire arriving first and a bulb popping in after it.
+  const bulbIn = easeInOutSine(span(travel, 0.5, 1));
 
   // The arc of work. Its presence is what dims the bulb: the room cannot
   // be lit by the bulb and by nine glowing pieces at once, so the light
@@ -131,9 +135,16 @@ export default function CordSection({
   );
   const bulbCentreVh = BULB_TOP_VH - travel * TRAVEL_VH + bulbSizeVh / 2;
 
-  // The wash in the room lags the model slightly, so the bulb reads as
-  // coming up rather than the whole frame brightening at once.
-  const litGlow = easeInOutSine(span(p, BULB_IN + 0.04, TRAVEL_END + 0.03)) * (1 - 0.86 * presence);
+  // The wash and the spill on the line's lower stretch — see below — lead
+  // the model's own fade-in well ahead: the bulb is already lit, so its
+  // light is what should arrive first, with the object following into it.
+  const litGlow = easeInOutSine(span(travel, 0.24, 0.85)) * (1 - 0.86 * presence);
+  // The light bleeding up from just off the bottom edge of the frame,
+  // before the bulb itself has come far enough up into shot to be seen —
+  // the same light, arriving early. It hands off to the model's own glow
+  // as bulbIn takes over, rather than the two overlapping.
+  const bottomGlow =
+    easeInOutSine(span(travel, 0.08, 0.5)) * (1 - bulbIn) * (1 - 0.86 * presence);
 
   return (
     <div ref={hostRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#000" }}>
@@ -238,6 +249,31 @@ export default function CordSection({
           zIndex: 3,
           pointerEvents: "none",
           willChange: "transform, opacity",
+        }}
+      />
+
+      {/* Light from just off the bottom of the frame — the bulb is already
+          lit before it has travelled far enough up into shot to be seen,
+          so the room below the visible frame is not dark. Fixed to the
+          VIEWPORT, not to the travelling line: the bulb itself is still
+          off-screen at this point, so nothing here can be anchored to its
+          position yet. Hands off to the model's own wash as bulbIn takes
+          over (see bottomGlow), rather than the two stacking. */}
+      <div
+        aria-hidden
+        data-cord-bottom-glow
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: "42vh",
+          background:
+            "linear-gradient(to top, rgba(255,205,140,0.5) 0%, rgba(255,196,124,0.22) 40%, rgba(255,196,124,0) 100%)",
+          opacity: handoff * bottomGlow,
+          zIndex: 1,
+          pointerEvents: "none",
+          willChange: "opacity",
         }}
       />
 

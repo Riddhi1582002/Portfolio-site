@@ -24,7 +24,8 @@
 import BulbModel from "./BulbModel";
 import NarrationLine from "./NarrationLine";
 import { irisFrame } from "./InfiniteCanvas";
-import { BULB_REST_TOP_VH, bulbSizePx } from "./CordSection";
+import { BULB_REST_TOP_VH, bulbSizePx, CAP_RATIO, BULB_GLASS_RATIO } from "./CordSection";
+import { lineWidthPx, lineGlow } from "./CameraRoll";
 import {
   NARRATION_COLOR,
   NARRATION_GLOW,
@@ -57,11 +58,21 @@ export default function PencilSection({
   sans,
   vw,
   vh,
+  showBackdrop = true,
 }: {
   progress: number;
   sans: string;
   vw: number;
   vh: number;
+  /**
+   * False for the lead-in stretch where this section is mounted early
+   * (for the WebGL/GLTF warm-up) but its own progress hasn't actually
+   * started yet. CordSection is still mounted underneath at that point,
+   * still visibly finishing its own beat — an opaque backdrop here would
+   * cover it outright, which is what used to make the cord vanish and the
+   * bulb blink the instant this section mounted. See HeroSection.
+   */
+  showBackdrop?: boolean;
 }) {
   const p = clamp01(progress);
   const frame = irisFrame(vw, vh);
@@ -80,6 +91,24 @@ export default function PencilSection({
 
   // The white circle takes over from the model as the underside blows out.
   const bloom = easeInOutSine(span(p, BLOOM[0], BLOOM[1]));
+
+  // THE CIRCLE'S OWN SIZE, while it is still crossfading with the model.
+  //
+  // frame.iris (used once the descent has landed) is calibrated for the
+  // bulb seen from directly beneath — a foreshortened ~54% of its box.
+  // BLOOM and FALL end at the same point (p 0.6), so for the whole
+  // crossfade the camera is STILL pitching down and the model is still
+  // showing something closer to its frontal silhouette, which fills far
+  // more of the box. Fading the flat circle in at its final, foreshortened
+  // size while the outgoing 3D bulb was still visibly larger read as two
+  // objects of two different sizes swapping rather than one settling into
+  // the other. This eases the circle's own diameter down from a near-full
+  // start to frame.iris exactly as fallT reaches 1 — the same moment the
+  // descent itself completes — so the two stay the same size, and the
+  // same position, for as long as they overlap.
+  const CIRCLE_START_RATIO = 0.94;
+  const circleDia =
+    bulbPx * (CIRCLE_START_RATIO + (BULB_GLASS_RATIO - CIRCLE_START_RATIO) * fallT);
 
   // The cut. The card comes up first, then the circle darkens — so the
   // order the eye reads is "there is something behind this light", then
@@ -101,8 +130,68 @@ export default function PencilSection({
     1 - span(p, LINE[1] - 0.07, LINE[1])
   );
 
+  // THE CORD, still hanging above the bulb — CordSection's own line,
+  // continued. Without this the wire simply stopped existing the instant
+  // this section took over, which is exactly the "disappears" bug: the
+  // bulb is meant to still be hanging from something. It runs from the
+  // top of the frame down to the cap, exactly where CordSection's own
+  // line ends, and fades with the model itself (`1 - bloom`) rather than
+  // in a single frame, so it leaves only once the camera has genuinely
+  // passed beneath the bulb and looking back up at a wire would no longer
+  // make sense.
+  const cordOpacity = 1 - bloom;
+  const cordBottom = bulbTop + bulbPx * CAP_RATIO;
+
   return (
-    <div style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#000" }}>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        background: showBackdrop ? "#000" : "transparent",
+      }}
+    >
+      {cordOpacity > 0.001 && (
+        <>
+          <div
+            aria-hidden
+            data-pencil="cord"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: 0,
+              height: Math.max(0, cordBottom),
+              width: lineWidthPx(vh),
+              transform: "translateX(-50%)",
+              background:
+                "linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.92) 5%, #fff 55%, rgb(255,250,240) 88%, rgb(255,242,220) 100%)",
+              opacity: cordOpacity,
+              borderRadius: 2,
+              zIndex: 1,
+              pointerEvents: "none",
+              willChange: "opacity",
+            }}
+          />
+          <div
+            aria-hidden
+            data-pencil="cord-glow"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: 0,
+              height: Math.max(0, cordBottom),
+              width: lineWidthPx(vh),
+              transform: "translateX(-50%)",
+              boxShadow: lineGlow(0.92),
+              borderRadius: 2,
+              opacity: cordOpacity,
+              zIndex: 1,
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      )}
+
       {/* THE BULB, still hanging where it was. Only the eye moves. */}
       {bloom < 0.999 && (
         <div
@@ -140,7 +229,7 @@ export default function PencilSection({
           background:
             "radial-gradient(circle, rgba(255,244,224,0.34) 0%, rgba(255,232,196,0.14) 26%, rgba(255,218,160,0) 60%)",
           transform: `translateY(${discCentreY.toFixed(1)}px) scale(${(
-            (frame.iris * 3.6) /
+            (circleDia * 3.6) /
             BASE
           ).toFixed(4)})`,
           opacity: fallT * (1 - dark),
@@ -195,7 +284,7 @@ export default function PencilSection({
           background:
             "radial-gradient(circle, rgba(255,250,240,0.98) 0%, rgba(255,244,220,0.8) 30%, rgba(255,230,190,0.3) 44%, rgba(255,220,170,0) 60%)",
           transform: `translateY(${discCentreY.toFixed(1)}px) scale(${(
-            (frame.iris * 1.7) /
+            (circleDia * 1.7) /
             BASE
           ).toFixed(4)})`,
           opacity: bloom * (1 - dark),
@@ -224,7 +313,7 @@ export default function PencilSection({
             0
           )}, ${(240 * (1 - dark)).toFixed(0)})`,
           transform: `translateY(${discCentreY.toFixed(1)}px) scale(${(
-            frame.iris / BASE
+            circleDia / BASE
           ).toFixed(4)})`,
           opacity: Math.max(bloom, dark),
           zIndex: 3,
@@ -250,7 +339,7 @@ export default function PencilSection({
           boxShadow:
             "0 0 0 1.4px rgba(255,255,255,0.42), 0 0 20px rgba(255,255,255,0.2)",
           transform: `translateY(${discCentreY.toFixed(1)}px) scale(${(
-            frame.iris / BASE
+            circleDia / BASE
           ).toFixed(4)})`,
           opacity: rim,
           zIndex: 4,

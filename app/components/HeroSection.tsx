@@ -261,6 +261,18 @@ const A_COUNTER_Y_RATIO = 0.36;
 // shot along the bottom; the triangle's interior has to fill the viewport
 // completely, and at this scale the nearest edge is well outside it.
 const CAMERA_MAX_ZOOM = 46;
+// Past this the glyph's own edges have left the frame (17x still had the
+// crossbar in shot, per the comment above; this leaves clear margin) and
+// only flat black remains within it. Re-promoting ART's layer past this
+// point stops the continuous glyph-outline re-rasterisation that crisp
+// zooming needs — and while there is still a real edge on screen to keep
+// sharp, doing that same re-rasterisation on every scroll frame is what
+// made the push read as glitchy: the browser was repainting a huge,
+// heavily-glowing piece of type every single frame for the whole
+// mid-zoom stretch, on top of everything else animating in the same
+// beat (the camera scale, the card stack). Past this zoom there is
+// nothing left to keep sharp, so the layer can be locked and reused.
+const ART_CRISP_MAX_ZOOM = 20;
 
 // Time constant, in seconds, for the scroll-progress smoothing below. A
 // wheel notch is a discrete ~100px jump, so scrubbing straight off
@@ -882,13 +894,18 @@ export default function HeroSection() {
               letterSpacing: "0.005em",
               color: "#fff",
               textShadow: glowShadow(gWithCursor),
-              // Promoted only while the hero is composing itself. During
-              // the camera push it MUST NOT be: a promoted layer is
+              // Promoted at rest, and again once the push has scaled the
+              // glyph's edges out of frame (see ART_CRISP_MAX_ZOOM).
+              // Un-promoted for the stretch between: a promoted layer is
               // rasterised once at its current size and then scaled, which
               // is exactly what turns the letterforms to mush at 17x. Left
               // unpromoted, the browser re-rasterises the glyph outlines at
-              // every scale and the edges stay razor clean.
-              willChange: transitionP > 0 ? "auto" : "transform",
+              // every scale and the edges stay razor clean — but that
+              // re-rasterisation is real per-frame cost, and paying it
+              // once the edges are gone bought nothing but the stutter the
+              // A push was reported to still have.
+              willChange:
+                transitionP > 0 && zoom < ART_CRISP_MAX_ZOOM ? "auto" : "transform",
               userSelect: "none",
               WebkitUserSelect: "none",
             }}
@@ -1073,6 +1090,13 @@ export default function HeroSection() {
               sans={SANS}
               vw={viewport.vw}
               vh={viewport.vh}
+              // Mounted early (see the -0.003 lead-in above) so its WebGL
+              // context and GLTF are already warm by the time this beat
+              // actually starts. Opaque only once real progress begins —
+              // before that, CordSection is still mounted underneath,
+              // still finishing its own beat, and has to stay visible
+              // through it.
+              showBackdrop={pencilP > 0}
             />
           </div>
         )}

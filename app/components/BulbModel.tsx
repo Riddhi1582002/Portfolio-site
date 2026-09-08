@@ -93,11 +93,20 @@ function studioEnvironment(THREE: typeof import("three")) {
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   };
+  // Blurred on the way in. A sharp radial gradient, reflected through a
+  // smooth curved glass envelope, reads back as a visible ring — the
+  // gradient's own colour-stop boundary refracted into a band. Painting it
+  // soft in the first place is what the physical room would be anyway (a
+  // lamp seen through frosted glass has no hard edge), and it is what
+  // keeps the glass reading as clear glass rather than glass with rings
+  // baked into its reflections.
+  ctx.filter = "blur(36px)";
   // Key, high and to the left; fill, lower and to the right; a faint
   // bounce underneath so the base is not a silhouette.
   lamp(w * 0.28, h * 0.2, 150, 90, "rgba(255,252,244,0.62)");
   lamp(w * 0.74, h * 0.34, 130, 80, "rgba(186,208,244,0.34)");
   lamp(w * 0.5, h * 0.86, 200, 70, "rgba(120,132,150,0.14)");
+  ctx.filter = "none";
 
   const tex = new THREE.CanvasTexture(c);
   tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -172,7 +181,12 @@ export default function BulbModel({
       // than anything else in frame; with linear output it clips to a flat
       // white patch and the glass around it goes with it.
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.15;
+      // Raised from 1.15: the whole rig reads brighter for it (the glass,
+      // the room, the reflections), and the filament's own intensity is
+      // pushed up separately below — the two together are what make the
+      // bulb read as genuinely lit rather than merely on. Filmic tone
+      // mapping still rolls the highlights off, so this does not clip.
+      renderer.toneMappingExposure = 1.32;
       host.appendChild(renderer.domElement);
       renderer.domElement.style.width = "100%";
       renderer.domElement.style.height = "100%";
@@ -204,6 +218,15 @@ export default function BulbModel({
       const filament = new THREE.PointLight(0xffb45a, 8, 9, 2);
       filament.position.set(0, 0, 0);
       scene.add(filament);
+      // A second, tighter source at the same point. A single point light
+      // strong enough to light the whole envelope also over-saturates the
+      // filament mesh itself into a flat white blob; splitting the output
+      // between a light that reaches the glass and a light that stays
+      // close lets the glass get brighter without the filament losing its
+      // shape.
+      const filamentCore = new THREE.PointLight(0xfff2da, 0, 2.2, 2);
+      filamentCore.position.set(0, 0, 0);
+      scene.add(filamentCore);
 
       // The visible flare around the hot spot. Additive, so it adds light
       // to the glass rather than covering it.
@@ -222,9 +245,12 @@ export default function BulbModel({
 
       // Just enough ambient that an unlit bulb is a shape rather than a
       // hole in the frame, and a cool rim so the glass keeps an edge.
-      const ambient = new THREE.AmbientLight(0x8fa2c4, 0.09);
+      // Lower than before (was 0.09): a brighter filament against a flatter
+      // ambient floor is what reads as a real light source rather than a
+      // uniformly grey-lit ornament.
+      const ambient = new THREE.AmbientLight(0x8fa2c4, 0.065);
       scene.add(ambient);
-      const rim = new THREE.DirectionalLight(0xcfe0ff, 0.34);
+      const rim = new THREE.DirectionalLight(0xcfe0ff, 0.4);
       rim.position.set(-2.2, 1.4, -1.6);
       scene.add(rim);
 
@@ -288,11 +314,26 @@ export default function BulbModel({
               // what the unlit bulb looked like. Glass this thin barely
               // shows except at grazing angles and on its highlights.
               mat.opacity = 0.3;
-              mat.roughness = 0.03;
+              mat.roughness = 0.06;
               mat.metalness = 0;
               if ("thickness" in mat) mat.thickness = 0.35;
               if ("ior" in mat) mat.ior = 1.45;
-              mat.envMapIntensity = 0.4;
+              // The glTF's glass carries transmission, which three renders
+              // as a second pass: the scene behind the envelope, refracted
+              // through it. With almost nothing behind the bulb but the
+              // filament and a point light a few tenths of a unit away,
+              // that pass produced the concentric ring artefact — the
+              // near light's falloff, refracted through a curved thin
+              // shell, banding at the transmission buffer's resolution.
+              // The glass was already being drawn as an ordinary
+              // transparent surface on top of that pass (see above); at 0
+              // the surface is what's left, and it is what the material
+              // was built to be seen as. It stays glass — clear, thin,
+              // reflective, with real highlights from the environment map
+              // and the rim light — it simply no longer also refracts a
+              // second, banded copy of the scene behind it.
+              if ("transmission" in mat) mat.transmission = 0;
+              mat.envMapIntensity = 0.5;
             } else if (/filament|led/i.test(name)) {
               mat.emissive = new THREE.Color(/led/i.test(name) ? 0xfff0d2 : 0xffa73f);
               mat.emissiveIntensity = 0;
@@ -328,6 +369,7 @@ export default function BulbModel({
         });
         const hotCentre = found ? hot.getCenter(new THREE.Vector3()) : new THREE.Vector3();
         filament.position.copy(hotCentre);
+        filamentCore.position.copy(hotCentre);
         flare.position.copy(hotCentre);
         loaded = true;
       });
@@ -380,14 +422,20 @@ export default function BulbModel({
         // brightness.
         const on = Math.min(1, Math.max(0, (lit - 0.16) / 0.74));
         const glow = on * on;
-        filament.intensity = glow * 25;
-        (flare.material as import("three").SpriteMaterial).opacity = glow * 0.8;
-        flare.scale.setScalar(0.45 + on * 0.95);
-        for (const m of emitters) m.emissiveIntensity = glow * 4.2;
+        // Raised from 25: the primary source reaching the glass and the
+        // room. A second, tight, short-range light (filamentCore) is what
+        // carries the extra bloom right at the coil without also pushing
+        // the emissive mesh past a flat white blob — that risk is capped
+        // by the emissive multiplier below staying moderate.
+        filament.intensity = glow * 32;
+        filamentCore.intensity = glow * 15;
+        (flare.material as import("three").SpriteMaterial).opacity = glow;
+        flare.scale.setScalar(0.5 + on * 1.25);
+        for (const m of emitters) m.emissiveIntensity = glow * 5.2;
         // The room dims with the filament, reflections included.
         const room = 0.22 + on * 0.86;
-        ambient.intensity = 0.09 * room;
-        rim.intensity = 0.34 * room;
+        ambient.intensity = 0.065 * room;
+        rim.intensity = 0.4 * room;
         for (const s of surfaces) s.mat.envMapIntensity = s.env * room;
         if (loaded && !reduced) pivot.rotation.y += 0.0016;
         // The camera drops and tilts up; the bulb is fixed. An orbit at a

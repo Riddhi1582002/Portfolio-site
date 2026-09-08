@@ -21,7 +21,15 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import NarrationLine from "./NarrationLine";
-import { REELS, layout, CARD_H_VH, STRIP_CENTRE_VH } from "./ReelStrip";
+import {
+  REELS,
+  layout,
+  CARD_H_VH,
+  STRIP_CENTRE_VH,
+  CARD_FACE_BG,
+  CARD_FACE_BORDER,
+  CARD_RADIUS,
+} from "./ReelStrip";
 import {
   NARRATION_COLOR,
   NARRATION_FONT_SIZE,
@@ -216,33 +224,66 @@ export default function DepthCards({
                 style={{
                   position: "absolute",
                   inset: 0,
-                  borderRadius: mix(7, 14, spread),
+                  borderRadius: mix(7, CARD_RADIUS, spread),
                   overflow: "hidden",
-                  background: `linear-gradient(104deg,
-                    rgba(16,17,21,1) 0%,
-                    rgba(28,30,36,1) 38%,
-                    rgba(52,56,66,1) 70%,
-                    rgba(96,102,117,1) 92%,
-                    rgba(132,139,157,1) 100%)`,
-                  border: "1px solid rgba(255,255,255,0.17)",
-                  boxShadow: `0 ${28 * k}px ${62 * k}px rgba(0,0,0,0.82),
-                    inset 0 1px 0 rgba(255,255,255,0.42),
-                    inset 0 -1px 0 rgba(0,0,0,0.55)`,
                   backfaceVisibility: "hidden",
                 }}
               >
-                {/* An inset panel, so the slab reads as a screen with a
-                    bezel rather than a solid tile. Real work replaces it. */}
+                {/* The fan's own chrome: a metallic face and an inset
+                    bezel panel. It reads as a solid object catching light
+                    while the cards are still tumbling into place — but it
+                    is not what the strip beyond this one actually draws,
+                    and holding it all the way to spread=1 is what used to
+                    make the hand-off a visible pop the instant ReelStrip
+                    took over (a bezelled slab swapping for a flat placeholder,
+                    metal for none, one frame apart). Fades out as the fan
+                    becomes the row. */}
                 <div
+                  aria-hidden
                   style={{
                     position: "absolute",
-                    inset: `${Math.max(2, 7 * k)}px`,
-                    borderRadius: mix(4, 9, spread),
-                    background: `linear-gradient(112deg,
-                      rgba(10,11,14,1) 0%,
-                      rgba(18,20,25,1) 55%,
-                      rgba(34,37,45,1) 100%)`,
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                    inset: 0,
+                    opacity: 1 - spread,
+                    background: `linear-gradient(104deg,
+                      rgba(16,17,21,1) 0%,
+                      rgba(28,30,36,1) 38%,
+                      rgba(52,56,66,1) 70%,
+                      rgba(96,102,117,1) 92%,
+                      rgba(132,139,157,1) 100%)`,
+                    border: "1px solid rgba(255,255,255,0.17)",
+                    boxShadow: `0 ${28 * k}px ${62 * k}px rgba(0,0,0,0.82),
+                      inset 0 1px 0 rgba(255,255,255,0.42),
+                      inset 0 -1px 0 rgba(0,0,0,0.55)`,
+                  }}
+                >
+                  {/* An inset panel, so the slab reads as a screen with a
+                      bezel rather than a solid tile. */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: `${Math.max(2, 7 * k)}px`,
+                      borderRadius: mix(4, 9, spread),
+                      background: `linear-gradient(112deg,
+                        rgba(10,11,14,1) 0%,
+                        rgba(18,20,25,1) 55%,
+                        rgba(34,37,45,1) 100%)`,
+                      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                    }}
+                  />
+                </div>
+
+                {/* The strip's own face — exactly what ReelStrip draws for
+                    this same card, so at spread=1 the two are pixel
+                    identical and there is nothing left to pop when
+                    ReelStrip takes over. */}
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    opacity: spread,
+                    background: CARD_FACE_BG,
+                    border: CARD_FACE_BORDER,
                   }}
                 />
               </div>
