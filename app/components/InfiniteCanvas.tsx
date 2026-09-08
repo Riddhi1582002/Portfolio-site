@@ -23,6 +23,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ART_FONT, glowShadow } from "./HeroSection";
+import { BULB_GLASS_RATIO, bulbSizePx } from "./CordSection";
 
 // One repeating cell of the plane, in canvas px.
 const CELL_W = 1720;
@@ -89,7 +90,12 @@ export function irisFrame(vw: number, vh: number) {
   const fit = galleryFit(vw);
   const cardW = piece.w * fit;
   const cardH = (piece.w / piece.ratio) * fit;
-  const scale = Math.max((vw * 1.12) / cardW, (vh * 1.12) / cardH);
+  // The circle is the BULB, at the size the bulb actually is on screen —
+  // it is the same object, seen from underneath, so it cannot change size
+  // as it darkens. The card follows from it at the ratio it already had,
+  // and the camera's distance is whatever puts that card at that size.
+  const iris = bulbSizePx(vw, vh) * BULB_GLASS_RATIO;
+  const scale = iris / IRIS_RATIO / cardH;
   return {
     piece,
     fit,
@@ -97,7 +103,7 @@ export function irisFrame(vw: number, vh: number) {
     /** Screen size of the card and of the iris at that scale. */
     cardW: cardW * scale,
     cardH: cardH * scale,
-    iris: cardH * IRIS_RATIO * scale,
+    iris,
     irisPlane: (piece.w / piece.ratio) * IRIS_RATIO,
   };
 }
@@ -458,6 +464,13 @@ export default function InfiniteCanvas({
                       width: piece.w,
                       height: piece.w / piece.ratio,
                       cursor: "pointer",
+                      // The beat before this one hands over a frame with
+                      // ONE card on black. The pull-back starts close but
+                      // not that close, so without this the neighbours
+                      // are already in shot at the cut and pop in. They
+                      // arrive with the move instead.
+                      opacity:
+                        piece.id === IRIS_PIECE_ID ? 1 : span(revealT, 0.04, 0.42),
                     }}
                   >
                     <Placeholder hovered={hovered === `${row}:${col}:${piece.id}`} />

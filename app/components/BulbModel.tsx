@@ -108,9 +108,17 @@ function studioEnvironment(THREE: typeof import("three")) {
 
 export default function BulbModel({
   litness,
+  pitch = 0,
   reduced = false,
 }: {
   litness: number;
+  /**
+   * The camera's climb from level with the bulb (0) to almost directly
+   * beneath it looking up (1). The BULB does not move: the camera
+   * descends along Y and pitches up on X, orbiting the model at a fixed
+   * distance, so the view goes from frontal to the underside.
+   */
+  pitch?: number;
   reduced?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -121,6 +129,10 @@ export default function BulbModel({
   useEffect(() => {
     litRef.current = litness;
   }, [litness]);
+  const pitchRef = useRef(pitch);
+  useEffect(() => {
+    pitchRef.current = pitch;
+  }, [pitch]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -168,7 +180,8 @@ export default function BulbModel({
 
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-      camera.position.set(0, 0, 4.2);
+      const CAM_DIST = 4.2;
+      camera.position.set(0, 0, CAM_DIST);
 
       // Something for the glass and the brass to reflect. Without an
       // environment a transmissive material has no specular at all and
@@ -377,6 +390,12 @@ export default function BulbModel({
         rim.intensity = 0.34 * room;
         for (const s of surfaces) s.mat.envMapIntensity = s.env * room;
         if (loaded && !reduced) pivot.rotation.y += 0.0016;
+        // The camera drops and tilts up; the bulb is fixed. An orbit at a
+        // constant distance with the eye kept on the model is exactly
+        // that, and it costs one lookAt.
+        const a = Math.min(1, Math.max(0, pitchRef.current)) * Math.PI * 0.47;
+        camera.position.set(0, -CAM_DIST * Math.sin(a), CAM_DIST * Math.cos(a));
+        camera.lookAt(0, 0, 0);
         renderer.render(scene, camera);
       };
       raf = requestAnimationFrame(tick);

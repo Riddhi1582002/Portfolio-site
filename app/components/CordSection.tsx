@@ -36,9 +36,24 @@ const TRAVEL_END = 0.52;
 // The arc of work, one scroll per card.
 const ARC_START = 0.54;
 
-// Geometry of the bulb, kept here because the arc has to be centred on it.
+// Geometry of the bulb, kept here because the arc has to be centred on it
+// — and exported, because the beat that follows keeps descending past the
+// same bulb and has to pick it up exactly where this one leaves it.
 const BULB_TOP_VH = 172;
 const TRAVEL_VH = 150;
+/** Where the bulb's box sits once its travel is over, in vh. */
+export const BULB_REST_TOP_VH = BULB_TOP_VH - TRAVEL_VH;
+/** The bulb's box, in px, at a given viewport. */
+export function bulbSizePx(vw: number, vh: number) {
+  return Math.min((BULB_VH_MAX / 100) * vh, (BULB_VW_MAX / 100) * vw);
+}
+/**
+ * The glass envelope's widest diameter as a share of that box — measured
+ * off the render, not assumed. It is what the bulb's underside reads as
+ * once the camera is beneath it, so it is the size of the white circle
+ * the next beat hands over.
+ */
+export const BULB_GLASS_RATIO = 0.54;
 // The bulb's box. Much larger than before — it was reading as a lamp seen
 // from across a room rather than the thing the whole beat arrives at.
 const BULB_VH_MAX = 78;
