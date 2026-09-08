@@ -120,7 +120,11 @@ export default function DepthCards({
         // over them on its way out of frame.
         zIndex: 0,
         pointerEvents: "none",
-        visibility: lead <= 0.01 ? "hidden" : "visible",
+        // No visibility gate: each card's own opacity already reaches
+        // exactly 0 at lead = 0 (easeOutCubic(0)), so there is nothing to
+        // hide. The old `lead <= 0.01` cutoff flipped the whole stack
+        // from unrendered straight to ~5% opacity in one frame — a real,
+        // if small, pop right as the push begins.
       }}
     >
       <div

@@ -398,7 +398,12 @@ export default function BulbModel({
         flare.position.copy(hotCentre);
         if (found) {
           const hotSize = hot.getSize(new THREE.Vector3());
-          flareBaseSize = Math.max(hotSize.x, hotSize.y, hotSize.z);
+          // The coil is a TALL, NARROW vertical shape (its Y extent is
+          // roughly 2x its X/Z extent) — Math.max picked that height,
+          // producing a flare far wider than the wire it's meant to hug.
+          // Use the X/Z cross-section instead, so the flare matches how
+          // thick the coil actually looks from the camera.
+          flareBaseSize = (hotSize.x + hotSize.z) / 2;
         }
         loaded = true;
       });
@@ -465,12 +470,12 @@ export default function BulbModel({
         filamentCore.intensity = glow * 20;
         for (const m of emitters) m.emissiveIntensity = glow * 12;
         // The flare's own scale is a MULTIPLE of the coil's own measured
-        // size (flareBaseSize), not a constant — so it always sits close
-        // over the wire rather than growing into a shape with its own
-        // independent presence. 1.1-2x the coil's extent is enough to
-        // read as glare around it without ever reading as a separate disc.
+        // cross-section (flareBaseSize), not a constant — so it always
+        // sits close over the wire rather than growing into a shape with
+        // its own independent presence. 0.6-1x the coil's cross-section
+        // reads as glare hugging the wire, not a separate glowing orb.
         (flare.material as import("three").SpriteMaterial).opacity = glow * 0.92;
-        flare.scale.setScalar(flareBaseSize * (1.1 + on * 0.9));
+        flare.scale.setScalar(flareBaseSize * (0.6 + on * 0.4));
         // The room dims with the filament, reflections included.
         const room = 0.22 + on * 0.86;
         ambient.intensity = 0.065 * room;

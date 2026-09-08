@@ -205,7 +205,20 @@ export const STAGE_H = 1080;
 // strip under the first, and a third under that — the seams were pixel
 // exact and it made no difference, because the problem was never the seam.
 // There is no seam now: it is one pane and one progress.
-const HERO_VH = 480;
+// BEATS_VH is what the comment above calls "beats" — the name/tagline
+// reveal — held to EXACTLY the vh it always had (480 * the old 0.397), so
+// that already-tuned pacing is untouched. TAIL_VH is the camera push,
+// the cards' arrival and their arrangement into the strip: three beats
+// that all read as one continuous move (see the file-level comments on
+// CARDS_START/ARRANGE_START), so shortening it shortens all three
+// together without touching how they hand off to one another — the
+// whole sequence is still driven by transitionP 0..1, only how much
+// physical scrolling it takes to cross that range changes. Cut by about
+// 40% (was 480*(1-0.397) = 289.44vh) for a noticeably more compact,
+// direct feel.
+const BEATS_VH = 480 * 0.397;
+const TAIL_VH = 175;
+const HERO_VH = BEATS_VH + TAIL_VH;
 const REELS_VH = 900;
 const CORD_VH = 1200;
 // The closing two beats used to be their own pinned sections. They are
@@ -227,7 +240,10 @@ const REELS_SPAN_END = (HERO_VH + REELS_VH) / SCROLL_LENGTH_VH;
 const CORD_SPAN_END = (HERO_VH + REELS_VH + CORD_VH) / SCROLL_LENGTH_VH;
 const PENCIL_SPAN_END =
   (HERO_VH + REELS_VH + CORD_VH + PENCIL_VH) / SCROLL_LENGTH_VH;
-const HERO_BEATS_END = 0.397;
+// Derived, not hard-coded: whatever HERO_VH ends up being, this is the
+// fraction of it that BEATS_VH itself occupies, which is what keeps the
+// beats' own pacing exactly as tuned regardless of how TAIL_VH changes.
+const HERO_BEATS_END = BEATS_VH / HERO_VH;
 // Where the camera push finishes, as a share of the post-beats tail.
 const ZOOM_END = 0.349;
 // The cards begin their travel forward immediately, so the push and the
@@ -1114,12 +1130,14 @@ export default function HeroSection() {
             onClick={() => (contactPopupOpen ? closeContactPopup() : setContactPopupOpen(true))}
           >
             Contact info
-            {/* The popup: LinkedIn and Gmail, directly above the trigger.
-                Both icons mount below an invisible landing line and pop
-                straight up onto it — like toast popping out of a toaster
-                — then settle. `alignItems: flex-end` on the row is that
-                landing line: nothing marks it, but every icon's bottom
-                edge lands on the same one. */}
+            {/* The popup: LinkedIn and Gmail, directly above the trigger,
+                as two independent icons — no enclosing box. Both mount
+                below an invisible landing line and pop straight up onto
+                it — like toast popping out of a toaster — then settle.
+                `alignItems: flex-end` on the row is that landing line:
+                nothing marks it, but every icon's bottom edge lands on
+                the same one. The row itself is layout only (position and
+                the toaster-slot clip), not a visible container. */}
             {contactPopupOpen && (
               <div
                 onClick={(e) => e.stopPropagation()}
@@ -1129,14 +1147,7 @@ export default function HeroSection() {
                   bottom: "calc(100% + 14px)",
                   display: "flex",
                   alignItems: "flex-end",
-                  gap: 10,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  background: "rgba(18,19,23,0.86)",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  boxShadow: "0 12px 34px rgba(0,0,0,0.55), 0 0 0 1px rgba(0,0,0,0.2)",
-                  backdropFilter: "blur(10px)",
-                  WebkitBackdropFilter: "blur(10px)",
+                  gap: 22,
                   // Clips the icons' launch position (they start BELOW the
                   // landing line, inside what reads as the toaster slot)
                   // so the pop is a rise into view rather than a jump-cut.
@@ -1158,16 +1169,14 @@ export default function HeroSection() {
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
-                      gap: 4,
-                      width: 56,
-                      padding: "8px 4px",
-                      borderRadius: 10,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background:
+                      gap: 6,
+                      padding: "6px 2px",
+                      border: "none",
+                      background: "transparent",
+                      color:
                         contactCopied === item.key
-                          ? "rgba(255,255,255,0.16)"
-                          : "rgba(255,255,255,0.05)",
-                      color: "rgba(255,255,255,0.92)",
+                          ? "#fff"
+                          : "rgba(255,255,255,0.92)",
                       fontFamily: SANS,
                       fontSize: 11,
                       fontWeight: 500,
@@ -1184,18 +1193,22 @@ export default function HeroSection() {
                         : "translateY(26px) scale(0.8)",
                       opacity: contactPopupEntered ? 1 : 0,
                       transition:
-                        "transform 560ms cubic-bezier(0.2,1.8,0.32,1), opacity 260ms ease, background 160ms ease",
+                        "transform 560ms cubic-bezier(0.2,1.8,0.32,1), opacity 260ms ease, filter 160ms ease",
                       transitionDelay: contactPopupEntered ? `${i * 90}ms` : "0ms",
+                      filter:
+                        contactCopied === item.key
+                          ? "drop-shadow(0 0 8px rgba(255,255,255,0.6))"
+                          : "none",
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={item.icon}
                       alt=""
-                      width={20}
-                      height={20}
+                      width={26}
+                      height={26}
                       draggable={false}
-                      style={{ display: "block", borderRadius: 4 }}
+                      style={{ display: "block" }}
                     />
                     <span>{contactCopied === item.key ? "Copied" : item.label}</span>
                   </button>

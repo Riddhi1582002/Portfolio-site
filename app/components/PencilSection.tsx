@@ -156,6 +156,19 @@ export default function PencilSection({
         inset: 0,
         overflow: "hidden",
         background: showBackdrop ? "#000" : "transparent",
+        // Before real progress starts this section is mounted only to keep
+        // its WebGL context and GLTF warm (see showBackdrop's own comment).
+        // The background being transparent was not enough on its own: the
+        // bulb model below is rendered unconditionally at litness=1 the
+        // instant this section mounts, which is BEFORE CordSection's own
+        // bulb has actually finished brightening (the carousel can still be
+        // mid-exit at that point) — so a second, already-fully-lit bulb
+        // popped in on top of the real, still-dimming one. Hiding the whole
+        // section until showBackdrop flips true removes that premature
+        // duplicate; at the exact frame it flips, CordSection's own bulb
+        // has already reached litness 1 (they share the same boundary), so
+        // nothing visibly changes when this section takes over.
+        opacity: showBackdrop ? 1 : 0,
       }}
     >
       {cordOpacity > 0.001 && (

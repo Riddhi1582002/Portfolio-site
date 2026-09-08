@@ -147,9 +147,10 @@ const ARM_FROM = 0.8;
 // worst case (2560x1440) needs 10.1x, and this leaves headroom.
 const DOLLY_MAX = 18;
 // Wheel pixels for the whole return. A trackpad flick is ~400-900px, so
-// the move is one decisive gesture rather than a scrub.
-const RETURN_WHEEL_PX = 1100;
-const RETURN_TOUCH_PX = 620;
+// the move is one decisive gesture rather than a scrub — sized so a single
+// firm flick (not a scrub) is enough to carry it, rather than needing two.
+const RETURN_WHEEL_PX = 650;
+const RETURN_TOUCH_PX = 370;
 const RETURN_KEY_STEP = 0.22;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -843,10 +844,25 @@ export default function InfiniteCanvas({
       .finally(() => {
         if (cancelled) return;
         window.scrollTo(0, 0);
-        returningRef.current = false;
-        returnTargetRef.current = 0;
-        setReturning(false);
-        setReturnT(0);
+        // The state reset below is deferred one frame on purpose. The
+        // page's own scroll-position tracking is also rAF-driven and reads
+        // window.scrollY on this same frame, which drops this section's
+        // progress below the threshold that mounts it at all — so by the
+        // time the reset below would actually change what's on screen,
+        // this component has already unmounted. Resetting immediately
+        // instead raced that unmount: on the frame it lost, returnT
+        // snapped to 0 (ART back to its small, un-dollied gallery size)
+        // for one visible frame before the unmount caught up — the "minor
+        // overlap" this avoids. Nothing about the camera move itself
+        // changes; this only reorders when the already-arrived state gets
+        // cleared relative to the unmount.
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          returningRef.current = false;
+          returnTargetRef.current = 0;
+          setReturning(false);
+          setReturnT(0);
+        });
       });
     return () => {
       cancelled = true;
