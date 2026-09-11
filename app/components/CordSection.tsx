@@ -281,6 +281,10 @@ export default function CordSection({
           camera reaches the bottom of the travel. */}
       <div
         data-bulb-host
+        // How lit the bulb actually is, as distinct from how far it has
+        // come into shot: the arc of work takes the light off it, and the
+        // moth is drawn to and lit by the filament, not by the object.
+        data-lum={lit.toFixed(3)}
         style={{
           position: "absolute",
           left: "50%",
