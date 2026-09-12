@@ -58,7 +58,12 @@ export const MOTH_SIZE = { VW: 4, MIN_PX: 40, MAX_PX: 80 };
  */
 const MOTH_CLOSE_PASS_MAX = 3.2;
 
-const WING_FLAP_SPEED = 9.4; // beats/sec at an ordinary cruise
+// Beats/sec at an ordinary cruise. Was 9.4, which is closer to what a real
+// moth does and read on screen as a frantic blur — at this size the eye
+// resolves the stroke rather than the creature, and the whole point of it
+// is to be calm. Slow enough to read as a wingbeat, fast enough to never
+// look like it is gliding.
+const WING_FLAP_SPEED = 4.2;
 const WING_FLAP_AMPLITUDE = 0.95; // radians at the hinge, full stroke
 const WING_FLAP_VARIATION = 0.24; // how much amplitude/rate wander
 const WING_ASYMMETRY = 0.07; // the two wings are never quite the same
@@ -126,7 +131,14 @@ const DEPTH_MAX = 1.02;
 const BUMP_RECOVERY_DURATION = 0.75;
 const TAKEOFF_DURATION = 0.7;
 const PERCH_COOLDOWN = 9; // seconds before it will consider settling again
-const PERCH_CHANCE = 0.34; // per second, while in reach of somewhere to sit
+const PERCH_CHANCE = 0.55; // per second, while in reach of somewhere to sit
+// How long it has to have been in a beat before it will settle in it. A
+// creature that lands the moment it arrives reads as placed; one that
+// flies the scene first and then finds somewhere to sit reads as having
+// chosen. It is a gate on OPPORTUNITY, not a schedule: what actually
+// decides a landing is still passing close to a surface with the dice in
+// its favour.
+const REST_SETTLE_SECONDS = 4;
 const NARRATION_PERCH_LIMIT = 2; // once or twice in the whole experience
 const BULB_AVOID_COOLDOWN = 5.5; // it does not touch the hot thing twice
 const FOV = 40;
@@ -327,6 +339,14 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       // Something for the wing membranes and the body's contours to catch
       // a specular on. Painted, tiny, and scaled with how lit the room
       // actually is, so an unlit beat cannot leave the moth shining.
+      //
+      // It carries three sources now, not one. A single warm key left every
+      // surface facing away from it at a flat near-black, which is what made
+      // the creature read as a silhouette cut out of the page rather than as
+      // an object: a dim cool fill opposite the key separates the shadow
+      // side from the background, and a faint bounce underneath catches the
+      // undersides of the wings. All of it is REFLECTED — the moth emits
+      // nothing, and the whole rig still dims with the room below.
       const envCanvas = document.createElement("canvas");
       envCanvas.width = 256;
       envCanvas.height = 128;
@@ -338,11 +358,16 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       ectx.fillStyle = eg;
       ectx.fillRect(0, 0, 256, 128);
       ectx.filter = "blur(18px)";
-      const key = ectx.createRadialGradient(70, 30, 0, 70, 30, 70);
-      key.addColorStop(0, "rgba(255,246,230,0.7)");
-      key.addColorStop(1, "rgba(0,0,0,0)");
-      ectx.fillStyle = key;
-      ectx.fillRect(0, 0, 256, 128);
+      const lamp = (cx: number, cy: number, r: number, colour: string) => {
+        const g = ectx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        g.addColorStop(0, colour);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ectx.fillStyle = g;
+        ectx.fillRect(0, 0, 256, 128);
+      };
+      lamp(70, 30, 70, "rgba(255,246,230,0.72)");   // key
+      lamp(190, 52, 76, "rgba(150,176,216,0.3)");   // cool fill, opposite
+      lamp(128, 120, 90, "rgba(120,132,152,0.16)"); // bounce, underneath
       ectx.filter = "none";
       const envTex = new THREE.CanvasTexture(envCanvas);
       envTex.mapping = THREE.EquirectangularReflectionMapping;
@@ -394,8 +419,8 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
               // The body keeps the material the asset shipped with. Only
               // its reflection strength is taken over, so it can be dimmed
               // with the room.
-              src.envMapIntensity = 0.22;
-              surfaces.push({ mat: src, env: 0.22 });
+              src.envMapIntensity = 0.34;
+              surfaces.push({ mat: src, env: 0.34 });
               return src;
             }
             // The wings keep the same maps and the same base colour — the
@@ -414,15 +439,20 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
               metalness: src.metalness,
               side: THREE.DoubleSide,
               transparent: false,
-              sheen: 0.55,
-              sheenRoughness: 0.62,
+              // A scaled membrane scatters a wide, soft highlight across
+              // its surface and lights up along its edges. Pushed up and
+              // tightened from 0.55/0.62: it is what gives the wings their
+              // own tone in the dark instead of a flat shape, and it costs
+              // nothing but a term in a shader that was already compiled.
+              sheen: 0.78,
+              sheenRoughness: 0.44,
               sheenColor: new THREE.Color(0xfff0d8),
             });
             if (src.normalScale) wingMat.normalScale.copy(src.normalScale);
-            wingMat.envMapIntensity = 0.3;
+            wingMat.envMapIntensity = 0.46;
             surfaces.push({
               mat: wingMat as unknown as import("three").MeshStandardMaterial,
-              env: 0.3,
+              env: 0.46,
             });
             return wingMat as unknown as import("three").Material;
           };
@@ -600,23 +630,52 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       // THE ENTRY. Off the side of the frame, at a random height, a random
       // depth, heading in at a random angle and a random speed — so no two
       // sessions watch the same moth arrive.
+      //
+      // It starts JUST outside the frame rather than a screen-width beyond
+      // it, and with real speed on: from 0.62-0.82 of a half-viewport out,
+      // at a dawdling 130-250px/s, the fly-in took the better part of ten
+      // seconds and the reader had usually started scrolling before the
+      // creature was ever in shot. It still enters from outside, under its
+      // own power, on its own heading — it simply does not have most of a
+      // screen to cross first.
+      // The side is an even coin toss, as it has to be. What is chosen to
+      // match it is the SEED: the wander's opening heading is this seed's
+      // own, and it takes over from the entry velocity a moment after the
+      // creature appears — so a seed that points back out of frame, or
+      // merely along the edge, is redrawn rather than followed. That is
+      // what used to leave some arrivals loitering off the side for the
+      // better part of ten seconds. If no draw qualifies, the entry
+      // velocity carries it in on its own exactly as it did before.
       const fromLeft = Math.random() < 0.5;
+      let seed = Math.random() * 40;
+      /** How much of this seed's opening heading points INTO the frame. */
+      const inward = () =>
+        Math.cos(drift(0, seed) * Math.PI) * (fromLeft ? 1 : -1);
+      for (let i = 0; i < 24 && inward() < 0.35; i++) seed = Math.random() * 40;
       const entryDepth = D0 * (0.62 + Math.random() * 0.42);
+      // Just outside the FRAME, whatever depth it came in at. Stating the
+      // start in world units instead meant a shallow entry began most of a
+      // second screen-width out and a deep one began almost on the edge:
+      // the same number of pixels, wildly different journeys. Scaling by
+      // the depth is what makes "off the side of the screen" mean the same
+      // thing every time, while the depth itself stays random and so does
+      // how large it reads when it first appears.
+      const entryScreen = entryDepth / D0;
+      const entryMargin = vw * (0.05 + Math.random() * 0.12);
       const entryY = (0.5 - Math.random()) * vh * 0.62;
       pos.set(
-        (fromLeft ? -1 : 1) * (vw * 0.62 + Math.random() * vw * 0.2),
-        entryY,
+        (fromLeft ? -1 : 1) * (vw / 2 + entryMargin) * entryScreen,
+        entryY * entryScreen,
         -entryDepth
       );
-      const entryAngle = (Math.random() - 0.5) * 1.1;
+      const entryAngle = (Math.random() - 0.5) * 0.8;
       vel.set(
         (fromLeft ? 1 : -1) * Math.cos(entryAngle),
         Math.sin(entryAngle) * 0.5,
         (Math.random() - 0.5) * 0.5
       )
         .normalize()
-        .multiplyScalar(WANDER_SPEED * (0.75 + Math.random() * 0.7));
-      const seed = Math.random() * 40;
+        .multiplyScalar(WANDER_SPEED * (1.15 + Math.random() * 0.6));
 
       let state = WANDER;
       let stateT = 0;
@@ -625,10 +684,13 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       const perchS: Spring = { x: 0, v: 0 };
       let flutter = 0; // extra, irregular wingbeat after a shock
       let perchEl: Element | null = null;
-      let perchIsNarration = false;
+      let perchIsBrief = false;
       let perchOx = 0.5;
       let perchOy = 0;
       let perchCooldown = 4;
+      // How long it has been in the beat that owns the frame. Reset on a
+      // cut, never on anything the creature itself does.
+      let sceneT = 0;
       let narrationPerches = 0;
       let bulbCooldown = 0;
       let sinceBump = 0;
@@ -699,6 +761,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           pos.x -= clamp(mothStage.cameraX - lastCamX, -vw, vw);
           pos.y += clamp(mothStage.cameraY - lastCamY, -vh, vh);
         }
+        sceneT = phase === lastPhase && epoch === lastEpoch ? sceneT + dt : 0;
         lastPhase = phase;
         lastEpoch = epoch;
         lastDist = dist;
@@ -804,12 +867,16 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           // a moth still holding onto it would be carried at the letter's
           // speed rather than flying — which is precisely the thing this
           // creature never does.
-          if (closePassing) stillThere = false;
+          // A camera about to travel ends the sit, and so does the A's
+          // counter starting to call: the creature has to be flying to be
+          // anywhere near the letter before the push, and the staging pull
+          // is deliberately ignored while it is perched.
+          if (closePassing || mothStage.aStaging > 0.3) stillThere = false;
           // A card is somewhere to STAY — the moth rides it for as long as
           // it is part of the composition, and leaves when the card does.
           // A line of narration is somewhere to pause, and it pauses
           // briefly.
-          const overstayed = stateT > (perchIsNarration ? PERCH_DURATION : CARD_PERCH_MAX);
+          const overstayed = stateT > (perchIsBrief ? PERCH_DURATION : CARD_PERCH_MAX);
           if (!stillThere || overstayed) {
             state = TAKEOFF;
             stateT = 0;
@@ -905,11 +972,18 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             .multiplyScalar(speedWander * (d > hold ? 1 : 0.45));
           if (d < hold * 1.15) {
             state = HOVER;
-            // Somewhere to sit? Only sometimes, and never twice running.
+            // Somewhere to sit? Only sometimes, never twice running, and
+            // not until it has been in this beat long enough to have found
+            // the surface rather than arrived on it. Every surface the site
+            // actually draws counts — the cards of the strip, the fan and
+            // the arc, the images of the gallery, a line of narration, and
+            // the wordmark itself — so a rest is wherever the flight
+            // happens to bring it, not a place it was sent.
             if (
               perchCooldown <= 0 &&
               !closePassing &&
-              (best.kind === K_CARD || best.kind === K_NARR) &&
+              sceneT > REST_SETTLE_SECONDS &&
+              best.kind !== K_BULB &&
               Math.random() < PERCH_CHANCE * dt &&
               !(best.kind === K_NARR && narrationPerches >= NARRATION_PERCH_LIMIT)
             ) {
@@ -917,9 +991,21 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
               stateT = 0;
               perches++;
               perchEl = best.el;
-              perchIsNarration = best.kind === K_NARR;
+              // A card is somewhere to stay; type is somewhere to pause.
+              perchIsBrief = best.kind !== K_CARD;
               perchCooldown = PERCH_COOLDOWN;
-              if (best.kind === K_NARR) {
+              if (best.kind === K_ART) {
+                // ART's element is a full-width centred line, so a share of
+                // its BOX would land the creature out in the black beside
+                // the word. The letters reach about 0.85 of the line box's
+                // height either side of its middle; this puts it on the top
+                // edge of that ink, where it rests on the letterforms
+                // rather than across them.
+                const w = Math.max(1, best.right - best.left);
+                const reach = ((best.bottom - best.top) * 0.85) / w;
+                perchOx = 0.5 + (Math.random() - 0.5) * 1.7 * reach;
+                perchOy = 0.03;
+              } else if (best.kind === K_NARR) {
                 narrationPerches++;
                 // An edge, and never the middle of the line: it may sit
                 // across a letter, it may not sit across the sentence.
@@ -1081,15 +1167,15 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         const flapRate =
           WING_FLAP_SPEED *
           (reduced ? 0.72 : 1) *
-          (1 + WING_FLAP_VARIATION * drift(clock * 1.9, seed + 41)) *
+          (1 + WING_FLAP_VARIATION * drift(clock * 0.85, seed + 41)) *
           (state === PERCH ? 0.62 : 1) *
-          (1 + flutter * 0.75);
+          (1 + flutter * 0.5);
         wingPhase += flapRate * Math.PI * 2 * dt;
         if (wingPhase > Math.PI * 4) wingPhase -= Math.PI * 4;
         const amp =
           WING_FLAP_AMPLITUDE *
           (state === PERCH ? 0.34 : 1) *
-          (1 + WING_FLAP_VARIATION * drift(clock * 1.3, seed + 53)) *
+          (1 + WING_FLAP_VARIATION * drift(clock * 0.65, seed + 53)) *
           (1 + flutter * 0.3);
         if (wingL) {
           flapQ.setFromAxisAngle(zAxis, stroke(wingPhase) * amp * (1 + WING_ASYMMETRY));
@@ -1169,9 +1255,15 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         }
         // The reflections dim with the room, so an unlit beat cannot leave
         // the moth carrying studio highlights it has no source for.
-        const room = clamp(0.12 + roomLit * 0.12, 0.12, 1.2);
+        // The FLOOR is what a creature in a dark room still has: the
+        // little the surround reflects back at it. Raised from 0.12 —
+        // below that the shadow side collapsed into the page and the moth
+        // read as a cut-out. It is still reflection, and it still rises
+        // with the room, so the directional response near the bulb and
+        // near ART is unchanged.
+        const room = clamp(0.26 + roomLit * 0.12, 0.26, 1.2);
         for (const s of surfaces) s.mat.envMapIntensity = s.env * room;
-        ambient.intensity = 0.1 * (0.4 + 0.6 * room);
+        ambient.intensity = 0.12 * (0.45 + 0.55 * room);
 
         mothDebug.frame++;
         mothDebug.x = pos.x;
