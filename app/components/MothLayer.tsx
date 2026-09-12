@@ -59,39 +59,29 @@ export const MOTH_SIZE = { VW: 4, MIN_PX: 40, MAX_PX: 80 };
 const MOTH_CLOSE_PASS_MAX = 3.2;
 // HOW THE CREATURE ANSWERS THE LIGHT IT IS GIVEN.
 //
-// The asset is a photographic scan of a real moth: dark brown scales with
-// pale streaks, authored to be read in daylight. Dropped into a room that
-// is almost entirely black and lit by one warm source, its midtones sat
-// on the floor and the whole animal read as a hole in the page — not dim,
-// exactly, but flat, and a flat shape is not a moth.
-//
-// These two are the fix, and neither of them adds a photon: the albedo is
-// lifted so the scan's own tonal range lands where the eye can use it, and
-// the roughness is capped so the surface actually catches a highlight off
-// the sources already in the scene. The texture's structure — every scale,
-// vein and streak — is preserved in proportion, the shadow side still
-// falls away to nothing, and the directional response near the bulb is the
-// same physics it always was, simply read against a body that has tone in
-// it. Filmic tone mapping rolls the pale streaks off rather than clipping
-// them, which is what lets the gain go this far without going chalky.
+// The asset is a photographic scan of a real moth, authored to be read in
+// daylight. Dropped into a room that is almost entirely black and lit by
+// one warm source, its midtones sat on the floor and the whole animal read
+// as a hole in the page — not dim exactly, but flat, and a flat shape is
+// not a moth. None of these adds a photon: the albedo is lifted so the
+// scan's own range lands where the eye can use it, the roughness is capped
+// so the surface catches a highlight off the sources already in the scene,
+// and the normal map is pushed past 1 so the scale and vein relief reads in
+// grazing light. Filmic tone mapping rolls the pale streaks off rather than
+// clipping them, which is what lets the gain go this far without chalk.
 const MOTH_ALBEDO_GAIN = 1.72;
 const MOTH_ROUGHNESS_CAP = 0.74;
-// The scan's own relief — every scale and vein is in its normal map, and
-// in a room this dark that relief is most of what makes the body read as a
-// body rather than a shape. Pushed past 1 it catches the grazing light the
-// creature actually gets here.
 const MOTH_NORMAL_GAIN = 1.5;
-// A moth's wing membrane is thinner and paler than its thorax, and the
-// scan carries that difference; this keeps it after the body's own lift,
-// so the wings separate from the body instead of the whole animal rising
-// together into one tone.
+// A moth's wing membrane is thinner and paler than its thorax and the scan
+// carries that; this keeps the difference after the body's own lift, so the
+// wings separate from the body rather than the whole animal rising into one
+// tone.
 const MOTH_WING_ALBEDO_GAIN = 1.24;
 
-// Beats/sec at an ordinary cruise. Was 9.4, which is closer to what a real
-// moth does and read on screen as a frantic blur — at this size the eye
-// resolves the stroke rather than the creature, and the whole point of it
-// is to be calm. Slow enough to read as a wingbeat, fast enough to never
-// look like it is gliding.
+// Beats/sec at an ordinary cruise. A real moth is nearer 9; at this size
+// the eye resolves the stroke rather than the creature, and a real rate
+// read as a frantic blur. Slow enough to be calm, fast enough never to
+// look like gliding.
 const WING_FLAP_SPEED = 4.2;
 const WING_FLAP_AMPLITUDE = 0.95; // radians at the hinge, full stroke
 const WING_FLAP_VARIATION = 0.24; // how much amplitude/rate wander
@@ -99,21 +89,12 @@ const WING_ASYMMETRY = 0.07; // the two wings are never quite the same
 
 const WANDER_SPEED = 172; // px/sec on the content plane
 const WANDER_VARIATION = 0.62; // how irregular that speed is
-// How fast the drifting heading itself turns. Halved from 0.42: at that
-// rate the creature changed its mind every three seconds or so and never
-// got far from wherever it started, which read as fussing about one corner
-// of the frame. The same speed over a heading held twice as long is a
-// crossing rather than a circuit — no faster, just further.
-const WANDER_TURN = 0.22;
-// HABITUATION. The longer it has been working one particular surface, the
-// less that surface pulls; the pull comes back while it is away. This is
-// not a change to the hierarchy — the bulb still outranks ART, ART the
-// cards, the cards the narration, and every base strength below is
-// untouched — it is what stops the strongest source in the room from being
-// a permanent tether, and it is the single reason the flight now covers
-// the scene instead of orbiting the nearest card.
-const DWELL_BEFORE_ROAM = 4.5; // seconds near one surface before it palls
-const ROAM_RELIEF = 0.82; // how much of that surface's pull it can take
+// How fast the drifting heading itself turns. At 0.42 the creature changed
+// its mind roughly every three seconds and never got far from wherever it
+// started, which read as fussing about one corner of the frame. The same
+// speed over a heading held longer is a crossing rather than a circuit —
+// no faster, just further, and with the turns no less soft.
+const WANDER_TURN = 0.26;
 
 const ATTRACTION_RADIUS = 660; // px, at full brightness; dimmer reaches less
 const BULB_ATTRACTION_STRENGTH = 1.0;
@@ -121,25 +102,12 @@ const ART_ATTRACTION_STRENGTH = 0.74;
 const CARD_ATTRACTION_STRENGTH = 0.34;
 const NARRATION_ATTRACTION_STRENGTH = 0.13;
 
-const HOVER_RADIUS = 118; // clearance held outside a source's own radius
-const ORBIT_VARIATION = 0.62; // sideways share of the approach — no orbits
-// HOW OFTEN IT COMMITS.
-//
-// A moth does not hold a polite distance from a light for ever. It circles,
-// and every so often it stops circling and goes in — which is the whole
-// reason the bulb has to be treated as hot and a card has to be bumpable
-// at all. Without this the hold radius below is a perfect no-fly sphere and
-// the creature can NEVER touch anything, which measured out at exactly
-// zero contacts over five minutes at the bulb.
-//
-// It is a threshold on the same wandering drift the rest of the flight is
-// made of, so the moments it commits in are irregular and unrepeatable
-// rather than timed. At 0.78 of a signal whose amplitude is 1 it happens
-// for a few seconds at a time, a few times a minute.
-const COMMIT_THRESHOLD = 0.78;
-/** How far inside a source's own radius a committed approach aims. */
-const COMMIT_HOLD = 0.5;
-
+const HOVER_RADIUS = 118; // how close counts as "arrived" at a source
+const ORBIT_VARIATION = 0.62; // sideways share of the bend — so it curves in
+// How hard the strongest source in reach leans on the flight. It is a
+// multiplier on the creature's own cruising speed, so a bulb at full
+// brightness bends the path hard and a line of narration barely creases it.
+const ATTRACTION_BEND = 2.4;
 const CARD_COLLISION_RADIUS = 30; // px of depth either side of a card's face
 const BULB_COLLISION_RADIUS = 0.27; // share of the bulb's box: its glass
 // How long a perch on NARRATION lasts. A line is a place to rest for a
@@ -155,7 +123,7 @@ const PERCH_DURATION = 3.6;
 // this file is built around. So the stay is bounded: long enough that it
 // reads as settling on the work, short enough that a stopped reader sees
 // it leave and fly again.
-const CARD_PERCH_MAX = 7;
+const CARD_PERCH_MAX = 12;
 const BULB_RECOVERY_DURATION = 1.7;
 
 // Supporting constants for the above.
@@ -164,11 +132,11 @@ const STEER_RESPONSE = 2.1; // how fast desired velocity is actually taken up
 const DRAG = 0.55;
 // How far the creature leans into a turn, and how hard. BANK_MAX was 0.85
 // radians — very nearly fifty degrees of roll — and at that angle one wing
-// is so much lower than the other that the eye reads it as the wing doing
-// the turning rather than the body leaning through it. A moth banks; it
-// does not bank like a fighter. Halved, with the gain trimmed to match and
-// the spring stiffened (see the springStep call) so the lean arrives and
-// resolves inside the turn instead of hanging on after it.
+// sits so much lower than the other that the eye reads it as the wing
+// doing the turning rather than the body leaning through it. A moth banks;
+// it does not bank like a fighter. Halved, with the gain trimmed to match
+// and the spring stiffened below so the lean arrives and resolves inside
+// the turn instead of hanging on after it.
 const BANK_GAIN = 0.0031;
 const BANK_MAX = 0.4;
 const NOMINAL_DEPTH = 0.82; // share of the camera's distance to the content
@@ -176,53 +144,34 @@ const NOMINAL_DEPTH = 0.82; // share of the camera's distance to the content
 // the content plane. Chosen so that plain perspective across the whole
 // band already lands inside the 40-80px clamp: it is the flight that keeps
 // the moth the right size, and the clamp below is only the guarantee.
-const DEPTH_MIN = 0.5;
-const DEPTH_MAX = 1.12;
+const DEPTH_MIN = 0.52;
+const DEPTH_MAX = 1.1;
 const BUMP_RECOVERY_DURATION = 0.75;
 const TAKEOFF_DURATION = 0.7;
-// Seconds before it will consider settling again. Raised from 9: with the
-// stillness gate in place a settled beat leaves the opportunity open
-// indefinitely, and at 9 against a stay of up to CARD_PERCH_MAX the
-// creature spent three quarters of its time sitting down. The flight is
-// the thing; the rest is punctuation.
-const PERCH_COOLDOWN = 22;
-const PERCH_CHANCE = 0.55; // per second, while in reach of somewhere to sit
-// How long it has to have been in a beat before it will settle in it. A
-// creature that lands the moment it arrives reads as placed; one that
-// flies the scene first and then finds somewhere to sit reads as having
-// chosen. It is a gate on OPPORTUNITY, not a schedule: what actually
-// decides a landing is still passing close to a surface with the dice in
-// its favour.
-const REST_SETTLE_SECONDS = 4;
+const PERCH_COOLDOWN = 9; // seconds before it will consider settling again
+const PERCH_CHANCE = 0.34; // per second, while in reach of somewhere to sit
+const NARRATION_PERCH_LIMIT = 2; // once or twice in the whole experience
+// WHEN A REST IS EVEN POSSIBLE.
+//
+// A rest is not something the creature decides — it is something the scene
+// offers. While the reader is scrolling, the camera is travelling or the
+// cards are still rearranging themselves there is nowhere steady to put
+// your feet down, and it simply keeps flying. The measure is the
+// composition's own: the average screen movement of the surfaces it can
+// see, taken between scans. Measured, the two regimes are far apart — a
+// breathing hero reads 4-31px/s, a reader actually scrolling reads a
+// median of over 200 — so the bar sits comfortably between them.
+const COMPOSITION_STILL_PX = 48; // px/sec, averaged over the visible surfaces
+const REST_STILL_SECONDS = 3.5; // how long that has to hold before it may land
+const BULB_AVOID_COOLDOWN = 5.5; // it does not touch the hot thing twice
 // THE POINTER, noticed. Not followed, not fled from and never tethered:
 // inside this radius the creature's own desired heading gains a small
-// component away from and above the cursor, which is the change of mind an
-// insect makes when something large moves near it. It decays with distance
-// and it lapses when the pointer stops moving, so a parked cursor is
-// furniture rather than a permanent presence.
+// component away from and above the cursor — the change of mind an insect
+// makes when something large moves near it. It decays with distance and
+// lapses when the pointer stops moving, so a parked cursor is furniture.
 const CURSOR_NOTICE_PX = 190;
-const CURSOR_NUDGE = 95; // px/sec added to the desired velocity, at contact
+const CURSOR_NUDGE = 85; // px/sec added to the desired velocity, at contact
 const CURSOR_MEMORY = 1.5; // seconds a pointer stays "something that moved"
-// WHAT "STILL" MEANS, and how long it has to last.
-//
-// A rest is not something the creature decides on a timer — it is
-// something the SCENE offers. While the reader is scrolling, the camera is
-// travelling or the cards are still rearranging themselves, there is
-// nowhere steady to put your feet down and the moth simply keeps flying.
-// The measure is the composition's own: the average screen-space movement
-// of the surfaces the moth can see, taken between scans.
-//
-// The bar has to sit between the site's idle micro-motion and its real
-// motion, and measurement put those further apart than they look: page
-// one's breathing wordmark reads 4-31px/s (the scale breath moves a
-// full-width box's corners, so it is larger than the drift alone), while
-// a reader actually scrolling reads a median of 418px/s. At this value a
-// breathing hero counts as still, which to a reader it plainly is, and
-// anything the reader is actually driving does not.
-const COMPOSITION_STILL_PX = 48; // px/sec, averaged over the visible surfaces
-const REST_STILL_SECONDS = 3; // how long that has to hold before it may land
-const NARRATION_PERCH_LIMIT = 2; // once or twice in the whole experience
-const BULB_AVOID_COOLDOWN = 5.5; // it does not touch the hot thing twice
 const FOV = 40;
 // How close to the lens the creature is still drawn. Past this it is at or
 // behind the camera — the far side of a fly-by — and drawing it there is
@@ -378,10 +327,9 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       // by that bulb rolls off the same way rather than clipping to white
       // as it comes in close.
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      // Raised from 1.18. The creature is the only thing in this canvas,
-      // so the exposure is the creature's alone — it lifts its midtones
-      // off the black without touching a light, and ACES keeps the
-      // highlights near the bulb where they were.
+      // The creature is the only thing in this canvas, so the exposure is
+      // its alone: it lifts its midtones off the black without touching a
+      // light, and ACES keeps the highlights near the bulb where they were.
       renderer.toneMappingExposure = 1.42;
       const canvas = renderer.domElement;
       host.appendChild(canvas);
@@ -425,14 +373,6 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       // Something for the wing membranes and the body's contours to catch
       // a specular on. Painted, tiny, and scaled with how lit the room
       // actually is, so an unlit beat cannot leave the moth shining.
-      //
-      // It carries three sources now, not one. A single warm key left every
-      // surface facing away from it at a flat near-black, which is what made
-      // the creature read as a silhouette cut out of the page rather than as
-      // an object: a dim cool fill opposite the key separates the shadow
-      // side from the background, and a faint bounce underneath catches the
-      // undersides of the wings. All of it is REFLECTED — the moth emits
-      // nothing, and the whole rig still dims with the room below.
       const envCanvas = document.createElement("canvas");
       envCanvas.width = 256;
       envCanvas.height = 128;
@@ -443,6 +383,10 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       eg.addColorStop(1, "#050607");
       ectx.fillStyle = eg;
       ectx.fillRect(0, 0, 256, 128);
+      // Three sources, not one. A single warm key left every surface
+      // facing away from it at a flat near-black, which is what made the
+      // creature read as a silhouette cut out of the page rather than as
+      // an object. All of it is REFLECTED — the moth emits nothing.
       ectx.filter = "blur(18px)";
       const lamp = (cx: number, cy: number, r: number, colour: string) => {
         const g = ectx.createRadialGradient(cx, cy, 0, cx, cy, r);
@@ -507,15 +451,11 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             if (!src) return raw;
             if (!toned.has(src)) {
               toned.add(src);
-              // Multiplied, not replaced: whatever base colour the asset
-              // carries keeps its hue and its relative values.
+              // Multiplied, not replaced: the asset keeps its hue and its
+              // relative values.
               src.color.multiplyScalar(MOTH_ALBEDO_GAIN);
-              if (src.normalScale) src.normalScale.multiplyScalar(MOTH_NORMAL_GAIN);
-              // A cap on the roughness MAP's multiplier, so the scan's own
-              // variation across the wings and the thorax survives — the
-              // dull parts stay duller than the sleek ones, all of it just
-              // that bit more willing to take a highlight.
               src.roughness = Math.min(src.roughness ?? 1, MOTH_ROUGHNESS_CAP);
+              if (src.normalScale) src.normalScale.multiplyScalar(MOTH_NORMAL_GAIN);
             }
             if (!isWing) {
               // The body keeps the material the asset shipped with. Only
@@ -532,19 +472,19 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             // IS, so that the light already in the room does the work.
             //
             //   * sheen is the scattering lobe for a fibrous, scaled
-            //     surface — it is what puts a soft wide highlight along
-            //     the membrane and lights its edges when a source is
-            //     behind or beside it. Warmed and tightened here, which is
-            //     where the delicate warm rim along a backlit wing comes
-            //     from: it is a real lobe answering a real light, not a
-            //     line drawn round the shape.
+            //     surface — it puts a soft wide highlight along the
+            //     membrane and lights its edges when a source is behind or
+            //     beside it. Warmed and tightened here: that is where the
+            //     delicate gold rim along a backlit wing comes from, a real
+            //     lobe answering a real light rather than a line drawn
+            //     round the shape.
             //   * DoubleSide means a light behind a wing lights the face
-            //     the reader is looking at, which is the honest version of
-            //     light coming through a thin membrane. No transmission
-            //     pass: there is nothing behind this creature but the
-            //     page, so sampling it would only make the wings darker.
+            //     the reader is looking at — the honest version of light
+            //     coming through a thin membrane. No transmission pass:
+            //     there is nothing behind this creature but the page, so
+            //     sampling it would only make the wings darker.
             //   * iridescence is the thin-film term. Moth scales are
-            //     stacked lamellae and they do this; kept low and with a
+            //     stacked lamellae and they do this; kept low and over a
             //     wide thickness range so it reads as a cool shift across
             //     a wing as it turns, never as a colour effect.
             //   * a lower roughness floor than the body, because the
@@ -738,9 +678,6 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             place(s, rect, kind);
             s.lum = lum;
             s.el = el;
-            // Same surface as last time, in the same slot? Then the
-            // difference between the two boxes is how far the composition
-            // carried it.
             if (prevEl[at] === el) {
               moved +=
                 Math.abs(rect.left - prevLeft[at]) + Math.abs(rect.top - prevTop[at]);
@@ -752,8 +689,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             taken++;
           }
         }
-        // A surface arriving or leaving is the composition changing too, so
-        // a different count reads as movement rather than as stillness.
+        // A surface arriving or leaving is the composition changing too.
         compositionMotion =
           matched > 0 && srcCount === prevCount
             ? moved / matched / Math.max(1e-3, elapsed)
@@ -780,42 +716,21 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       // THE ENTRY. Off the side of the frame, at a random height, a random
       // depth, heading in at a random angle and a random speed — so no two
       // sessions watch the same moth arrive.
-      //
-      // It starts JUST outside the frame rather than a screen-width beyond
-      // it, and with real speed on: from 0.62-0.82 of a half-viewport out,
-      // at a dawdling 130-250px/s, the fly-in took the better part of ten
-      // seconds and the reader had usually started scrolling before the
-      // creature was ever in shot. It still enters from outside, under its
-      // own power, on its own heading — it simply does not have most of a
-      // screen to cross first.
-      // The side is an even coin toss, as it has to be. What is chosen to
-      // match it is the SEED: the wander's opening heading is this seed's
-      // own, and it takes over from the entry velocity a moment after the
-      // creature appears — so a seed that points back out of frame, or
-      // merely along the edge, is redrawn rather than followed. That is
-      // what used to leave some arrivals loitering off the side for the
-      // better part of ten seconds. If no draw qualifies, the entry
-      // velocity carries it in on its own exactly as it did before.
       const fromLeft = Math.random() < 0.5;
-      let seed = Math.random() * 40;
-      /** How much of this seed's opening heading points INTO the frame. */
-      const inward = () =>
-        Math.cos(drift(0, seed) * Math.PI) * (fromLeft ? 1 : -1);
-      for (let i = 0; i < 24 && inward() < 0.35; i++) seed = Math.random() * 40;
       const entryDepth = D0 * (0.62 + Math.random() * 0.42);
-      // Just outside the FRAME, whatever depth it came in at. Stating the
-      // start in world units instead meant a shallow entry began most of a
-      // second screen-width out and a deep one began almost on the edge:
-      // the same number of pixels, wildly different journeys. Scaling by
-      // the depth is what makes "off the side of the screen" mean the same
-      // thing every time, while the depth itself stays random and so does
-      // how large it reads when it first appears.
+      // Just outside the FRAME, whatever depth it came in at. Stated in
+      // world units instead, a shallow entry began most of a second screen
+      // width out and a deep one almost on the edge — the same numbers,
+      // wildly different journeys, and the long ones meant the reader had
+      // usually started scrolling before the creature was ever in shot.
+      // Scaling by the depth is what makes "off the side of the screen"
+      // mean the same thing every time; the depth stays random, and so
+      // does how large it reads when it first appears.
       const entryScreen = entryDepth / D0;
-      const entryMargin = vw * (0.05 + Math.random() * 0.12);
-      const entryY = (0.5 - Math.random()) * vh * 0.62;
+      const entryY = (0.5 - Math.random()) * vh * 0.62 * entryScreen;
       pos.set(
-        (fromLeft ? -1 : 1) * (vw / 2 + entryMargin) * entryScreen,
-        entryY * entryScreen,
+        (fromLeft ? -1 : 1) * (vw / 2 + vw * (0.05 + Math.random() * 0.12)) * entryScreen,
+        entryY,
         -entryDepth
       );
       const entryAngle = (Math.random() - 0.5) * 0.8;
@@ -826,6 +741,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       )
         .normalize()
         .multiplyScalar(WANDER_SPEED * (1.15 + Math.random() * 0.6));
+      const seed = Math.random() * 40;
 
       let state = WANDER;
       let stateT = 0;
@@ -834,24 +750,18 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       const perchS: Spring = { x: 0, v: 0 };
       let flutter = 0; // extra, irregular wingbeat after a shock
       let perchEl: Element | null = null;
-      let perchIsBrief = false;
-      let perchOx = 0.5;
-      let perchOy = 0;
-      let perchCooldown = 4;
-      // How long it has been in the beat that owns the frame. Reset on a
-      // cut, never on anything the creature itself does.
-      let sceneT = 0;
+      let perchIsNarration = false;
+      let lastPerchEl: Element | null = null;
       // How long the composition AND the camera have both been holding
       // still. Reset by either of them moving; never by anything the
       // creature itself does.
       let stillT = 0;
+      let perchOx = 0.5;
+      let perchOy = 0;
+      let perchCooldown = 4;
       let narrationPerches = 0;
       let bulbCooldown = 0;
       let sinceBump = 0;
-      // Which surface it has been working, and for how long — see
-      // DWELL_BEFORE_ROAM.
-      let dwellEl: Element | null = null;
-      let dwellT = 0;
       let clock = 0;
       let bumps = 0;
       let bulbHits = 0;
@@ -869,6 +779,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       const sizePx = () =>
         Math.min(MOTH_SIZE.MAX_PX, Math.max(MOTH_SIZE.MIN_PX, (vw * MOTH_SIZE.VW) / 100));
 
+      let tile = 1;
       let cursorX = -1e5;
       let cursorY = -1e5;
       let cursorSeen = -1e5;
@@ -879,7 +790,6 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       };
       window.addEventListener("pointermove", onPointer, { passive: true });
 
-      let tile = 1;
       const resize = () => {
         const r = host.getBoundingClientRect();
         vw = Math.max(1, r.width);
@@ -934,7 +844,6 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           pos.x -= clamp(mothStage.cameraX - lastCamX, -vw, vw);
           pos.y += clamp(mothStage.cameraY - lastCamY, -vh, vh);
         }
-        sceneT = phase === lastPhase && epoch === lastEpoch ? sceneT + dt : 0;
         stillT =
           !cameraMoved && compositionMotion < COMPOSITION_STILL_PX ? stillT + dt : 0;
         lastPhase = phase;
@@ -964,11 +873,6 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         // same letter left the creature hovering between them, a couple of
         // hundred pixels outside the negative space it was meant to be in.
         const counterOwnsArt = mothStage.aStaging > 0.25;
-        // How tired it is of the surface it has been working. Applied
-        // inside the loop, so a source it has had enough of genuinely
-        // loses to one it has not, rather than being picked and then
-        // discounted.
-        const boredom = clamp01(dwellT / DWELL_BEFORE_ROAM) * ROAM_RELIEF;
         for (let i = 0; i < srcCount; i++) {
           const s = sources[i];
           if (s.kind === K_BULB && bulbCooldown > 0) continue;
@@ -978,25 +882,11 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           const reach = ATTRACTION_RADIUS * (0.45 + 0.85 * s.lum) + s.r;
           if (d > reach || d < 1e-3) continue;
           const falloff = 1 - d / reach;
-          const w =
-            SRC_PULL[s.kind] *
-            s.lum *
-            falloff *
-            falloff *
-            (s.el === dwellEl ? 1 - boredom : 1);
+          const w = SRC_PULL[s.kind] * s.lum * falloff * falloff;
           if (w > bestW) {
             bestW = w;
             best = s;
           }
-        }
-
-        // Time served on whichever surface it is currently working, and
-        // the interest coming back once it has left.
-        if (best && best.el === dwellEl) {
-          dwellT = Math.min(DWELL_BEFORE_ROAM * 1.6, dwellT + dt);
-        } else {
-          dwellT = Math.max(0, dwellT - dt * 0.55);
-          if (dwellT <= 0 && best) dwellEl = best.el;
         }
 
         // The A's negative space, before the camera ever gets there. It is
@@ -1015,6 +905,62 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             r: mothStage.aCounterR,
           };
         }
+
+        /**
+         * It has arrived somewhere on its own path. Does it settle?
+         *
+         * This is the original landing, with the conditions the scene now
+         * has to meet before it is even on offer: the composition has to
+         * have gone quiet and stayed quiet, the spot has to be somewhere
+         * the reader can actually see, and it will not put down twice
+         * running in the same place. Everything else — which surfaces
+         * count, where on them it sits, how long it stays, how it leaves —
+         * is untouched.
+         */
+        const maybeRest = (src: Src, closing: boolean) => {
+          if (
+            perchCooldown > 0 ||
+            closing ||
+            stillT < REST_STILL_SECONDS ||
+            src.el === lastPerchEl ||
+            !(src.kind === K_CARD || src.kind === K_NARR) ||
+            Math.random() >= PERCH_CHANCE * dt ||
+            (src.kind === K_NARR && narrationPerches >= NARRATION_PERCH_LIMIT)
+          )
+            return;
+          let px: number;
+          let py: number;
+          if (src.kind === K_NARR) {
+            // An edge, and never the middle of the line: it may sit across
+            // a letter, it may not sit across the sentence.
+            px = Math.random() < 0.5 ? 0.06 + Math.random() * 0.14 : 0.8 + Math.random() * 0.14;
+            py = Math.random() < 0.5 ? 0.08 : 0.92;
+          } else {
+            // The edge of the card, not the face of the work — and never
+            // its bottom edge, which is where every card on this site
+            // carries its caption.
+            const edge = Math.floor(Math.random() * 3);
+            px = edge === 0 ? 0.04 : edge === 1 ? 0.96 : 0.2 + Math.random() * 0.6;
+            py = edge === 2 ? 0.04 : 0.12 + Math.random() * 0.52;
+          }
+          // Where that actually puts it, on screen. A gallery image can
+          // straddle the edge of the window, and settling on a surface that
+          // is half out of frame is a rest nobody sees.
+          const ax = src.left + (src.right - src.left) * px;
+          const ay = src.top + (src.bottom - src.top) * py;
+          if (ax < vw * 0.05 || ax > vw * 0.95 || ay < vh * 0.06 || ay > vh * 0.94)
+            return;
+          state = PERCH;
+          stateT = 0;
+          perches++;
+          perchEl = src.el;
+          lastPerchEl = src.el;
+          perchIsNarration = src.kind === K_NARR;
+          perchCooldown = PERCH_COOLDOWN;
+          perchOx = px;
+          perchOy = py;
+          if (src.kind === K_NARR) narrationPerches++;
+        };
 
         // Is a camera actually travelling this frame? The two intentional
         // passes are the only times it is, and a few things below behave
@@ -1061,16 +1007,12 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           // a moth still holding onto it would be carried at the letter's
           // speed rather than flying — which is precisely the thing this
           // creature never does.
-          // A camera about to travel ends the sit, and so does the A's
-          // counter starting to call: the creature has to be flying to be
-          // anywhere near the letter before the push, and the staging pull
-          // is deliberately ignored while it is perched.
-          if (closePassing || mothStage.aStaging > 0.3) stillThere = false;
+          if (closePassing) stillThere = false;
           // A card is somewhere to STAY — the moth rides it for as long as
           // it is part of the composition, and leaves when the card does.
           // A line of narration is somewhere to pause, and it pauses
           // briefly.
-          const overstayed = stateT > (perchIsBrief ? PERCH_DURATION : CARD_PERCH_MAX);
+          const overstayed = stateT > (perchIsNarration ? PERCH_DURATION : CARD_PERCH_MAX);
           if (!stillThere || overstayed) {
             state = TAKEOFF;
             stateT = 0;
@@ -1093,19 +1035,13 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
 
         if (state !== PERCH) springStep(perchS, 0, 30, dt);
 
+        // The flying states describe what is happening; they no longer
+        // select a different motion, so none of them can trap the creature.
+        // (HOVER was missing from the old fall-back, which is precisely how
+        // it used to get stuck on a card it had no reason left to care
+        // about.) HOVER is set below, on arrival, and lasts one frame.
         if (state === WANDER || state === ATTRACTED || state === HOVER) {
-          if (bestW > 0.05 && best) {
-            state = state === HOVER ? HOVER : ATTRACTED;
-          } else if (state === ATTRACTED || state === HOVER) {
-            // HOVER used to be missing from this line, and that one
-            // omission is why the creature got stuck: habituation would
-            // take a card's pull to nothing, the approach branch would
-            // stop being entered on merit — and the state still said
-            // HOVER, so it kept holding station on a source it no longer
-            // had any reason to care about. It leaves now, which is what
-            // every other part of this file already assumed it did.
-            state = WANDER;
-          }
+          state = bestW > 0.05 && best ? ATTRACTED : WANDER;
         }
 
         // ── STEERING ──────────────────────────────────────────────────
@@ -1148,120 +1084,10 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             state = WANDER;
             stateT = 0;
           }
-        } else if (best && (state === ATTRACTED || state === HOVER)) {
-          tmpA.set(best.x - pos.x, best.y - pos.y, best.z - pos.z);
-          const d = Math.max(1, tmpA.length());
-          tmpA.multiplyScalar(1 / d);
-          // Circling, or going in? See COMMIT_THRESHOLD. A source it has
-          // just been burned by is off the table either way.
-          const committed =
-            drift(clock * 0.13, seed + 61) > COMMIT_THRESHOLD &&
-            !(best.kind === K_BULB && bulbCooldown > 0);
-          const hold = committed ? best.r * COMMIT_HOLD : HOVER_RADIUS + best.r;
-          // A sideways term that itself wanders, so the approach curves
-          // and the hold never closes into a circle.
-          tmpC
-            // The sideways term carries a real component along the view
-            // axis now (was 0.5): an orbit built only out of x and y stays
-            // in the source's own plane, which is why the creature used to
-            // circle a card at one distance from the reader for minutes.
-            // Tilted out of that plane it comes toward and falls away as
-            // it goes round, which is most of what "it moves in depth"
-            // actually looks like.
-            .set(-tmpA.y, tmpA.x, drift(clock * 0.9, seed + 11) * 1.1)
-            .normalize()
-            .multiplyScalar(ORBIT_VARIATION * (0.6 + 0.5 * drift(clock * 0.45, seed + 21)));
-          // Far out, the sideways term is folded away and the move is a
-          // move TOWARD the light — which is what "it has noticed it"
-          // looks like. It only opens back up as the creature arrives,
-          // where curiosity, not navigation, is what the motion is for.
-          // Before this the tangential term ran at full strength from the
-          // very edge of the source's reach, so every approach was a long
-          // lazy spiral and nothing ever read as a decision.
-          const closing = clamp01((hold * 2.6) / d);
-          const radial = d > hold ? 1 : -(1 - d / hold) * 1.4;
-          desired
-            .copy(tmpA)
-            .multiplyScalar(radial)
-            .addScaledVector(tmpC, closing)
-            .normalize()
-            .multiplyScalar(speedWander * (d > hold ? 1.35 : 0.45));
-          if (d < hold * 1.15) {
-            state = HOVER;
-            // Somewhere to sit? Only sometimes, never twice running, and
-            // not until it has been in this beat long enough to have found
-            // the surface rather than arrived on it. Every surface the site
-            // actually draws counts — the cards of the strip, the fan and
-            // the arc, the images of the gallery, a line of narration, and
-            // the wordmark itself — so a rest is wherever the flight
-            // happens to bring it, not a place it was sent.
-            if (
-              perchCooldown <= 0 &&
-              !closePassing &&
-              sceneT > REST_SETTLE_SECONDS &&
-              stillT > REST_STILL_SECONDS &&
-              best.kind !== K_BULB &&
-              Math.random() < PERCH_CHANCE * dt &&
-              !(best.kind === K_NARR && narrationPerches >= NARRATION_PERCH_LIMIT)
-            ) {
-              let px: number;
-              let py: number;
-              if (best.kind === K_ART) {
-                // ART's element is a full-width centred line, so a share of
-                // its BOX would land the creature out in the black beside
-                // the word. The letters reach about 0.85 of the line box's
-                // height either side of its middle; this puts it on the top
-                // edge of that ink, where it rests on the letterforms
-                // rather than across them.
-                const w = Math.max(1, best.right - best.left);
-                const reach = ((best.bottom - best.top) * 0.85) / w;
-                px = 0.5 + (Math.random() - 0.5) * 1.7 * reach;
-                py = 0.03;
-              } else if (best.kind === K_NARR) {
-                // An edge, and never the middle of the line: it may sit
-                // across a letter, it may not sit across the sentence.
-                px = Math.random() < 0.5 ? 0.06 + Math.random() * 0.14 : 0.8 + Math.random() * 0.14;
-                py = Math.random() < 0.5 ? 0.08 : 0.92;
-              } else {
-                // The edge of the card, not the face of the work — and
-                // never its bottom edge, which is where every card on this
-                // site carries its caption.
-                const edge = Math.floor(Math.random() * 3);
-                px = edge === 0 ? 0.04 : edge === 1 ? 0.96 : 0.2 + Math.random() * 0.6;
-                py = edge === 2 ? 0.04 : 0.12 + Math.random() * 0.52;
-              }
-              // Where that actually puts it, on screen. A gallery image can
-              // straddle the top of the window, and settling on the edge of
-              // one that is half out of frame is a rest nobody sees — the
-              // creature simply disappears for a dozen seconds. If the spot
-              // is not in the picture, it does not land there and carries
-              // on flying; a later pass will offer a better one.
-              const ax = best.left + (best.right - best.left) * px;
-              const ay = best.top + (best.bottom - best.top) * py;
-              if (
-                ax > vw * 0.05 &&
-                ax < vw * 0.95 &&
-                ay > vh * 0.06 &&
-                ay < vh * 0.94
-              ) {
-                state = PERCH;
-                stateT = 0;
-                perches++;
-                perchEl = best.el;
-                // A card is somewhere to stay; type is somewhere to pause.
-                perchIsBrief = best.kind !== K_CARD;
-                perchCooldown = PERCH_COOLDOWN;
-                perchOx = px;
-                perchOy = py;
-                if (best.kind === K_NARR) narrationPerches++;
-              }
-            }
-          } else if (d > hold * 1.6) {
-            state = ATTRACTED;
-          }
         } else {
-          // Wandering: a heading that turns of its own accord, a speed
-          // that is never quite steady, and the occasional near-stop.
+          // THE FLIGHT. One branch, always: a heading that turns of its own
+          // accord, a speed that is never quite steady, and the occasional
+          // near-stop. This is what the creature is doing at all times.
           const a = drift(clock * WANDER_TURN, seed) * Math.PI;
           const b = drift(clock * WANDER_TURN * 0.77, seed + 7) * 0.55;
           const pause = clamp01(drift(clock * 0.23, seed + 31) * 1.6 + 0.75);
@@ -1269,6 +1095,44 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             .set(Math.cos(a) * Math.cos(b), Math.sin(b), Math.sin(a) * Math.cos(b) * 0.7)
             .normalize()
             .multiplyScalar(speedWander * (0.12 + 0.88 * pause));
+
+          // AND THE LIGHT BENDS IT.
+          //
+          // This used to be a second, separate motion: given a source, the
+          // creature stopped flying and started holding a radius around it,
+          // which is why it locked on, orbited, and traced the same loop
+          // round the same card for minutes. A light does not do that to a
+          // moth. It leans on the path the animal is already flying.
+          //
+          // So the pull is added to the flight rather than replacing it,
+          // and it FADES OUT as the creature arrives: by the time the light
+          // is close there is nothing left pulling, and the flight it was
+          // already on carries it through and away. Nothing holds station,
+          // nothing orbits, and the strength ordering (bulb, then ART, then
+          // the cards, then the narration) is felt as how hard the path
+          // bends rather than as which target got selected.
+          if (best) {
+            tmpA.set(best.x - pos.x, best.y - pos.y, best.z - pos.z);
+            const d = Math.max(1, tmpA.length());
+            const near = best.r + HOVER_RADIUS;
+            const bend = ATTRACTION_BEND * bestW * clamp01((d - near * 0.7) / near);
+            tmpA.multiplyScalar(1 / d);
+            desired.addScaledVector(tmpA, speedWander * bend);
+            // A little across the line of approach, so it curves in rather
+            // than homing. Signed, and wandering, so there is no consistent
+            // direction to it and no circuit to recognise.
+            tmpC.set(-tmpA.y, tmpA.x, drift(clock * 0.9, seed + 11) * 0.8).normalize();
+            desired.addScaledVector(
+              tmpC,
+              speedWander * bend * ORBIT_VARIATION * drift(clock * 0.45, seed + 21)
+            );
+            if (d < near) {
+              state = HOVER;
+              // It has arrived somewhere, on its own path. Rest is what
+              // sometimes happens next — see the gates.
+              maybeRest(best, closePassing);
+            }
+          }
         }
 
         // The A's negative space pulls on top of whatever else is going
@@ -1294,15 +1158,9 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         const k = D0 / Math.max(40, depth);
         const sx = vw / 2 + pos.x * k;
         const sy = vh / 2 - pos.y * k;
-        // Outside the picture is not somewhere to be. It turns back under
-        // its own power, but it turns back PROMPTLY: from the frame's own
-        // edge rather than a tenth of a screen beyond it, and hard enough
-        // to actually return rather than drift along outside.
-        if (sx < 0 || sx > vw || sy < 0 || sy > vh) {
-          const outX = sx < 0 ? -sx : sx > vw ? vw - sx : 0;
-          const outY = sy < 0 ? sy : sy > vh ? sy - vh : 0;
-          desired.x += clamp(outX * 1.6, -330, 330);
-          desired.y += clamp(outY * 1.6, -330, 330);
+        if (sx < -vw * 0.12 || sx > vw * 1.12 || sy < -vh * 0.12 || sy > vh * 1.12) {
+          desired.x += clamp(-pos.x * 0.6, -190, 190);
+          desired.y += clamp(-pos.y * 0.6, -190, 190);
         }
         if (clock - cursorSeen < CURSOR_MEMORY) {
           const cdx = sx - cursorX;
@@ -1412,7 +1270,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           -BANK_MAX,
           BANK_MAX
         );
-        springStep(bankS, state === PERCH ? 0 : bankTarget, 38, dt);
+        springStep(bankS, state === PERCH ? 0 : bankTarget, 26, dt);
         bankQ.setFromAxisAngle(zAxis, bankS.x);
         moth.quaternion.multiply(bankQ);
 
@@ -1510,15 +1368,9 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         }
         // The reflections dim with the room, so an unlit beat cannot leave
         // the moth carrying studio highlights it has no source for.
-        // The FLOOR is what a creature in a dark room still has: the
-        // little the surround reflects back at it. Raised from 0.12 —
-        // below that the shadow side collapsed into the page and the moth
-        // read as a cut-out. It is still reflection, and it still rises
-        // with the room, so the directional response near the bulb and
-        // near ART is unchanged.
-        const room = clamp(0.26 + roomLit * 0.12, 0.26, 1.2);
+        const room = clamp(0.12 + roomLit * 0.12, 0.12, 1.2);
         for (const s of surfaces) s.mat.envMapIntensity = s.env * room;
-        ambient.intensity = 0.12 * (0.45 + 0.55 * room);
+        ambient.intensity = 0.1 * (0.4 + 0.6 * room);
 
         mothDebug.frame++;
         mothDebug.x = pos.x;
@@ -1542,8 +1394,6 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         mothDebug.pull = bestW;
         mothDebug.pullKind = best ? best.kind : -1;
         mothDebug.sources = srcCount;
-        mothDebug.motion = compositionMotion;
-        mothDebug.stillT = stillT;
         mothDebug.bumps = bumps;
         mothDebug.bulbHits = bulbHits;
         mothDebug.perches = perches;
