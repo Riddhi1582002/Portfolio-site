@@ -47,7 +47,7 @@ const NAME_CLICK_EXIT_Y = 40;
 // anchored to the viewport corner, and doing so is a bigger change than
 // this fix calls for) — just given a base size big enough to read as
 // clearly clickable rather than incidental.
-const CONTACT_ICON_H = 42;
+const CONTACT_ICON_H = 84;
 
 // THE GALLERY -> HERO SEAM. See the hook beside `heroP` below for why this
 // exists: InfiniteCanvas's own return transition matches ART pixel for
@@ -1472,20 +1472,10 @@ export default function HeroSection() {
                     aria-label={`Copy ${item.label} contact`}
                     style={{
                       display: "flex",
-                      flexDirection: "column",
                       alignItems: "center",
-                      gap: 8,
                       padding: "6px 2px",
                       border: "none",
                       background: "transparent",
-                      color:
-                        contactCopied === item.key
-                          ? "#fff"
-                          : "rgba(255,255,255,0.92)",
-                      fontFamily: SANS,
-                      fontSize: 13,
-                      fontWeight: 500,
-                      letterSpacing: "0.02em",
                       cursor: "pointer",
                       // THE POP: launches from below the landing line and
                       // slightly small, overshoots a touch past it, then
@@ -1500,10 +1490,17 @@ export default function HeroSection() {
                       transition:
                         "transform 560ms cubic-bezier(0.2,1.8,0.32,1), opacity 260ms ease, filter 160ms ease",
                       transitionDelay: contactPopupEntered ? `${i * 90}ms` : "0ms",
+                      // A layered drop-shadow — a soft dark cast shadow
+                      // below/behind plus a tight rim shadow along the
+                      // icon's own edge — is what reads as "raised off the
+                      // page" for a flat asset with no actual geometry.
+                      // The copied state adds a bright glow on top of that
+                      // same base so the feedback doesn't flatten the icon
+                      // back out.
                       filter:
                         contactCopied === item.key
-                          ? "drop-shadow(0 0 8px rgba(255,255,255,0.6))"
-                          : "none",
+                          ? "drop-shadow(0 10px 16px rgba(0,0,0,0.5)) drop-shadow(0 2px 3px rgba(0,0,0,0.4)) drop-shadow(0 0 10px rgba(255,255,255,0.65))"
+                          : "drop-shadow(0 10px 16px rgba(0,0,0,0.5)) drop-shadow(0 2px 3px rgba(0,0,0,0.4))",
                     }}
                   >
                     {/* The supplied assets: opaque black background, no
@@ -1540,7 +1537,6 @@ export default function HeroSection() {
                         mixBlendMode: "screen",
                       }}
                     />
-                    <span>{contactCopied === item.key ? "Copied" : item.label}</span>
                   </button>
                 ))}
               </div>

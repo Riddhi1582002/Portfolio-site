@@ -32,7 +32,10 @@
 //   * the point light sits at the filament's OWN measured centre inside
 //     the glass, so the falloff through the envelope is real;
 //   * only the filament and LED are emissive. Making the glass emissive
-//     is what used to flatten it into a pale shape.
+//     is what used to flatten it into a pale shape;
+//   * a small, layer-masked bloom pass adds an optical halo confined to
+//     the filament/LED meshes alone — see BLOOM_LAYER below for why a
+//     plain brightness threshold couldn't be used instead.
 
 import { useEffect, useRef } from "react";
 
@@ -140,6 +143,21 @@ export default function BulbModel({
     (async () => {
       const THREE = await import("three");
       const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+      const { EffectComposer } = await import(
+        "three/examples/jsm/postprocessing/EffectComposer.js"
+      );
+      const { RenderPass } = await import(
+        "three/examples/jsm/postprocessing/RenderPass.js"
+      );
+      const { UnrealBloomPass } = await import(
+        "three/examples/jsm/postprocessing/UnrealBloomPass.js"
+      );
+      const { OutputPass } = await import(
+        "three/examples/jsm/postprocessing/OutputPass.js"
+      );
+      const { ShaderPass } = await import(
+        "three/examples/jsm/postprocessing/ShaderPass.js"
+      );
       if (disposed) return;
 
       const renderer = new THREE.WebGLRenderer({
@@ -183,6 +201,95 @@ export default function BulbModel({
       const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
       const CAM_DIST = 4.2;
       camera.position.set(0, 0, CAM_DIST);
+
+      // Bloom, so the white-hot filament gets an optical halo rather than
+      // only an emissive mesh value — SELECTIVE bloom, not a luminance
+      // threshold over the whole frame. A threshold alone was tried first
+      // and failed outright: with the room lit up (envMapIntensity, the
+      // rim light, the glass's own reflections) a large fraction of the
+      // glass and brass clears any threshold that also lets the filament
+      // through, and the result is not a halo around the filament but the
+      // entire bulb blown to a solid white disc. Layers give bloom a hard
+      // boundary instead of a brightness guess: only the filament/LED
+      // meshes are tagged into BLOOM_LAYER, so `bloomComposer` below is
+      // handed a scene where literally nothing else is drawn — the glass,
+      // the brass, the room reflections are all replaced with flat black
+      // for that render — and can bloom every pixel it sees with no risk
+      // of catching anything but the coil.
+      const BLOOM_LAYER = 1;
+      const bloomLayer = new THREE.Layers();
+      bloomLayer.set(BLOOM_LAYER);
+      const darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+      const hiddenMaterials = new Map<
+        import("three").Object3D,
+        import("three").Material | import("three").Material[]
+      >();
+      const darkenNonBloomed = (obj: import("three").Object3D) => {
+        const mesh = obj as import("three").Mesh;
+        if (mesh.isMesh && !bloomLayer.test(mesh.layers)) {
+          hiddenMaterials.set(mesh, mesh.material);
+          mesh.material = darkMaterial;
+        }
+      };
+      const restoreMaterial = (obj: import("three").Object3D) => {
+        const mesh = obj as import("three").Mesh;
+        const prev = hiddenMaterials.get(mesh);
+        if (prev) {
+          mesh.material = prev;
+          hiddenMaterials.delete(mesh);
+        }
+      };
+
+      // Renders ONLY the bloom-layer objects (everything else forced
+      // black), blurred into a halo. Never drawn to the screen itself —
+      // `finalComposer` below samples its output texture.
+      const bloomComposer = new EffectComposer(renderer);
+      bloomComposer.renderToScreen = false;
+      bloomComposer.addPass(new RenderPass(scene, camera));
+      // Threshold near zero on purpose: with everything but the coil
+      // forced to black, there is nothing left for a threshold to guard
+      // against — the coil's own bright/dim variation is what should
+      // shape the halo, not a cutoff fighting the room lighting.
+      //
+      // Strength and radius are both deliberately small. Even isolated to
+      // just the coil, this pass is additive on top of an already-bright
+      // source (the coil is the single brightest thing in the scene by
+      // design) — pushed past this the halo stopped reading as a halo
+      // around the filament and started reading as a second wash over the
+      // whole glass, indistinguishable from just turning the internal
+      // lights up further. At 0.08/0.13 it adds a soft, immediate bloom
+      // right at the coil without touching the glass's own visible
+      // curvature or the dark background outside the bulb.
+      const bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.08, 0.13, 0.05);
+      bloomComposer.addPass(bloomPass);
+
+      // Combines the FULL normal render (glass, brass, room, the coil at
+      // its true brightness) with the bloom halo texture above, additively,
+      // then hands the sum to OutputPass for the one tone-mapping +
+      // colour-space pass on the way to the canvas.
+      const mixPass = new ShaderPass(
+        new THREE.ShaderMaterial({
+          uniforms: {
+            baseTexture: { value: null },
+            bloomTexture: { value: bloomComposer.renderTarget2.texture },
+          },
+          vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+          fragmentShader: `
+            uniform sampler2D baseTexture;
+            uniform sampler2D bloomTexture;
+            varying vec2 vUv;
+            void main() {
+              gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv);
+            }
+          `,
+        }),
+        "baseTexture"
+      );
+      const finalComposer = new EffectComposer(renderer);
+      finalComposer.addPass(new RenderPass(scene, camera));
+      finalComposer.addPass(mixPass);
+      const outputPass = new OutputPass();
+      finalComposer.addPass(outputPass);
 
       // Something for the glass and the brass to reflect. Without an
       // environment a transmissive material has no specular at all and
@@ -330,10 +437,19 @@ export default function BulbModel({
               if ("transmission" in mat) mat.transmission = 0;
               mat.envMapIntensity = 0.5;
             } else if (/filament|led/i.test(name)) {
-              mat.emissive = new THREE.Color(/led/i.test(name) ? 0xfff0d2 : 0xffa73f);
+              // White, not orange: a real incandescent filament is
+              // white-hot at its core, with the warmth coming from the
+              // glass/room around it (the wash below), not the coil
+              // itself. The previous 0xffa73f was a saturated orange that
+              // read as a filament painted orange rather than as the
+              // hottest, whitest thing in frame.
+              mat.emissive = new THREE.Color(/led/i.test(name) ? 0xfff0d2 : 0xfff4e6);
               mat.emissiveIntensity = 0;
               mat.toneMapped = true;
               emitters.push(mat as unknown as import("three").MeshStandardMaterial);
+              // Only the coil/LED mesh is tagged into the bloom layer —
+              // see BLOOM_LAYER above.
+              mesh.layers.enable(BLOOM_LAYER);
             } else if (/metal/i.test(name)) {
               mat.roughness = Math.min(mat.roughness ?? 0.4, 0.34);
               mat.envMapIntensity = 1.1;
@@ -391,6 +507,8 @@ export default function BulbModel({
         const w = Math.max(1, r.width);
         const h = Math.max(1, r.height);
         renderer.setSize(w, h, false);
+        bloomComposer.setSize(w, h);
+        finalComposer.setSize(w, h);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
       };
@@ -435,17 +553,26 @@ export default function BulbModel({
         const on = Math.min(1, Math.max(0, (lit - 0.16) / 0.74));
         const glow = on * on;
         // The primary source reaching the glass and the room, a second,
-        // tight, short-range light (filamentCore) for the extra bloom
-        // right at the coil, and the filament MESH's own emissive value,
-        // which is what actually reads as "the light is coming from the
-        // filament itself" — there is no separate sprite standing in for
-        // it. Filmic tone mapping is what makes pushing it this hard
-        // safe: it rolls a high emissive value off toward white rather
-        // than clipping, so the coil stays a bright, detailed shape
-        // instead of flattening into a blown-out blob the way a flat
-        // linear value would.
-        filament.intensity = glow * 36;
-        filamentCore.intensity = glow * 20;
+        // tight, short-range light (filamentCore) for extra punch right at
+        // the coil, and the filament MESH's own emissive value, which is
+        // what actually reads as "the light is coming from the filament
+        // itself" — there is no separate sprite standing in for it.
+        //
+        // Turned DOWN from 36/20 to 14/5: with the coil's own emissive
+        // value already doing the job of making the coil itself read
+        // white-hot, these two lights were mainly serving to illuminate
+        // the GLASS from inside — and at 36/20 they lit so much of the
+        // envelope so close to ACES's white rolloff that the whole bulb,
+        // not just the coil, read as one flat white card with no visible
+        // curvature. At 14/5 the glass keeps a real gradient — brighter
+        // near the coil, falling off toward its own edges — so it still
+        // reads as glass rather than as a painted white shape. Filmic tone
+        // mapping is what makes the coil itself safe to push far harder
+        // than these: it rolls a high emissive value off toward white
+        // rather than clipping, so the coil stays a bright, detailed
+        // shape instead of flattening into a blown-out blob.
+        filament.intensity = glow * 14;
+        filamentCore.intensity = glow * 5;
         for (const m of emitters) m.emissiveIntensity = glow * 12;
         // The room dims with the filament, reflections included.
         const room = 0.22 + on * 0.86;
@@ -476,7 +603,10 @@ export default function BulbModel({
         const a = Math.min(1, Math.max(0, pitchRef.current)) * Math.PI * 0.47;
         camera.position.set(0, -CAM_DIST * Math.sin(a), CAM_DIST * Math.cos(a));
         camera.lookAt(0, 0, 0);
-        renderer.render(scene, camera);
+        scene.traverse(darkenNonBloomed);
+        bloomComposer.render();
+        scene.traverse(restoreMaterial);
+        finalComposer.render();
       };
       raf = requestAnimationFrame(tick);
 
@@ -486,6 +616,12 @@ export default function BulbModel({
         window.removeEventListener("resize", resize);
         envRT.texture.dispose();
         pmrem.dispose();
+        darkMaterial.dispose();
+        bloomPass.dispose();
+        mixPass.dispose();
+        outputPass.dispose();
+        bloomComposer.dispose();
+        finalComposer.dispose();
         scene.traverse((o) => {
           const mesh = o as import("three").Mesh;
           if (!mesh.isMesh) return;
