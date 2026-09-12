@@ -38,42 +38,13 @@ import { useEffect, useRef } from "react";
 
 const MODEL_URL = "/model/bulb.glb";
 
-/**
- * A small, tight additive core, drawn once into a canvas texture.
- *
- * The filament mesh's own emissive material was tried alone first — no
- * separate sprite at all — but a coil is a THIN WIRE: however bright a
- * material value it carries, it occupies very little of the frame, so the
- * total light it visibly contributes stays small next to the glass around
- * it and the bulb reads as barely lit. A real hot filament also has a
- * bloom around the wire itself — the eye's own glare response to a small
- * very bright source — and that is what this adds back: additive, so it
- * only ever brightens, and sized and positioned to the coil itself (see
- * `flare.scale`/`flare.position` in the render loop) rather than to the
- * bulb as a whole, which is what keeps it reading as the filament's own
- * glow and not as a separate glowing shape floating in the glass.
- */
-function flareTexture(THREE: typeof import("three")) {
-  const size = 256;
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const ctx = c.getContext("2d")!;
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  // Tighter than a lens flare: almost all of the brightness sits in the
-  // first fifth of the radius, so at the small scale this is drawn at
-  // (see FLARE_MAX_SCALE) it reads as a hot core hugging the wire, not as
-  // a soft ball with real extent of its own.
-  g.addColorStop(0.0, "rgba(255,248,234,1)");
-  g.addColorStop(0.1, "rgba(255,234,194,0.75)");
-  g.addColorStop(0.24, "rgba(255,210,150,0.32)");
-  g.addColorStop(0.45, "rgba(255,196,124,0.09)");
-  g.addColorStop(1.0, "rgba(255,190,110,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
+// The idle turn, in radians per second — a clock rate rather than a
+// per-frame increment. See the render loop for why: two independent
+// instances of this component are briefly on screen together at the
+// CordSection -> PencilSection handoff, and only a shared wall clock keeps
+// them showing the same angle at the same instant. (0.0016 rad/frame at an
+// assumed 60fps, which is what this rate replaces.)
+const SPIN_RADIANS_PER_SEC = 0.0016 * 60;
 
 /**
  * A small painted equirectangular "room" for the glass and the brass to
@@ -243,28 +214,6 @@ export default function BulbModel({
       filamentCore.position.set(0, 0, 0);
       scene.add(filamentCore);
 
-      // The bloom right on the coil. A flat Sprite still reads as a
-      // separate object once it has any real extent of its own — that was
-      // "a random glowing circle" — but a THIN WIRE'S own emissive value,
-      // however high, occupies too little of the frame to visibly light
-      // the bulb at all: tried alone, the envelope stayed dark. The fix is
-      // scale, not presence: kept small enough (see FLARE_MAX_SCALE, a
-      // fraction of the filament coil's own measured size, not the bulb's)
-      // that it hugs the wire rather than floating clear of it, so it
-      // reads as the coil's own glare rather than as a second shape.
-      const flare = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          map: flareTexture(THREE),
-          blending: THREE.AdditiveBlending,
-          depthWrite: false,
-          depthTest: false,
-          transparent: true,
-          opacity: 0,
-        })
-      );
-      flare.renderOrder = 10;
-      scene.add(flare);
-
       // Just enough ambient that an unlit bulb is a shape rather than a
       // hole in the frame, and a cool rim so the glass keeps an edge.
       // Lower than before (was 0.09): a brighter filament against a flatter
@@ -288,9 +237,6 @@ export default function BulbModel({
       const pivot = new THREE.Group();
       scene.add(pivot);
       let loaded = false;
-      // The filament coil's own measured extent, so the flare can be sized
-      // to IT rather than to an arbitrary constant — see FLARE_MAX_SCALE.
-      let flareBaseSize = 0.4;
 
       new GLTFLoader().load(MODEL_URL, (gltf) => {
         if (disposed) return;
@@ -338,7 +284,22 @@ export default function BulbModel({
               // transparent surface that is a solid white shell, which is
               // what the unlit bulb looked like. Glass this thin barely
               // shows except at grazing angles and on its highlights.
-              mat.opacity = 0.3;
+              //
+              // 0.3 read as "a lit envelope" rather than "glass with a
+              // filament visible through it" — checked directly by hiding
+              // this mesh: the same coil, same emissive value, is a
+              // sharp, blazing-bright spiral with the glass gone, and a
+              // uniform grey-white shape indistinguishable from off with
+              // it back at 0.3. Two of these surfaces sit between the eye
+              // and the coil (this inner stem AND the outer envelope
+              // below), each blending toward the studio reflection on top
+              // of whatever is behind it, and at 0.3 that stacks up to
+              // most of the frame reading as "glass" rather than "the
+              // thing glowing inside the glass." Lower is what the
+              // comment above already asked for — thin enough that the
+              // envelope barely shows except at grazing angles and on its
+              // highlights, which 0.3 was not.
+              mat.opacity = 0.08;
               mat.roughness = 0.06;
               mat.metalness = 0;
               if ("thickness" in mat) mat.thickness = 0.35;
@@ -377,34 +338,42 @@ export default function BulbModel({
         // spins about the vertical whichever way up the model is.
         pivot.add(flip);
 
-        // Put the light where the model's own filament actually is, in
+        // Put the light where the model's own filament actually IS, in
         // world space, so the falloff through the glass is real. Measured
         // AFTER the flip, hence the update.
+        //
+        // VERTEX CENTROID, not the bounding box's centre. The filament
+        // mesh is the coil PLUS the two lead wires running straight down
+        // to the base — a box drawn around that shape is tall and mostly
+        // empty air, and its centre lands well above the coil, in the gap
+        // where the leads cross, not among the loops themselves. A
+        // straight mean of every vertex is pulled toward wherever the
+        // geometry is actually dense: the coil has orders of magnitude
+        // more vertices per unit length than the two straight leads, so
+        // the mean lands inside the coil's own mass.
         pivot.updateMatrixWorld(true);
-        const hot = new THREE.Box3();
+        const sum = new THREE.Vector3();
+        let vcount = 0;
         let found = false;
+        const v = new THREE.Vector3();
         root.traverse((o) => {
           const mesh = o as import("three").Mesh;
           if (!mesh.isMesh) return;
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
           if (!mats.some((m) => /filament|led/i.test((m as { name?: string })?.name || "")))
             return;
-          hot.union(new THREE.Box3().setFromObject(mesh));
           found = true;
+          const pos = mesh.geometry.attributes.position;
+          for (let i = 0; i < pos.count; i++) {
+            v.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld);
+            sum.add(v);
+            vcount++;
+          }
         });
-        const hotCentre = found ? hot.getCenter(new THREE.Vector3()) : new THREE.Vector3();
+        const hotCentre =
+          found && vcount > 0 ? sum.divideScalar(vcount) : new THREE.Vector3();
         filament.position.copy(hotCentre);
         filamentCore.position.copy(hotCentre);
-        flare.position.copy(hotCentre);
-        if (found) {
-          const hotSize = hot.getSize(new THREE.Vector3());
-          // The coil is a TALL, NARROW vertical shape (its Y extent is
-          // roughly 2x its X/Z extent) — Math.max picked that height,
-          // producing a flare far wider than the wire it's meant to hug.
-          // Use the X/Z cross-section instead, so the flare matches how
-          // thick the coil actually looks from the camera.
-          flareBaseSize = (hotSize.x + hotSize.z) / 2;
-        }
         loaded = true;
       });
 
@@ -458,10 +427,10 @@ export default function BulbModel({
         const glow = on * on;
         // The primary source reaching the glass and the room, a second,
         // tight, short-range light (filamentCore) for the extra bloom
-        // right at the coil, and the filament MESH's own emissive value —
-        // no separate sprite any more, so this last one carries the whole
-        // job of reading as "the light is coming from the filament
-        // itself". Filmic tone mapping is what makes pushing it this hard
+        // right at the coil, and the filament MESH's own emissive value,
+        // which is what actually reads as "the light is coming from the
+        // filament itself" — there is no separate sprite standing in for
+        // it. Filmic tone mapping is what makes pushing it this hard
         // safe: it rolls a high emissive value off toward white rather
         // than clipping, so the coil stays a bright, detailed shape
         // instead of flattening into a blown-out blob the way a flat
@@ -469,19 +438,29 @@ export default function BulbModel({
         filament.intensity = glow * 36;
         filamentCore.intensity = glow * 20;
         for (const m of emitters) m.emissiveIntensity = glow * 12;
-        // The flare's own scale is a MULTIPLE of the coil's own measured
-        // cross-section (flareBaseSize), not a constant — so it always
-        // sits close over the wire rather than growing into a shape with
-        // its own independent presence. 0.6-1x the coil's cross-section
-        // reads as glare hugging the wire, not a separate glowing orb.
-        (flare.material as import("three").SpriteMaterial).opacity = glow * 0.92;
-        flare.scale.setScalar(flareBaseSize * (0.6 + on * 0.4));
         // The room dims with the filament, reflections included.
         const room = 0.22 + on * 0.86;
         ambient.intensity = 0.065 * room;
         rim.intensity = 0.4 * room;
         for (const s of surfaces) s.mat.envMapIntensity = s.env * room;
-        if (loaded && !reduced) pivot.rotation.y += 0.0016;
+        // A CLOCK, not a per-frame increment. This model is rendered by
+        // TWO independent BulbModel instances that are briefly mounted
+        // together at the CordSection -> PencilSection handoff — each its
+        // own scene, each spinning from its own rotation.y = 0 the moment
+        // IT mounted. An increment-per-frame spin has no relationship to
+        // wall time, so the two instances agree only by coincidence: one
+        // has been on screen (and spinning) for however long its own beat
+        // has run, the other only since its own brief warm-up mount, and
+        // whichever coincidence held on the frame that was last checked
+        // does not hold in general — pause on the arc of work a while and
+        // the two fall out of step, and the coil visibly SNAPS to a
+        // different angle at the exact frame the sections cross-fade.
+        // Driven off the same wall clock instead, any two instances agree
+        // on the angle at any instant they are both live, mount order and
+        // timing included.
+        if (loaded && !reduced) {
+          pivot.rotation.y = (performance.now() / 1000) * SPIN_RADIANS_PER_SEC;
+        }
         // The camera drops and tilts up; the bulb is fixed. An orbit at a
         // constant distance with the eye kept on the model is exactly
         // that, and it costs one lookAt.
@@ -498,8 +477,6 @@ export default function BulbModel({
         window.removeEventListener("resize", resize);
         envRT.texture.dispose();
         pmrem.dispose();
-        (flare.material as import("three").SpriteMaterial).map?.dispose();
-        (flare.material as import("three").SpriteMaterial).dispose();
         scene.traverse((o) => {
           const mesh = o as import("three").Mesh;
           if (!mesh.isMesh) return;

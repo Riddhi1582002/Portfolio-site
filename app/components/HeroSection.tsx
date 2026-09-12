@@ -38,6 +38,15 @@ gsap.registerPlugin(SplitText, Flip);
 const NAME_CLICK_EXIT_DURATION = 0.6;
 const NAME_CLICK_EXIT_Y = 40;
 
+// THE GALLERY -> HERO SEAM. See the hook beside `heroP` below for why this
+// exists: InfiniteCanvas's own return transition matches ART pixel for
+// pixel, but it has no way to reach the OTHER hero content (the name
+// link, the contact info) that live only here and were absent the whole
+// time the reader was elsewhere on the page. 380ms is fast enough to
+// still read as "the same instant" rather than as its own beat, and long
+// enough that the eye registers an arrival rather than a cut.
+const STAGE_REAPPEAR_FADE_MS = 380;
+
 const dreamAvenue = localFont({
   src: "../fonts/DreamAvenue-Regular.otf",
   weight: "400",
@@ -220,7 +229,23 @@ export const STAGE_H = 1080;
 // 40% (was 480*(1-0.397) = 289.44vh) for a noticeably more compact,
 // direct feel.
 const BEATS_VH = 480 * 0.397;
-const TAIL_VH = 175;
+// RESTORING STATION READABILITY (see SCROLL_TO_P below for the other
+// half of this same fix).
+//
+// The overlap system that drives the push/arrive/arrange tail — CARDS_START,
+// ARRIVE_END, ARRANGE_START, ZOOM_END, and the cameraPush() curve itself —
+// is untouched: every one of those is a FRACTION of transitionP, so they
+// keep exactly the same relative choreography regardless of how long the
+// tail physically is. TAIL_VH is the one knob that changes ONLY the
+// absolute scroll-space the whole tail gets, which is what "A negative
+// space" needs to read as an arrival rather than a blur: CARDS_START sits
+// at 3% of the tail, so the fan starts forming almost the instant the push
+// begins either way — cut to 175vh (was 289.44) that left under 6vh
+// before cards were already on screen, nowhere near enough scrolling for
+// the push into the letter's own negative space to register as a place
+// the reader arrived at before the next beat starts layering in. Restored
+// about a third of that cut; still well short of the original.
+const TAIL_VH = 215;
 const HERO_VH = BEATS_VH + TAIL_VH;
 const REELS_VH = 900;
 const CORD_VH = 1200;
@@ -354,16 +379,20 @@ function cameraPush(u: number): number {
 
 // HOW FAR THE PUSH REACHES BACK UNDER THE BEATS.
 //
-// SCROLL_TO_P holds p pinned at 2 across the last 3% of the beats: dead
-// scroll, nothing moving, sitting between the last narration line landing
-// and the camera starting. That hold is exactly where a wind-up belongs,
-// so the transition's own progress now starts there instead of after it.
-// The anticipation plays UNDER the settling narration — the beats hand
-// over while still on screen rather than ending and being replaced — and
-// the sizing is deliberate: PUSH_ANTICIPATION is set so the camera
-// reaches its apex on the very frame the beats finish, and releases from
-// there.
-const TRANSITION_LEAD_OF_BEATS = 0.03;
+// SCROLL_TO_P holds p pinned at 2 across the last 6% of the beats (see
+// SCROLL_TO_P's own trailing hold, widened alongside this for station
+// readability): dead scroll, nothing moving, sitting between the last
+// narration line landing and the camera starting. That hold is exactly
+// where a wind-up belongs, so the transition's own progress now starts
+// there instead of after it. The anticipation plays UNDER the settling
+// narration — the beats hand over while still on screen rather than
+// ending and being replaced — and the sizing is deliberate:
+// PUSH_ANTICIPATION is set so the camera reaches its apex on the very
+// frame the beats finish, and releases from there. Kept equal to
+// SCROLL_TO_P's own trailing-hold share (6%) so the two stay the same
+// window; widen one and not the other and the apex stops landing where
+// the beats actually end.
+const TRANSITION_LEAD_OF_BEATS = 0.06;
 
 // Time constant, in seconds, for the scroll-progress smoothing below. A
 // wheel notch is a discrete ~100px jump, so scrubbing straight off
@@ -407,12 +436,22 @@ function interpolate(
 // more than a third of the scrolling produced no motion at all — scroll,
 // move, nothing, move, nothing. That is what read as stepped.
 //
-// The two motion segments keep their relative proportions (they are the
-// approved beat pacing); only the holds shrink, to 4% lead-in, 8% between
-// beats, 3% trailing. Dead scroll is now 15% instead of 37.1%, and each
-// beat gets ~42% of the track instead of ~31%.
+// RESTORING STATION READABILITY. Cutting the holds to 4%/8%/3% (dead
+// scroll down to 15%) made every beat flow into the next, but it went far
+// enough the other way that the two ART-enlarge beats no longer read as
+// places the reader arrives at — "ART enlarges" and "ART enlarges again +
+// text changes" both need to hold their own frame long enough to register
+// before the next beat starts moving, same as the negative-space station
+// TAIL_VH restores above. So the BETWEEN-beats hold (station 1: ART at
+// its mid size, tag1 in) goes 8% -> 12%, and the TRAILING hold (station 2:
+// ART at its deep size, tag2 in — this is also where the push's own
+// wind-up plays, see TRANSITION_LEAD_OF_BEATS below, so widening it gives
+// that wind-up more room too) goes 3% -> 6%. The two motion segments still
+// keep their own near-1:1 proportions (39%/39%, was 42%/43%) — this only
+// moves scroll-space from the moves back into the holds it came from,
+// exactly the reverse of the cut described above, and only partway.
 const SCROLL_TO_P = interpolate(
-  [0, 0.04, 0.46, 0.54, 0.97, 1],
+  [0, 0.04, 0.43, 0.55, 0.94, 1],
   [0, 0, 1, 1, 2, 2]
 );
 
@@ -716,6 +755,46 @@ export default function HeroSection() {
   // of it is the camera move. One scroll progress, two consumers.
   // The hero's own progress through its slice of the shared track.
   const heroP = clamp01(scrollP / HERO_SPAN);
+
+  // STAGE REAPPEARANCE FADE.
+  //
+  // This stage (the div guarded by `scrollP <= HERO_SPAN + 0.006` further
+  // down) unmounts while the reader is anywhere past it and remounts the
+  // moment scrollP drops back into range. Ordinary scrolling never makes
+  // that remount visible: scrollP arrives there continuously, and by the
+  // time it does, nameOpacity/contactOpacity — both functions of p, which
+  // is itself a function of scrollP — are already essentially at whatever
+  // this same scrollP has always put them at. The gallery's return
+  // gesture is the one path that does NOT arrive continuously: it resets
+  // the native scroll position straight to 0 in a single frame (see
+  // InfiniteCanvas's own return-completion effect), so this stage goes
+  // from absent to present with the name link and the contact info
+  // already at full rest opacity, nothing having eased either there. ART
+  // itself is deliberately left out of this: InfiniteCanvas already hands
+  // it over pixel for pixel, and fading it too would only soften a
+  // hand-off that is not the one reported as abrupt.
+  const stageVisible = scrollP <= HERO_SPAN + 0.006;
+  const stageWasVisibleRef = useRef(stageVisible);
+  const [reappearT, setReappearT] = useState(1);
+  useEffect(() => {
+    if (stageVisible && !stageWasVisibleRef.current) {
+      stageWasVisibleRef.current = true;
+      setReappearT(0);
+      let raf = 0;
+      const start = performance.now();
+      const tick = (now: number) => {
+        const t = clamp01((now - start) / STAGE_REAPPEAR_FADE_MS);
+        setReappearT(t);
+        if (t < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }
+    stageWasVisibleRef.current = stageVisible;
+  }, [stageVisible]);
+  // easeOutSine: quick out of the gate, settling in rather than a linear
+  // ramp — the same shared curve the push/release system already uses.
+  const reappearFade = easeOutSine(reappearT);
   const reelsP = clamp01((scrollP - HERO_SPAN) / (REELS_SPAN_END - HERO_SPAN));
   const cordP = clamp01(
     (scrollP - REELS_SPAN_END) / (CORD_SPAN_END - REELS_SPAN_END)
@@ -758,6 +837,9 @@ export default function HeroSection() {
     drift * 0.35;
   const nameSize = interpolate([0, 1], [NAME_SIZE_REST, NAME_SIZE_MID])(p);
   const nameOpacity = interpolate([0, 1, 1.32], [1, 1, 0])(p);
+  // Scoped to just this element and contactOpacity below — see
+  // STAGE_REAPPEAR_FADE_MS. ART is untouched.
+  const nameOpacityRender = nameOpacity * reappearFade;
 
   const tag1Opacity = interpolate([0.42, 0.95, 1.28], [0, 1, 0])(p);
   // The focus pull is the ARRIVAL only. Narration leaves the way the name
@@ -772,6 +854,7 @@ export default function HeroSection() {
   const tag2Y = interpolate([1.42, 2], [925, 859])(p) - drift * 0.3;
 
   const contactOpacity = interpolate([0, 0.5], [0.38, 0])(p);
+  const contactOpacityRender = contactOpacity * reappearFade;
 
   const haloSize = 1500 * artScale;
 
@@ -1141,7 +1224,12 @@ export default function HeroSection() {
               willChange: "auto",
             }}
           >
-          {/* soft halo bloom behind everything, sized to ART */}
+          {/* soft halo bloom behind everything, sized to ART. Part of
+              this stage, not of ART itself: InfiniteCanvas's return view
+              has no equivalent of it, so — like the name link and the
+              contact info — it is absent the whole time the reader is
+              elsewhere and would otherwise bloom into existence in the
+              one frame this stage remounts. See STAGE_REAPPEAR_FADE_MS. */}
           <div
             style={{
               position: "absolute",
@@ -1152,6 +1240,7 @@ export default function HeroSection() {
               transform: "translate(-50%, -50%)",
               background: `radial-gradient(closest-side, rgba(214,228,255,${0.16 * g}) 0%, rgba(190,210,255,${0.07 * g}) 42%, rgba(0,0,0,0) 78%)`,
               filter: "blur(30px)",
+              opacity: reappearFade,
               pointerEvents: "none",
             }}
           />
@@ -1201,10 +1290,10 @@ export default function HeroSection() {
               right: 0,
               top: nameY,
               textAlign: "center",
-              opacity: nameOpacity,
+              opacity: nameOpacityRender,
               // Once faded out at the deep stage, don't leave an
               // invisible-but-clickable link sitting over ART.
-              pointerEvents: nameOpacity < 0.05 ? "none" : "auto",
+              pointerEvents: nameOpacityRender < 0.05 ? "none" : "auto",
             }}
           >
             {/* Inline-block + relative so the before:* underline is
@@ -1299,20 +1388,29 @@ export default function HeroSection() {
               letterSpacing: "0.02em",
               whiteSpace: "nowrap",
               color: "#fff",
-              opacity: contactOpacity,
               cursor: "pointer",
               textDecoration: contactHover ? "underline" : "none",
               textUnderlineOffset: "5px",
               // Once faded out, this must not be an invisible-but-clickable
               // element sitting over whatever the deep stage shows instead
-              // — the same guard the name link uses.
-              pointerEvents: contactOpacity < 0.05 ? "none" : "auto",
+              // — the same guard the name link uses. Not a visual opacity
+              // any more (see the span below) — purely the interactivity
+              // gate, which still has to track the same value.
+              pointerEvents: contactOpacityRender < 0.05 ? "none" : "auto",
             }}
             onMouseEnter={() => setContactHover(true)}
             onMouseLeave={() => setContactHover(false)}
             onClick={() => (contactPopupOpen ? closeContactPopup() : setContactPopupOpen(true))}
           >
-            Contact info
+            {/* The scroll-driven dim lives HERE, on the text alone — not on
+                the wrapping div above, which is also the popup's own
+                positioning parent. CSS opacity applies to a whole subtree;
+                set on the wrapper it would have capped the icons below at
+                the same ~0.38 the trigger text fades to, however opaque
+                their OWN styles claimed to be. The popup is a sibling of
+                this span, not a descendant of it, so it is never dimmed
+                by it. */}
+            <span style={{ opacity: contactOpacityRender }}>Contact info</span>
             {/* The popup: LinkedIn and Gmail, directly above the trigger,
                 as two independent icons — no enclosing box. Both mount
                 below an invisible landing line and pop straight up onto
@@ -1339,8 +1437,21 @@ export default function HeroSection() {
               >
                 {(
                   [
-                    { key: "linkedin" as const, label: "LinkedIn", icon: "/icons/contact/linkedin.png" },
-                    { key: "gmail" as const, label: "Gmail", icon: "/icons/contact/gmail.png" },
+                    {
+                      key: "linkedin" as const,
+                      label: "LinkedIn",
+                      video: "/icons/contact/linkedin.webm",
+                      // Native frame size (117x150) — used so the icon
+                      // keeps its own proportions rather than being
+                      // squashed into the old PNG's square 26x26 box.
+                      ratio: 117 / 150,
+                    },
+                    {
+                      key: "gmail" as const,
+                      label: "Gmail",
+                      video: "/icons/contact/gmail.webm",
+                      ratio: 150 / 150,
+                    },
                   ]
                 ).map((item, i) => (
                   <button
@@ -1384,14 +1495,39 @@ export default function HeroSection() {
                           : "none",
                     }}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={item.icon}
-                      alt=""
-                      width={26}
-                      height={26}
-                      draggable={false}
-                      style={{ display: "block" }}
+                    {/* The supplied assets: opaque black background, no
+                        alpha channel (checked directly — VP8/yuv420p,
+                        not yuva420p). mix-blend-mode:"screen" is the
+                        standard way to composite exactly that kind of
+                        video as if transparent: screen(black, x) = x
+                        exactly, so the black square vanishes into
+                        whatever sits behind it and only the icon's own
+                        drawn pixels show. Each clip is itself a closed
+                        loop — envelope shut -> open with a notification
+                        -> shut again; logo -> person icon -> logo — so
+                        `loop` alone gives the spec's "play the pop/settle
+                        animation, then loop while active": the first
+                        pass through IS the pop/settle, and every repeat
+                        after it is the loop, with no separate state to
+                        track for which phase this is. `autoPlay` starts
+                        it the instant this button mounts, which only
+                        happens once the popup is open — the click that
+                        opens it is the "on click" the spec asks for. */}
+                    <video
+                      src={item.video}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      preload="auto"
+                      aria-hidden
+                      style={{
+                        display: "block",
+                        height: 26,
+                        width: 26 * item.ratio,
+                        pointerEvents: "none",
+                        mixBlendMode: "screen",
+                      }}
                     />
                     <span>{contactCopied === item.key ? "Copied" : item.label}</span>
                   </button>
