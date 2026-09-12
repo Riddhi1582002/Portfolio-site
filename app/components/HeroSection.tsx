@@ -48,6 +48,13 @@ const NAME_CLICK_EXIT_Y = 40;
 // this fix calls for) — just given a base size big enough to read as
 // clearly clickable rather than incidental.
 const CONTACT_ICON_H = 84;
+// The two logos' drawn content sits at very different heights within
+// their own native video frame (see contentTop/contentBottom on each
+// icon below) — this is the shared TARGET height, in px, that each is
+// cropped and scaled to reach, so the logos themselves come out the
+// same size and land on the same baseline regardless of how much empty
+// padding their source frame carries.
+const CONTACT_GLYPH_H = 56;
 
 // THE GALLERY -> HERO SEAM. See the hook beside `heroP` below for why this
 // exists: InfiniteCanvas's own return transition matches ART pixel for
@@ -1452,16 +1459,33 @@ export default function HeroSection() {
                       key: "linkedin" as const,
                       label: "LinkedIn",
                       video: "/icons/contact/linkedin.webm",
-                      // Native frame size (117x150) — used so the icon
-                      // keeps its own proportions rather than being
-                      // squashed into the old PNG's square 26x26 box.
+                      // Native frame size (117x150).
                       ratio: 117 / 150,
+                      // Measured directly off the asset (ffmpeg frame
+                      // scan + bounding-box on the non-black pixels): the
+                      // drawn logo is a constant 60x60 square centred in
+                      // the 117x150 frame, its top/bottom edges at 32%
+                      // and 71.3% of the frame height. Gmail's envelope,
+                      // by contrast, nearly fills its own frame (its
+                      // closed/rest state runs 38.7%-87.3%). Sizing both
+                      // videos off their RAW frame height — what this
+                      // rendered before — made linkedin's logo come out
+                      // at roughly half gmail's visual size, sitting on a
+                      // different baseline, because the two frames carry
+                      // very different amounts of empty padding around
+                      // the actual glyph.
+                      contentTop: 0.32,
+                      contentBottom: 0.713,
                     },
                     {
                       key: "gmail" as const,
                       label: "Gmail",
                       video: "/icons/contact/gmail.webm",
                       ratio: 150 / 150,
+                      // The envelope's closed/rest state (what the loop
+                      // returns to between its brief "open" pulse).
+                      contentTop: 0.387,
+                      contentBottom: 0.873,
                     },
                   ]
                 ).map((item, i) => (
@@ -1521,22 +1545,50 @@ export default function HeroSection() {
                         it the instant this button mounts, which only
                         happens once the popup is open — the click that
                         opens it is the "on click" the spec asks for. */}
-                    <video
-                      src={item.video}
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      preload="auto"
-                      aria-hidden
-                      style={{
-                        display: "block",
-                        height: CONTACT_ICON_H,
-                        width: CONTACT_ICON_H * item.ratio,
-                        pointerEvents: "none",
-                        mixBlendMode: "screen",
-                      }}
-                    />
+                    {(() => {
+                      // Scale the whole native frame up until the DRAWN
+                      // content (not the frame) is CONTACT_GLYPH_H tall,
+                      // then shift it up by its own top margin so the
+                      // glyph's top lands at the clip container's top —
+                      // the container is exactly CONTACT_GLYPH_H tall, so
+                      // the glyph ends up filling it edge to edge, same
+                      // size and same baseline for both icons, whatever
+                      // padding their source frame happens to carry.
+                      const contentFrac = item.contentBottom - item.contentTop;
+                      const videoH = CONTACT_GLYPH_H / contentFrac;
+                      const videoW = videoH * item.ratio;
+                      const offsetY = -(item.contentTop * videoH);
+                      return (
+                        <div
+                          style={{
+                            width: videoW,
+                            height: CONTACT_GLYPH_H,
+                            overflow: "hidden",
+                            position: "relative",
+                          }}
+                        >
+                          <video
+                            src={item.video}
+                            autoPlay
+                            muted
+                            loop
+                            playsInline
+                            preload="auto"
+                            aria-hidden
+                            style={{
+                              display: "block",
+                              position: "absolute",
+                              left: 0,
+                              top: offsetY,
+                              height: videoH,
+                              width: videoW,
+                              pointerEvents: "none",
+                              mixBlendMode: "screen",
+                            }}
+                          />
+                        </div>
+                      );
+                    })()}
                   </button>
                 ))}
               </div>

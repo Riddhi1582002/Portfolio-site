@@ -23,6 +23,21 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {/* The moth's GLB is ~7.5MB and MothLayer only starts fetching it
+            once its own effect runs post-hydration. Preloading from the
+            head starts the download the instant the browser has the HTML,
+            in parallel with everything else, which is what gets the
+            creature on screen within a couple of seconds of the page
+            loading rather than only after the reader has already started
+            scrolling. */}
+        <link
+          rel="preload"
+          as="fetch"
+          href="/model/moth-final.glb"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

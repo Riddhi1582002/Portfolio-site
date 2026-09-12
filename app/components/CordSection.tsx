@@ -200,7 +200,21 @@ export default function CordSection({
   // hands over as they arrive and comes back when the last one leaves.
   const arcP = span(p, ARC_START, 1);
   const presence = arcPresence(arcP);
-  const lit = bulbIn * (1 - 0.86 * presence);
+  // The BULB'S OWN recovery, on a curve that finishes EARLIER than
+  // `presence` (which fades out exactly as arcP, and so this section's
+  // own `p`, reaches 1). p=1 here is also the exact scroll position
+  // PencilSection's already-fully-lit bulb takes over at — sharing
+  // `presence` left this bulb still visibly mid-recovery at that precise
+  // frame, so the handoff read as a sudden brightening flash rather than
+  // the invisible swap it is built to be. Nothing else reads this curve,
+  // so finishing it a little early only gives the light real margin to
+  // be genuinely back at full strength before the boundary; the cards'
+  // own visible exit timing (`presence` itself, used below) is untouched.
+  const litRecovery = Math.min(
+    easeInOutSine(span(arcP, 0, 0.1)),
+    1 - easeInOutSine(span(arcP, 0.8, 0.94))
+  );
+  const lit = bulbIn * (1 - 0.86 * litRecovery);
 
   // Bulb size follows `min(46vh, 42vw)`; the arc is centred on it, so the
   // same expression has to be evaluated here in vh.

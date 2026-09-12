@@ -104,6 +104,21 @@ const NARRATION_ATTRACTION_STRENGTH = 0.13;
 
 const HOVER_RADIUS = 118; // how close counts as "arrived" at a source
 const ORBIT_VARIATION = 0.62; // sideways share of the bend — so it curves in
+// THE BULB IS THE ONE EXCEPTION to "nothing orbits" below: every other
+// source's pull fades to nothing on arrival so the creature flies through
+// and away, but a moth's actual, defining behaviour around a real light is
+// to keep circling it rather than pass by once. BULB_ORBIT_FLOOR is the
+// least the arrival fade is ever allowed to fall to while the bulb is lit
+// and is the strongest pull in reach, so a bend that would otherwise
+// vanish on arrival instead keeps circling; BULB_ORBIT_TANGENT is how much
+// more of that bend goes sideways (across the approach) rather than
+// straight at it, which is what turns "curves past" into "circles". Nothing
+// here overrides the hot-glass collision below — that still fires exactly
+// as before, so a too-tight circle still ends in the same startled retreat
+// it always did, which is itself part of a real moth's behaviour around a
+// flame.
+const BULB_ORBIT_FLOOR = 0.55;
+const BULB_ORBIT_TANGENT = 1.9;
 // How hard the strongest source in reach leans on the flight. It is a
 // multiplier on the creature's own cruising speed, so a bulb at full
 // brightness bends the path hard and a line of narration barely creases it.
@@ -1115,21 +1130,33 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             tmpA.set(best.x - pos.x, best.y - pos.y, best.z - pos.z);
             const d = Math.max(1, tmpA.length());
             const near = best.r + HOVER_RADIUS;
-            const bend = ATTRACTION_BEND * bestW * clamp01((d - near * 0.7) / near);
+            const isBulb = best.kind === K_BULB;
+            const arrivalFade = clamp01((d - near * 0.7) / near);
+            const bend =
+              ATTRACTION_BEND * bestW * (isBulb ? Math.max(BULB_ORBIT_FLOOR, arrivalFade) : arrivalFade);
             tmpA.multiplyScalar(1 / d);
             desired.addScaledVector(tmpA, speedWander * bend);
             // A little across the line of approach, so it curves in rather
             // than homing. Signed, and wandering, so there is no consistent
-            // direction to it and no circuit to recognise.
+            // direction to it and no circuit to recognise. The bulb gets a
+            // much larger share pushed sideways instead of radially — that
+            // is the difference between curving past something and
+            // circling it.
             tmpC.set(-tmpA.y, tmpA.x, drift(clock * 0.9, seed + 11) * 0.8).normalize();
             desired.addScaledVector(
               tmpC,
-              speedWander * bend * ORBIT_VARIATION * drift(clock * 0.45, seed + 21)
+              speedWander *
+                bend *
+                (isBulb ? ORBIT_VARIATION * BULB_ORBIT_TANGENT : ORBIT_VARIATION) *
+                drift(clock * 0.45, seed + 21)
             );
             if (d < near) {
               state = HOVER;
               // It has arrived somewhere, on its own path. Rest is what
-              // sometimes happens next — see the gates.
+              // sometimes happens next — see the gates. The bulb is never
+              // a rest (maybeRest only settles on cards/narration), which
+              // is exactly right here: it should keep moving, just moving
+              // in circles instead of moving on.
               maybeRest(best, closePassing);
             }
           }

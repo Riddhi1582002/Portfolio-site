@@ -279,7 +279,18 @@ export default function BulbModel({
             uniform sampler2D bloomTexture;
             varying vec2 vUv;
             void main() {
-              gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv);
+              vec4 base = texture2D(baseTexture, vUv);
+              vec3 bloom = texture2D(bloomTexture, vUv).rgb;
+              // RGB only. UnrealBloomPass's composite shader hard-codes
+              // alpha=1 in its output for every pixel it touches — which,
+              // with nothing but the coil drawn in this composer, is the
+              // ENTIRE canvas rectangle, not just the bright halo — so
+              // adding its alpha along with base's would flatten the
+              // canvas's own alpha to 1 everywhere and turn the whole
+              // transparent host into a solid opaque square. Alpha comes
+              // from the true scene render only; the bloom pass only ever
+              // contributes light, never transparency.
+              gl_FragColor = vec4(base.rgb + bloom, base.a);
             }
           `,
         }),
