@@ -100,13 +100,18 @@ export const CAP_RATIO = 0.052;
  * disc; light in air has a small intense core, a shoulder and a long faint
  * skirt, and the eye reads the shoulder as distance.
  */
+// Raised alongside BulbModel's own glass opacity and exposure (see the
+// comment on `mat.opacity` there): a small, tight wash was part of why the
+// bulb read as a dim object in open air rather than as a lit incandescent
+// bulb filling the room with light. Same three stops, each ~1.8x stronger,
+// and the wash reaches noticeably further before it fades to nothing.
 export const BULB_WASH_GRADIENT = [
-  "radial-gradient(circle, rgba(255,244,222,0.5) 0%, rgba(255,238,208,0) 11%)",
-  "radial-gradient(circle, rgba(255,226,178,0.26) 0%, rgba(255,220,166,0) 27%)",
-  "radial-gradient(circle, rgba(255,206,140,0.11) 0%, rgba(255,196,124,0) 58%)",
+  "radial-gradient(circle, rgba(255,244,222,0.9) 0%, rgba(255,238,208,0) 11%)",
+  "radial-gradient(circle, rgba(255,226,178,0.47) 0%, rgba(255,220,166,0) 27%)",
+  "radial-gradient(circle, rgba(255,206,140,0.2) 0%, rgba(255,196,124,0) 58%)",
 ].join(", ");
 /** The wash's diameter, as a multiple of the bulb's own box. */
-export const BULB_WASH_SPREAD = 3;
+export const BULB_WASH_SPREAD = 5;
 /** Where its hot spot sits down that box — the filament, not the centre. */
 export const BULB_WASH_CENTRE = 0.52;
 

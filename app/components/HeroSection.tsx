@@ -38,6 +38,17 @@ gsap.registerPlugin(SplitText, Flip);
 const NAME_CLICK_EXIT_DURATION = 0.6;
 const NAME_CLICK_EXIT_Y = 40;
 
+// The LinkedIn/Gmail popup icons. 26px read as "extremely small" against
+// the rest of the composition — everything else on this stage is sized
+// off the 1920x1080 authored canvas and scales with the viewport
+// (stageScale), while this popup is the one piece of UI in fixed screen
+// px, so on any viewport bigger than the authored canvas the gap only
+// grows. Not made to scale with the stage here (it sits outside it,
+// anchored to the viewport corner, and doing so is a bigger change than
+// this fix calls for) — just given a base size big enough to read as
+// clearly clickable rather than incidental.
+const CONTACT_ICON_H = 42;
+
 // THE GALLERY -> HERO SEAM. See the hook beside `heroP` below for why this
 // exists: InfiniteCanvas's own return transition matches ART pixel for
 // pixel, but it has no way to reach the OTHER hero content (the name
@@ -1428,7 +1439,7 @@ export default function HeroSection() {
                   bottom: "calc(100% + 14px)",
                   display: "flex",
                   alignItems: "flex-end",
-                  gap: 22,
+                  gap: 28,
                   // Clips the icons' launch position (they start BELOW the
                   // landing line, inside what reads as the toaster slot)
                   // so the pop is a rise into view rather than a jump-cut.
@@ -1463,7 +1474,7 @@ export default function HeroSection() {
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
-                      gap: 6,
+                      gap: 8,
                       padding: "6px 2px",
                       border: "none",
                       background: "transparent",
@@ -1472,7 +1483,7 @@ export default function HeroSection() {
                           ? "#fff"
                           : "rgba(255,255,255,0.92)",
                       fontFamily: SANS,
-                      fontSize: 11,
+                      fontSize: 13,
                       fontWeight: 500,
                       letterSpacing: "0.02em",
                       cursor: "pointer",
@@ -1484,7 +1495,7 @@ export default function HeroSection() {
                       // rather than both at once.
                       transform: contactPopupEntered
                         ? "translateY(0) scale(1)"
-                        : "translateY(26px) scale(0.8)",
+                        : `translateY(${CONTACT_ICON_H}px) scale(0.8)`,
                       opacity: contactPopupEntered ? 1 : 0,
                       transition:
                         "transform 560ms cubic-bezier(0.2,1.8,0.32,1), opacity 260ms ease, filter 160ms ease",
@@ -1523,8 +1534,8 @@ export default function HeroSection() {
                       aria-hidden
                       style={{
                         display: "block",
-                        height: 26,
-                        width: 26 * item.ratio,
+                        height: CONTACT_ICON_H,
+                        width: CONTACT_ICON_H * item.ratio,
                         pointerEvents: "none",
                         mixBlendMode: "screen",
                       }}

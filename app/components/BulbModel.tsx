@@ -167,12 +167,13 @@ export default function BulbModel({
       // than anything else in frame; with linear output it clips to a flat
       // white patch and the glass around it goes with it.
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      // Raised from 1.15: the whole rig reads brighter for it (the glass,
-      // the room, the reflections), and the filament's own intensity is
-      // pushed up separately below — the two together are what make the
-      // bulb read as genuinely lit rather than merely on. Filmic tone
-      // mapping still rolls the highlights off, so this does not clip.
-      renderer.toneMappingExposure = 1.32;
+      // Raised from 1.15, then again from 1.32: the whole rig reads
+      // brighter for it (the glass, the room, the reflections), and the
+      // filament's own intensity is pushed up separately below — the two
+      // together are what make the bulb read as genuinely lit rather than
+      // merely on. Filmic tone mapping still rolls the highlights off, so
+      // this does not clip.
+      renderer.toneMappingExposure = 1.45;
       host.appendChild(renderer.domElement);
       renderer.domElement.style.width = "100%";
       renderer.domElement.style.height = "100%";
@@ -293,13 +294,21 @@ export default function BulbModel({
               // it back at 0.3. Two of these surfaces sit between the eye
               // and the coil (this inner stem AND the outer envelope
               // below), each blending toward the studio reflection on top
-              // of whatever is behind it, and at 0.3 that stacks up to
+              // of whatever is behind it, and at 0.3 that stacked up to
               // most of the frame reading as "glass" rather than "the
-              // thing glowing inside the glass." Lower is what the
-              // comment above already asked for — thin enough that the
-              // envelope barely shows except at grazing angles and on its
-              // highlights, which 0.3 was not.
-              mat.opacity = 0.08;
+              // thing glowing inside the glass."
+              //
+              // 0.08 swung the other way: with the coil now legible, the
+              // glass had almost no presence of its own left — no visible
+              // curvature, no highlight along the rim, the envelope
+              // reading as bare air with a wire floating in it rather than
+              // as an incandescent bulb. 0.16, with the exposure and room
+              // wash raised alongside it (see toneMappingExposure above
+              // and BULB_WASH_SPREAD/BULB_WASH_GRADIENT in CordSection),
+              // is the middle a real bulb sits at: the envelope reads as
+              // glass — a curved surface with its own highlight — without
+              // washing back over the coil the way 0.3 did.
+              mat.opacity = 0.16;
               mat.roughness = 0.06;
               mat.metalness = 0;
               if ("thickness" in mat) mat.thickness = 0.35;
