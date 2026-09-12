@@ -25,6 +25,8 @@ import PencilSection from "./PencilSection";
 import InfiniteCanvas from "./InfiniteCanvas";
 import NarrationLine from "./NarrationLine";
 import { easeInPow, easeOutSine } from "../lib/motion";
+import MothLayer from "./MothLayer";
+import { setMothCamera, type MothPhase } from "./mothStage";
 import "./hero-fonts.css";
 import "./hero-hint.css";
 
@@ -281,6 +283,10 @@ const A_COUNTER_X_RATIO = 0.455;
 // close enough to the crossbar that the crossbar stayed in shot at the
 // end of the push.
 const A_COUNTER_Y_RATIO = 0.36;
+// The counter's radius as a share of the A's glyph box — the clear space
+// inside the triangle, which is what the moth is given to be inside of
+// before the camera arrives. Same outline the two ratios above came off.
+const A_COUNTER_R_RATIO = 0.2;
 // High enough that the A's own negative space fills the frame at the end
 // of the push: the counter is ~234 stage units wide, and covering a
 // 1920-wide stage needs at least 8.2x. Past that the leg edges are off
@@ -444,6 +450,7 @@ export default function HeroSection() {
   // transition FROM.
   const [contactPopupEntered, setContactPopupEntered] = useState(false);
   const [contactCopied, setContactCopied] = useState<"linkedin" | "gmail" | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const [scrollP, setScrollP] = useState(0); // 0..1 smoothed scroll fraction through the track
   const [t, setT] = useState(0); // seconds elapsed, for the idle breathing/drift motion
   // Raw scroll fraction (what the page actually is), vs scrollP (what is
@@ -488,6 +495,13 @@ export default function HeroSection() {
   // anyone can click the name.
   useEffect(() => {
     warmNameFlipFont();
+  }, []);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() =>
+      setReducedMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    );
+    return () => cancelAnimationFrame(id);
   }, []);
 
   useEffect(() => {
@@ -818,7 +832,11 @@ export default function HeroSection() {
   // the beats have finished, which is when the transition can begin.
   const stageElRef = useRef<HTMLDivElement>(null);
   const cameraElRef = useRef<HTMLDivElement>(null);
-  const [cameraTarget, setCameraTarget] = useState({ x: STAGE_W / 2, y: STAGE_H / 2 });
+  const [cameraTarget, setCameraTarget] = useState({
+    x: STAGE_W / 2,
+    y: STAGE_H / 2,
+    r: 0,
+  });
   // The closing beats lay out in real pixels, so they need the viewport
   // rather than the stage's fit.
   const [viewport, setViewport] = useState({ vw: 1440, vh: 900 });
@@ -859,9 +877,12 @@ export default function HeroSection() {
       setCameraTarget((prev) => {
         const x = left + w * A_COUNTER_X_RATIO;
         const y = top + h * A_COUNTER_Y_RATIO;
+        const r = w * A_COUNTER_R_RATIO;
         // Only commit meaningful changes: rewriting this every frame would
         // move the transform-origin under the zoom and make it drift.
-        return Math.abs(prev.x - x) < 0.5 && Math.abs(prev.y - y) < 0.5 ? prev : { x, y };
+        return Math.abs(prev.x - x) < 0.5 && Math.abs(prev.y - y) < 0.5
+          ? prev
+          : { x, y, r };
       });
     };
     const id = requestAnimationFrame(measure);
@@ -922,6 +943,68 @@ export default function HeroSection() {
       (zoom - ART_CRISP_MAX_ZOOM) /
         (CAMERA_MAX_ZOOM * 0.87 - ART_CRISP_MAX_ZOOM)
     );
+
+  // ── WHAT THE MOTH IS TOLD ───────────────────────────────────────────
+  //
+  // Nothing here changes the choreography above; it only describes it.
+  // The push is a scale about a point inside the A, which is the same
+  // thing as a camera travelling toward that point: at scale `zoom` the
+  // camera is D0/zoom from the composition, and it has moved laterally to
+  // O*(1 - (1 - cameraT)/zoom), which is the position that puts the
+  // counter where the transform puts it. MothLayer turns those two into
+  // the camera's own translation and carries the moth past it.
+  const mothPhase: MothPhase =
+    scrollP > PENCIL_SPAN_END - 0.002
+      ? "gallery"
+      : scrollP > CORD_SPAN_END - 0.003
+        ? "pencil"
+        : scrollP > REELS_SPAN_END - 0.004
+          ? "cord"
+          : scrollP > HERO_SPAN + 0.002
+            ? "reels"
+            : "hero";
+  // The A's counter, on screen, at the camera's rest framing. The moth is
+  // drawn to it across the last of the beats — several seconds of flight —
+  // so that it is ALREADY inside the letter when the push starts, and the
+  // pull is released the moment the camera begins to move, so that what
+  // happens next is the camera's doing and not the moth's.
+  // Starts a third of the way through the beats and is at full strength
+  // well before they end: the creature crosses most of a viewport to get
+  // there, at its own unhurried speed, so the pull has to be given time
+  // rather than strength.
+  const aStaging =
+    clamp01((heroP - HERO_BEATS_END * 0.32) / (HERO_BEATS_END * 0.5)) *
+    (1 - clamp01(transitionP / 0.08));
+  useEffect(() => {
+    if (mothPhase === "gallery") {
+      // The gallery owns the dolly while the flight home is running.
+      setMothCamera({ phase: "gallery", aStaging: 0 });
+      return;
+    }
+    if (mothPhase !== "hero") {
+      setMothCamera({
+        phase: mothPhase,
+        cameraScale: 1,
+        cameraX: 0,
+        cameraY: 0,
+        aStaging: 0,
+      });
+      return;
+    }
+    const ox = (cameraTarget.x - STAGE_W / 2) * stageScale;
+    const oy = (cameraTarget.y - STAGE_H / 2) * stageScale;
+    const k = 1 - (1 - cameraT) / zoom;
+    setMothCamera({
+      phase: "hero",
+      cameraScale: zoom,
+      cameraX: ox * k,
+      cameraY: oy * k,
+      aCounterX: window.innerWidth / 2 + ox,
+      aCounterY: window.innerHeight / 2 + oy,
+      aCounterR: cameraTarget.r * stageScale,
+      aStaging,
+    });
+  });
 
   // Closing resets both the open flag and the pop-up animation together —
   // a plain callback, not derived reactively from `contactPopupOpen` in an
@@ -1076,6 +1159,8 @@ export default function HeroSection() {
           <div
             ref={artRef}
             onClick={handleArtClick}
+            data-art="hero"
+            data-lum={Math.min(1, gWithCursor / 1.15).toFixed(3)}
             style={{
               position: "absolute",
               left: 0,
@@ -1148,6 +1233,8 @@ export default function HeroSection() {
 
           <div
             ref={tag1TextRef}
+            data-narration
+            data-lum={tag1Opacity.toFixed(3)}
             style={{
               position: "absolute",
               left: 0,
@@ -1173,6 +1260,8 @@ export default function HeroSection() {
 
           <div
             ref={tag2TextRef}
+            data-narration
+            data-lum={tag2Opacity.toFixed(3)}
             style={{
               position: "absolute",
               left: 0,
@@ -1402,6 +1491,12 @@ export default function HeroSection() {
             />
           </div>
         )}
+
+        {/* THE MOTH. One creature for the whole sequence: mounted once
+            here, on the pane rather than inside any beat, so that nothing
+            below it can unmount it, reset it, or start it again. It reads
+            the beats; no beat reads it. */}
+        <MothLayer reduced={reducedMotion} />
 
         {/* The pull-back out of the iris, and the gallery it opens on. */}
         {scrollP > PENCIL_SPAN_END - 0.002 && (

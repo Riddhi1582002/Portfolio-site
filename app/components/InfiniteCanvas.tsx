@@ -53,6 +53,7 @@ import {
 } from "./HeroSection";
 import { BULB_GLASS_RATIO, bulbSizePx } from "./CordSection";
 import { carry } from "../lib/motion";
+import { cutMothContinuity, setMothReturnDolly } from "./mothStage";
 import HoverCard from "./HoverCard";
 
 // One repeating cell of the composition, in canvas px.
@@ -437,6 +438,25 @@ export default function InfiniteCanvas({
   // is what makes the move read as travelling THROUGH the gap rather
   // than as the plane merely growing.
   const dolly = returning ? Math.exp(Math.log(DOLLY_MAX) * camT) : 1;
+
+  // THE FLIGHT HOME, for the moth. `dolly` IS the camera's forward travel
+  // through the gap — it is the only thing on this beat that moves the
+  // camera — so publishing it is enough for the moth to be overtaken and
+  // passed by the same move that carries the reader to ART. Nothing about
+  // the transition itself changes, and the moth has no say in it.
+  useEffect(() => {
+    setMothReturnDolly(dolly);
+  }, [dolly]);
+  // The arrival snaps the dolly back to 1 while the gallery is still the
+  // phase on screen. That is a cut, not a camera flying a thousand pixels
+  // backwards, so the moth is told to carry its state across it rather
+  // than be dragged by it.
+  useEffect(() => {
+    if (!returning) return;
+    return () => {
+      cutMothContinuity();
+    };
+  }, [returning]);
 
   const hero = useMemo(() => heroArt(vw, vh), [vw, vh]);
   // ART's size on the way home is solved, not tweened to a guess: at
