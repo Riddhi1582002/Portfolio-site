@@ -76,6 +76,16 @@ const MOTH_CLOSE_PASS_MAX = 3.2;
 // them, which is what lets the gain go this far without going chalky.
 const MOTH_ALBEDO_GAIN = 1.72;
 const MOTH_ROUGHNESS_CAP = 0.74;
+// The scan's own relief — every scale and vein is in its normal map, and
+// in a room this dark that relief is most of what makes the body read as a
+// body rather than a shape. Pushed past 1 it catches the grazing light the
+// creature actually gets here.
+const MOTH_NORMAL_GAIN = 1.5;
+// A moth's wing membrane is thinner and paler than its thorax, and the
+// scan carries that difference; this keeps it after the body's own lift,
+// so the wings separate from the body instead of the whole animal rising
+// together into one tone.
+const MOTH_WING_ALBEDO_GAIN = 1.24;
 
 // Beats/sec at an ordinary cruise. Was 9.4, which is closer to what a real
 // moth does and read on screen as a frantic blur — at this size the eye
@@ -145,15 +155,22 @@ const PERCH_DURATION = 3.6;
 // this file is built around. So the stay is bounded: long enough that it
 // reads as settling on the work, short enough that a stopped reader sees
 // it leave and fly again.
-const CARD_PERCH_MAX = 12;
+const CARD_PERCH_MAX = 7;
 const BULB_RECOVERY_DURATION = 1.7;
 
 // Supporting constants for the above.
 const MAX_SPEED = 430;
 const STEER_RESPONSE = 2.1; // how fast desired velocity is actually taken up
 const DRAG = 0.55;
-const BANK_GAIN = 0.0042;
-const BANK_MAX = 0.85;
+// How far the creature leans into a turn, and how hard. BANK_MAX was 0.85
+// radians — very nearly fifty degrees of roll — and at that angle one wing
+// is so much lower than the other that the eye reads it as the wing doing
+// the turning rather than the body leaning through it. A moth banks; it
+// does not bank like a fighter. Halved, with the gain trimmed to match and
+// the spring stiffened (see the springStep call) so the lean arrives and
+// resolves inside the turn instead of hanging on after it.
+const BANK_GAIN = 0.0031;
+const BANK_MAX = 0.4;
 const NOMINAL_DEPTH = 0.82; // share of the camera's distance to the content
 // The band it ordinarily flies in, as a share of the camera's distance to
 // the content plane. Chosen so that plain perspective across the whole
@@ -177,6 +194,15 @@ const PERCH_CHANCE = 0.55; // per second, while in reach of somewhere to sit
 // decides a landing is still passing close to a surface with the dice in
 // its favour.
 const REST_SETTLE_SECONDS = 4;
+// THE POINTER, noticed. Not followed, not fled from and never tethered:
+// inside this radius the creature's own desired heading gains a small
+// component away from and above the cursor, which is the change of mind an
+// insect makes when something large moves near it. It decays with distance
+// and it lapses when the pointer stops moving, so a parked cursor is
+// furniture rather than a permanent presence.
+const CURSOR_NOTICE_PX = 190;
+const CURSOR_NUDGE = 95; // px/sec added to the desired velocity, at contact
+const CURSOR_MEMORY = 1.5; // seconds a pointer stays "something that moved"
 // WHAT "STILL" MEANS, and how long it has to last.
 //
 // A rest is not something the creature decides on a timer — it is
@@ -484,6 +510,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
               // Multiplied, not replaced: whatever base colour the asset
               // carries keeps its hue and its relative values.
               src.color.multiplyScalar(MOTH_ALBEDO_GAIN);
+              if (src.normalScale) src.normalScale.multiplyScalar(MOTH_NORMAL_GAIN);
               // A cap on the roughness MAP's multiplier, so the scan's own
               // variation across the wings and the thorax survives — the
               // dull parts stay duller than the sleek ones, all of it just
@@ -498,36 +525,54 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
               surfaces.push({ mat: src, env: 0.34 });
               return src;
             }
-            // The wings keep the same maps and the same base colour — the
-            // texture is the asset's — but get a sheen term, which is how
-            // a thin scaled membrane behaves: it scatters a soft, wide
-            // highlight along the surface and lights up at its edges when
-            // a source is behind or beside it. Without it the wings read
-            // as flat card at every angle.
+            // THE MEMBRANE.
+            //
+            // The wings keep the asset's own maps and its own colour; what
+            // they get is a description of what a moth's wing physically
+            // IS, so that the light already in the room does the work.
+            //
+            //   * sheen is the scattering lobe for a fibrous, scaled
+            //     surface — it is what puts a soft wide highlight along
+            //     the membrane and lights its edges when a source is
+            //     behind or beside it. Warmed and tightened here, which is
+            //     where the delicate warm rim along a backlit wing comes
+            //     from: it is a real lobe answering a real light, not a
+            //     line drawn round the shape.
+            //   * DoubleSide means a light behind a wing lights the face
+            //     the reader is looking at, which is the honest version of
+            //     light coming through a thin membrane. No transmission
+            //     pass: there is nothing behind this creature but the
+            //     page, so sampling it would only make the wings darker.
+            //   * iridescence is the thin-film term. Moth scales are
+            //     stacked lamellae and they do this; kept low and with a
+            //     wide thickness range so it reads as a cool shift across
+            //     a wing as it turns, never as a colour effect.
+            //   * a lower roughness floor than the body, because the
+            //     membrane is the sleek part and the thorax is the furry
+            //     one — that difference is most of the silhouette.
             const wingMat = new THREE.MeshPhysicalMaterial({
               map: src.map,
               normalMap: src.normalMap,
               roughnessMap: src.roughnessMap,
               metalnessMap: src.metalnessMap,
-              color: src.color,
-              roughness: src.roughness,
+              color: src.color.clone().multiplyScalar(MOTH_WING_ALBEDO_GAIN),
+              roughness: Math.min(src.roughness ?? 1, 0.58),
               metalness: src.metalness,
               side: THREE.DoubleSide,
               transparent: false,
-              // A scaled membrane scatters a wide, soft highlight across
-              // its surface and lights up along its edges. Pushed up and
-              // tightened from 0.55/0.62: it is what gives the wings their
-              // own tone in the dark instead of a flat shape, and it costs
-              // nothing but a term in a shader that was already compiled.
-              sheen: 0.78,
-              sheenRoughness: 0.44,
-              sheenColor: new THREE.Color(0xfff0d8),
+              sheen: 1,
+              sheenRoughness: 0.34,
+              sheenColor: new THREE.Color(0xffdcae),
+              iridescence: 0.32,
+              iridescenceIOR: 1.28,
+              iridescenceThicknessRange: [120, 560],
+              specularIntensity: 1,
             });
             if (src.normalScale) wingMat.normalScale.copy(src.normalScale);
-            wingMat.envMapIntensity = 0.46;
+            wingMat.envMapIntensity = 0.62;
             surfaces.push({
               mat: wingMat as unknown as import("three").MeshStandardMaterial,
-              env: 0.46,
+              env: 0.62,
             });
             return wingMat as unknown as import("three").Material;
           };
@@ -824,6 +869,16 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       const sizePx = () =>
         Math.min(MOTH_SIZE.MAX_PX, Math.max(MOTH_SIZE.MIN_PX, (vw * MOTH_SIZE.VW) / 100));
 
+      let cursorX = -1e5;
+      let cursorY = -1e5;
+      let cursorSeen = -1e5;
+      const onPointer = (e: PointerEvent) => {
+        cursorX = e.clientX;
+        cursorY = e.clientY;
+        cursorSeen = clock;
+      };
+      window.addEventListener("pointermove", onPointer, { passive: true });
+
       let tile = 1;
       const resize = () => {
         const r = host.getBoundingClientRect();
@@ -1041,7 +1096,14 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         if (state === WANDER || state === ATTRACTED || state === HOVER) {
           if (bestW > 0.05 && best) {
             state = state === HOVER ? HOVER : ATTRACTED;
-          } else if (state === ATTRACTED) {
+          } else if (state === ATTRACTED || state === HOVER) {
+            // HOVER used to be missing from this line, and that one
+            // omission is why the creature got stuck: habituation would
+            // take a card's pull to nothing, the approach branch would
+            // stop being entered on merit — and the state still said
+            // HOVER, so it kept holding station on a source it no longer
+            // had any reason to care about. It leaves now, which is what
+            // every other part of this file already assumed it did.
             state = WANDER;
           }
         }
@@ -1109,13 +1171,21 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             .set(-tmpA.y, tmpA.x, drift(clock * 0.9, seed + 11) * 1.1)
             .normalize()
             .multiplyScalar(ORBIT_VARIATION * (0.6 + 0.5 * drift(clock * 0.45, seed + 21)));
+          // Far out, the sideways term is folded away and the move is a
+          // move TOWARD the light — which is what "it has noticed it"
+          // looks like. It only opens back up as the creature arrives,
+          // where curiosity, not navigation, is what the motion is for.
+          // Before this the tangential term ran at full strength from the
+          // very edge of the source's reach, so every approach was a long
+          // lazy spiral and nothing ever read as a decision.
+          const closing = clamp01((hold * 2.6) / d);
           const radial = d > hold ? 1 : -(1 - d / hold) * 1.4;
           desired
             .copy(tmpA)
             .multiplyScalar(radial)
-            .add(tmpC)
+            .addScaledVector(tmpC, closing)
             .normalize()
-            .multiplyScalar(speedWander * (d > hold ? 1 : 0.45));
+            .multiplyScalar(speedWander * (d > hold ? 1.35 : 0.45));
           if (d < hold * 1.15) {
             state = HOVER;
             // Somewhere to sit? Only sometimes, never twice running, and
@@ -1224,10 +1294,29 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         const k = D0 / Math.max(40, depth);
         const sx = vw / 2 + pos.x * k;
         const sy = vh / 2 - pos.y * k;
-        if (sx < -vw * 0.12 || sx > vw * 1.12 || sy < -vh * 0.12 || sy > vh * 1.12) {
-          desired.x += clamp(-pos.x * 0.6, -190, 190);
-          desired.y += clamp(-pos.y * 0.6, -190, 190);
+        // Outside the picture is not somewhere to be. It turns back under
+        // its own power, but it turns back PROMPTLY: from the frame's own
+        // edge rather than a tenth of a screen beyond it, and hard enough
+        // to actually return rather than drift along outside.
+        if (sx < 0 || sx > vw || sy < 0 || sy > vh) {
+          const outX = sx < 0 ? -sx : sx > vw ? vw - sx : 0;
+          const outY = sy < 0 ? sy : sy > vh ? sy - vh : 0;
+          desired.x += clamp(outX * 1.6, -330, 330);
+          desired.y += clamp(outY * 1.6, -330, 330);
         }
+        if (clock - cursorSeen < CURSOR_MEMORY) {
+          const cdx = sx - cursorX;
+          const cdy = sy - cursorY;
+          const cd = Math.hypot(cdx, cdy);
+          if (cd < CURSOR_NOTICE_PX) {
+            const notice = (1 - cd / CURSOR_NOTICE_PX) ** 2;
+            const inv = 1 / Math.max(1, cd);
+            desired.x += cdx * inv * CURSOR_NUDGE * notice;
+            // A little more lift than sidestep: startled things go up.
+            desired.y += -cdy * inv * CURSOR_NUDGE * notice * 1.3;
+          }
+        }
+
         // Behind the lens after a fly-by: it turns and comes back, at its
         // own pace, under its own power.
         if (pos.z > -DEPTH_MIN * D0 * 0.5) {
@@ -1310,7 +1399,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           aim.lookAt(lookTarget);
           // Slerped, so a change of heading is a turn rather than a snap,
           // and slower while perched so the sit stays still.
-          moth.quaternion.slerp(aim.quaternion, clamp01(dt * (state === PERCH ? 2 : 5.5)));
+          moth.quaternion.slerp(aim.quaternion, clamp01(dt * (state === PERCH ? 2 : 7.2)));
         }
         // Banking: it leans into the turn it is making. A spring, so the
         // lean builds and recovers instead of tracking the maths exactly.
@@ -1319,11 +1408,11 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         // creature and not of the screen.
         const turn = tmpC.set(1, 0, 0).applyQuaternion(moth.quaternion).dot(accel);
         const bankTarget = clamp(
-          -turn * BANK_GAIN + drift(clock * 0.8, seed + 13) * 0.12,
+          -turn * BANK_GAIN + drift(clock * 0.8, seed + 13) * 0.07,
           -BANK_MAX,
           BANK_MAX
         );
-        springStep(bankS, state === PERCH ? 0 : bankTarget, 26, dt);
+        springStep(bankS, state === PERCH ? 0 : bankTarget, 38, dt);
         bankQ.setFromAxisAngle(zAxis, bankS.x);
         moth.quaternion.multiply(bankQ);
 
@@ -1504,6 +1593,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       cleanup = () => {
         cancelAnimationFrame(raf);
         window.removeEventListener("resize", resize);
+        window.removeEventListener("pointermove", onPointer);
         envRT.texture.dispose();
         pmrem.dispose();
         scene.traverse((o) => {
