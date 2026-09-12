@@ -57,6 +57,25 @@ export const MOTH_SIZE = { VW: 4, MIN_PX: 40, MAX_PX: 80 };
  * detailed view — and nothing else ever gets near it.
  */
 const MOTH_CLOSE_PASS_MAX = 3.2;
+// HOW THE CREATURE ANSWERS THE LIGHT IT IS GIVEN.
+//
+// The asset is a photographic scan of a real moth: dark brown scales with
+// pale streaks, authored to be read in daylight. Dropped into a room that
+// is almost entirely black and lit by one warm source, its midtones sat
+// on the floor and the whole animal read as a hole in the page — not dim,
+// exactly, but flat, and a flat shape is not a moth.
+//
+// These two are the fix, and neither of them adds a photon: the albedo is
+// lifted so the scan's own tonal range lands where the eye can use it, and
+// the roughness is capped so the surface actually catches a highlight off
+// the sources already in the scene. The texture's structure — every scale,
+// vein and streak — is preserved in proportion, the shadow side still
+// falls away to nothing, and the directional response near the bulb is the
+// same physics it always was, simply read against a body that has tone in
+// it. Filmic tone mapping rolls the pale streaks off rather than clipping
+// them, which is what lets the gain go this far without going chalky.
+const MOTH_ALBEDO_GAIN = 1.72;
+const MOTH_ROUGHNESS_CAP = 0.74;
 
 // Beats/sec at an ordinary cruise. Was 9.4, which is closer to what a real
 // moth does and read on screen as a frantic blur — at this size the eye
@@ -70,7 +89,21 @@ const WING_ASYMMETRY = 0.07; // the two wings are never quite the same
 
 const WANDER_SPEED = 172; // px/sec on the content plane
 const WANDER_VARIATION = 0.62; // how irregular that speed is
-const WANDER_TURN = 0.42; // how fast the drifting heading itself turns
+// How fast the drifting heading itself turns. Halved from 0.42: at that
+// rate the creature changed its mind every three seconds or so and never
+// got far from wherever it started, which read as fussing about one corner
+// of the frame. The same speed over a heading held twice as long is a
+// crossing rather than a circuit — no faster, just further.
+const WANDER_TURN = 0.22;
+// HABITUATION. The longer it has been working one particular surface, the
+// less that surface pulls; the pull comes back while it is away. This is
+// not a change to the hierarchy — the bulb still outranks ART, ART the
+// cards, the cards the narration, and every base strength below is
+// untouched — it is what stops the strongest source in the room from being
+// a permanent tether, and it is the single reason the flight now covers
+// the scene instead of orbiting the nearest card.
+const DWELL_BEFORE_ROAM = 4.5; // seconds near one surface before it palls
+const ROAM_RELIEF = 0.82; // how much of that surface's pull it can take
 
 const ATTRACTION_RADIUS = 660; // px, at full brightness; dimmer reaches less
 const BULB_ATTRACTION_STRENGTH = 1.0;
@@ -126,11 +159,16 @@ const NOMINAL_DEPTH = 0.82; // share of the camera's distance to the content
 // the content plane. Chosen so that plain perspective across the whole
 // band already lands inside the 40-80px clamp: it is the flight that keeps
 // the moth the right size, and the clamp below is only the guarantee.
-const DEPTH_MIN = 0.56;
-const DEPTH_MAX = 1.02;
+const DEPTH_MIN = 0.5;
+const DEPTH_MAX = 1.12;
 const BUMP_RECOVERY_DURATION = 0.75;
 const TAKEOFF_DURATION = 0.7;
-const PERCH_COOLDOWN = 9; // seconds before it will consider settling again
+// Seconds before it will consider settling again. Raised from 9: with the
+// stillness gate in place a settled beat leaves the opportunity open
+// indefinitely, and at 9 against a stay of up to CARD_PERCH_MAX the
+// creature spent three quarters of its time sitting down. The flight is
+// the thing; the rest is punctuation.
+const PERCH_COOLDOWN = 22;
 const PERCH_CHANCE = 0.55; // per second, while in reach of somewhere to sit
 // How long it has to have been in a beat before it will settle in it. A
 // creature that lands the moment it arrives reads as placed; one that
@@ -139,6 +177,24 @@ const PERCH_CHANCE = 0.55; // per second, while in reach of somewhere to sit
 // decides a landing is still passing close to a surface with the dice in
 // its favour.
 const REST_SETTLE_SECONDS = 4;
+// WHAT "STILL" MEANS, and how long it has to last.
+//
+// A rest is not something the creature decides on a timer — it is
+// something the SCENE offers. While the reader is scrolling, the camera is
+// travelling or the cards are still rearranging themselves, there is
+// nowhere steady to put your feet down and the moth simply keeps flying.
+// The measure is the composition's own: the average screen-space movement
+// of the surfaces the moth can see, taken between scans.
+//
+// The bar has to sit between the site's idle micro-motion and its real
+// motion, and measurement put those further apart than they look: page
+// one's breathing wordmark reads 4-31px/s (the scale breath moves a
+// full-width box's corners, so it is larger than the drift alone), while
+// a reader actually scrolling reads a median of 418px/s. At this value a
+// breathing hero counts as still, which to a reader it plainly is, and
+// anything the reader is actually driving does not.
+const COMPOSITION_STILL_PX = 48; // px/sec, averaged over the visible surfaces
+const REST_STILL_SECONDS = 3; // how long that has to hold before it may land
 const NARRATION_PERCH_LIMIT = 2; // once or twice in the whole experience
 const BULB_AVOID_COOLDOWN = 5.5; // it does not touch the hot thing twice
 const FOV = 40;
@@ -296,7 +352,11 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       // by that bulb rolls off the same way rather than clipping to white
       // as it comes in close.
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.18;
+      // Raised from 1.18. The creature is the only thing in this canvas,
+      // so the exposure is the creature's alone — it lifts its midtones
+      // off the black without touching a light, and ACES keeps the
+      // highlights near the bulb where they were.
+      renderer.toneMappingExposure = 1.42;
       const canvas = renderer.domElement;
       host.appendChild(canvas);
       canvas.style.position = "absolute";
@@ -396,6 +456,10 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         mat: import("three").MeshStandardMaterial;
         env: number;
       }[] = [];
+      // The body and both wings share one glTF material, and the wing
+      // material is built FROM it, so the tonal work below has to happen
+      // exactly once however many meshes arrive at it.
+      const toned = new Set<import("three").Material>();
       let loaded = false;
 
       new GLTFLoader().load(MODEL_URL, (gltf) => {
@@ -415,6 +479,17 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           const prepare = (raw: import("three").Material) => {
             const src = raw as import("three").MeshStandardMaterial;
             if (!src) return raw;
+            if (!toned.has(src)) {
+              toned.add(src);
+              // Multiplied, not replaced: whatever base colour the asset
+              // carries keeps its hue and its relative values.
+              src.color.multiplyScalar(MOTH_ALBEDO_GAIN);
+              // A cap on the roughness MAP's multiplier, so the scan's own
+              // variation across the wings and the thorax survives — the
+              // dull parts stay duller than the sleek ones, all of it just
+              // that bit more willing to take a highlight.
+              src.roughness = Math.min(src.roughness ?? 1, MOTH_ROUGHNESS_CAP);
+            }
             if (!isWing) {
               // The body keeps the material the asset shipped with. Only
               // its reflection strength is taken over, so it can be dimmed
@@ -531,6 +606,15 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       }));
       let srcCount = 0;
       let scanClock = SCAN_INTERVAL;
+      // Where each surface was at the previous scan, so the composition's
+      // own movement can be measured without asking the page for anything
+      // it is not already being asked. Parallel arrays, allocated once.
+      const prevEl: (Element | null)[] = new Array(SRC_POOL).fill(null);
+      const prevLeft = new Float64Array(SRC_POOL);
+      const prevTop = new Float64Array(SRC_POOL);
+      let prevCount = -1;
+      /** The composition's average screen movement, px/sec. */
+      let compositionMotion = Infinity;
 
       /** How bright a source currently is: what the beat itself says. */
       const lumOf = (el: Element) => {
@@ -577,8 +661,10 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         s.bottom = rect.bottom;
       };
 
-      const scan = () => {
+      const scan = (elapsed: number) => {
         srcCount = 0;
+        let moved = 0;
+        let matched = 0;
         // Only a little beyond the frame. The gallery's composition runs
         // well past the window on every side, and a wider margin than this
         // had the creature chasing an image it could see and the reader
@@ -602,13 +688,32 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
               rect.top > vh + marginY
             )
               continue;
-            const s = sources[srcCount++];
+            const at = srcCount++;
+            const s = sources[at];
             place(s, rect, kind);
             s.lum = lum;
             s.el = el;
+            // Same surface as last time, in the same slot? Then the
+            // difference between the two boxes is how far the composition
+            // carried it.
+            if (prevEl[at] === el) {
+              moved +=
+                Math.abs(rect.left - prevLeft[at]) + Math.abs(rect.top - prevTop[at]);
+              matched++;
+            }
+            prevEl[at] = el;
+            prevLeft[at] = rect.left;
+            prevTop[at] = rect.top;
             taken++;
           }
         }
+        // A surface arriving or leaving is the composition changing too, so
+        // a different count reads as movement rather than as stillness.
+        compositionMotion =
+          matched > 0 && srcCount === prevCount
+            ? moved / matched / Math.max(1e-3, elapsed)
+            : Infinity;
+        prevCount = srcCount;
       };
 
       // ── THE CREATURE'S STATE ────────────────────────────────────────
@@ -691,9 +796,17 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       // How long it has been in the beat that owns the frame. Reset on a
       // cut, never on anything the creature itself does.
       let sceneT = 0;
+      // How long the composition AND the camera have both been holding
+      // still. Reset by either of them moving; never by anything the
+      // creature itself does.
+      let stillT = 0;
       let narrationPerches = 0;
       let bulbCooldown = 0;
       let sinceBump = 0;
+      // Which surface it has been working, and for how long — see
+      // DWELL_BEFORE_ROAM.
+      let dwellEl: Element | null = null;
+      let dwellT = 0;
       let clock = 0;
       let bumps = 0;
       let bulbHits = 0;
@@ -750,6 +863,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         const epoch = mothStage.epoch;
         const scale = Math.max(0.01, mothStage.cameraScale);
         const dist = D0 / scale;
+        let cameraMoved = false;
         if (phase === lastPhase && epoch === lastEpoch) {
           // One continuous shot: the camera's travel since the last frame
           // is exactly the change in its distance to the content plane,
@@ -757,11 +871,17 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           // toward the lens by that much. Clamped, because a beat that
           // hands over mid-move must not fling it across the room.
           const forward = clamp(lastDist - dist, -D0 * 0.4, D0 * 0.4);
+          cameraMoved =
+            Math.abs(forward) > 0.5 ||
+            Math.abs(mothStage.cameraX - lastCamX) > 0.5 ||
+            Math.abs(mothStage.cameraY - lastCamY) > 0.5;
           pos.z += forward;
           pos.x -= clamp(mothStage.cameraX - lastCamX, -vw, vw);
           pos.y += clamp(mothStage.cameraY - lastCamY, -vh, vh);
         }
         sceneT = phase === lastPhase && epoch === lastEpoch ? sceneT + dt : 0;
+        stillT =
+          !cameraMoved && compositionMotion < COMPOSITION_STILL_PX ? stillT + dt : 0;
         lastPhase = phase;
         lastEpoch = epoch;
         lastDist = dist;
@@ -770,8 +890,8 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
 
         scanClock += dt;
         if (scanClock >= SCAN_INTERVAL) {
+          scan(scanClock);
           scanClock = 0;
-          scan();
         }
 
         if (!loaded) return;
@@ -789,6 +909,11 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         // same letter left the creature hovering between them, a couple of
         // hundred pixels outside the negative space it was meant to be in.
         const counterOwnsArt = mothStage.aStaging > 0.25;
+        // How tired it is of the surface it has been working. Applied
+        // inside the loop, so a source it has had enough of genuinely
+        // loses to one it has not, rather than being picked and then
+        // discounted.
+        const boredom = clamp01(dwellT / DWELL_BEFORE_ROAM) * ROAM_RELIEF;
         for (let i = 0; i < srcCount; i++) {
           const s = sources[i];
           if (s.kind === K_BULB && bulbCooldown > 0) continue;
@@ -798,11 +923,25 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           const reach = ATTRACTION_RADIUS * (0.45 + 0.85 * s.lum) + s.r;
           if (d > reach || d < 1e-3) continue;
           const falloff = 1 - d / reach;
-          const w = SRC_PULL[s.kind] * s.lum * falloff * falloff;
+          const w =
+            SRC_PULL[s.kind] *
+            s.lum *
+            falloff *
+            falloff *
+            (s.el === dwellEl ? 1 - boredom : 1);
           if (w > bestW) {
             bestW = w;
             best = s;
           }
+        }
+
+        // Time served on whichever surface it is currently working, and
+        // the interest coming back once it has left.
+        if (best && best.el === dwellEl) {
+          dwellT = Math.min(DWELL_BEFORE_ROAM * 1.6, dwellT + dt);
+        } else {
+          dwellT = Math.max(0, dwellT - dt * 0.55);
+          if (dwellT <= 0 && best) dwellEl = best.el;
         }
 
         // The A's negative space, before the camera ever gets there. It is
@@ -960,7 +1099,14 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           // A sideways term that itself wanders, so the approach curves
           // and the hold never closes into a circle.
           tmpC
-            .set(-tmpA.y, tmpA.x, drift(clock * 0.9, seed + 11) * 0.5)
+            // The sideways term carries a real component along the view
+            // axis now (was 0.5): an orbit built only out of x and y stays
+            // in the source's own plane, which is why the creature used to
+            // circle a card at one distance from the reader for minutes.
+            // Tilted out of that plane it comes toward and falls away as
+            // it goes round, which is most of what "it moves in depth"
+            // actually looks like.
+            .set(-tmpA.y, tmpA.x, drift(clock * 0.9, seed + 11) * 1.1)
             .normalize()
             .multiplyScalar(ORBIT_VARIATION * (0.6 + 0.5 * drift(clock * 0.45, seed + 21)));
           const radial = d > hold ? 1 : -(1 - d / hold) * 1.4;
@@ -983,17 +1129,13 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
               perchCooldown <= 0 &&
               !closePassing &&
               sceneT > REST_SETTLE_SECONDS &&
+              stillT > REST_STILL_SECONDS &&
               best.kind !== K_BULB &&
               Math.random() < PERCH_CHANCE * dt &&
               !(best.kind === K_NARR && narrationPerches >= NARRATION_PERCH_LIMIT)
             ) {
-              state = PERCH;
-              stateT = 0;
-              perches++;
-              perchEl = best.el;
-              // A card is somewhere to stay; type is somewhere to pause.
-              perchIsBrief = best.kind !== K_CARD;
-              perchCooldown = PERCH_COOLDOWN;
+              let px: number;
+              let py: number;
               if (best.kind === K_ART) {
                 // ART's element is a full-width centred line, so a share of
                 // its BOX would land the creature out in the black beside
@@ -1003,21 +1145,45 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
                 // rather than across them.
                 const w = Math.max(1, best.right - best.left);
                 const reach = ((best.bottom - best.top) * 0.85) / w;
-                perchOx = 0.5 + (Math.random() - 0.5) * 1.7 * reach;
-                perchOy = 0.03;
+                px = 0.5 + (Math.random() - 0.5) * 1.7 * reach;
+                py = 0.03;
               } else if (best.kind === K_NARR) {
-                narrationPerches++;
                 // An edge, and never the middle of the line: it may sit
                 // across a letter, it may not sit across the sentence.
-                perchOx = Math.random() < 0.5 ? 0.06 + Math.random() * 0.14 : 0.8 + Math.random() * 0.14;
-                perchOy = Math.random() < 0.5 ? 0.08 : 0.92;
+                px = Math.random() < 0.5 ? 0.06 + Math.random() * 0.14 : 0.8 + Math.random() * 0.14;
+                py = Math.random() < 0.5 ? 0.08 : 0.92;
               } else {
                 // The edge of the card, not the face of the work — and
                 // never its bottom edge, which is where every card on this
                 // site carries its caption.
                 const edge = Math.floor(Math.random() * 3);
-                perchOx = edge === 0 ? 0.04 : edge === 1 ? 0.96 : 0.2 + Math.random() * 0.6;
-                perchOy = edge === 2 ? 0.04 : 0.12 + Math.random() * 0.52;
+                px = edge === 0 ? 0.04 : edge === 1 ? 0.96 : 0.2 + Math.random() * 0.6;
+                py = edge === 2 ? 0.04 : 0.12 + Math.random() * 0.52;
+              }
+              // Where that actually puts it, on screen. A gallery image can
+              // straddle the top of the window, and settling on the edge of
+              // one that is half out of frame is a rest nobody sees — the
+              // creature simply disappears for a dozen seconds. If the spot
+              // is not in the picture, it does not land there and carries
+              // on flying; a later pass will offer a better one.
+              const ax = best.left + (best.right - best.left) * px;
+              const ay = best.top + (best.bottom - best.top) * py;
+              if (
+                ax > vw * 0.05 &&
+                ax < vw * 0.95 &&
+                ay > vh * 0.06 &&
+                ay < vh * 0.94
+              ) {
+                state = PERCH;
+                stateT = 0;
+                perches++;
+                perchEl = best.el;
+                // A card is somewhere to stay; type is somewhere to pause.
+                perchIsBrief = best.kind !== K_CARD;
+                perchCooldown = PERCH_COOLDOWN;
+                perchOx = px;
+                perchOy = py;
+                if (best.kind === K_NARR) narrationPerches++;
               }
             }
           } else if (d > hold * 1.6) {
@@ -1287,6 +1453,8 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         mothDebug.pull = bestW;
         mothDebug.pullKind = best ? best.kind : -1;
         mothDebug.sources = srcCount;
+        mothDebug.motion = compositionMotion;
+        mothDebug.stillT = stillT;
         mothDebug.bumps = bumps;
         mothDebug.bulbHits = bulbHits;
         mothDebug.perches = perches;

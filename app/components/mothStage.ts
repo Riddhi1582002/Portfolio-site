@@ -145,6 +145,9 @@ export const mothDebug = {
   bulbHits: 0,
   perches: 0,
   narrationPerches: 0,
+  /** The composition's own movement, px/sec, and how long it has held still. */
+  motion: 0,
+  stillT: 0,
   /** Bumped whenever the layer would have had to restart the creature. */
   resets: 0,
   loaded: false,
