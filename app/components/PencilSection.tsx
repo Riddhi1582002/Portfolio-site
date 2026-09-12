@@ -24,8 +24,20 @@
 import BulbModel from "./BulbModel";
 import NarrationLine from "./NarrationLine";
 import { irisFrame } from "./InfiniteCanvas";
-import { BULB_REST_TOP_VH, bulbSizePx, CAP_RATIO, BULB_GLASS_RATIO } from "./CordSection";
+import {
+  BULB_REST_TOP_VH,
+  bulbSizePx,
+  CAP_RATIO,
+  BULB_GLASS_RATIO,
+  BULB_WASH_GRADIENT,
+  BULB_WASH_SPREAD,
+  BULB_WASH_CENTRE,
+  CORD_SPILL_VH,
+  CORD_SPILL_BG,
+  CORD_SPILL_GLOW,
+} from "./CordSection";
 import { lineWidthPx, lineGlow } from "./CameraRoll";
+import { carry, easeInOutSine as baseEaseInOutSine } from "../lib/motion";
 import {
   NARRATION_COLOR,
   NARRATION_GLOW,
@@ -34,13 +46,32 @@ import {
 } from "./HeroSection";
 
 // Beats, as shares of the section's progress.
-const FALL = [0.02, 0.6] as const;
+//
+// FALL used to open at 0.02 — 8vh of scrolling, at the exact seam, with
+// the frame held completely still before the camera would consent to
+// move. The descent starts on the frame this beat becomes visible now.
+const FALL = [0, 0.6] as const;
 // The white circle takes over from the model as the camera arrives under it.
 const BLOOM = [0.4, 0.6] as const;
 // The narration belongs to the white-circle scene: it comes up under the
 // circle once the descent has landed, and leaves as the circle darkens.
 const LINE = [0.46, 0.72] as const;
-const SWAP = [0.64, 0.9] as const;
+// THE CUT, re-timed at both ends — not re-choreographed. The order it
+// reads in is untouched (the light goes out, THEN the card comes up under
+// it, at the same 0.12 offset and the same relative pacing).
+//
+// It began at 0.64 while the descent landed at 0.60, so the frame simply
+// stopped for 17vh between arriving under the bulb and the light starting
+// to die. It began going out at 0.60 instead: the camera settles INTO the
+// light failing rather than settling, waiting, and then the light failing.
+//
+// And it ended at 0.90, which left the last 42vh of this beat — a tenth
+// of a 420vh section — on a completely static frame before the gallery's
+// pull-back picked it up. The card's arrival now lands exactly on the
+// frame the pull-back starts, so the camera leaves through the iris on
+// the beat the card finishes coming up behind it rather than a sixth of
+// a section later.
+const SWAP = [0.6, 1] as const;
 
 // Where the circle settles: a little above the middle, with room under it
 // for the narration.
@@ -52,6 +83,23 @@ const BASE = 512;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
 const span = (v: number, a: number, b: number) => clamp01((v - a) / (b - a));
+
+// "Eased both ends: the camera is already moving when this beat starts"
+// is what the descent below has always claimed. easeInOutSine does not do
+// that — it starts at a dead stop — so the claim was only ever an
+// intention. This is the curve that actually keeps it: entered with speed,
+// and still settling to rest under the bulb exactly as before.
+const fallEase = carry(baseEaseInOutSine, 0.18, 1);
+// The light starts going out while the camera is still settling, so the
+// two overlap instead of queueing. Lands on exactly 1, so the iris is
+// exactly as black as it was.
+const darkEase = carry(baseEaseInOutSine, 0.16, 1);
+// The card behind the iris is still coming up on the frame the gallery's
+// pull-back takes over. easeInOutSine brakes to nothing, so the last of
+// this beat was a held frame again even after SWAP was extended to 1 —
+// the arrival LANDED on the seam but arrived at it stopped. Lands on
+// exactly 1, so the card is exactly as present as it was.
+const cardEase = carry(baseEaseInOutSine, 0, 0.94);
 
 export default function PencilSection({
   progress,
@@ -79,7 +127,7 @@ export default function PencilSection({
 
   // THE DESCENT. Eased both ends: the camera is already moving when this
   // beat starts and comes to rest under the bulb.
-  const fallT = easeInOutSine(span(p, FALL[0], FALL[1]));
+  const fallT = fallEase(span(p, FALL[0], FALL[1]));
 
   // The bulb's box travels up the frame because the eye is going down.
   // It starts exactly where the cord beat parked it.
@@ -123,8 +171,8 @@ export default function PencilSection({
   // The circle goes black FIRST and the card comes up under it after.
   // Overlapping them showed a lit white circle sitting on a card with the
   // narration still over it — three states of the beat at once.
-  const dark = easeInOutSine(span(p, SWAP[0], SWAP[0] + 0.16));
-  const cardIn = easeInOutSine(span(p, SWAP[0] + 0.12, SWAP[1]));
+  const dark = darkEase(span(p, SWAP[0], SWAP[0] + 0.16));
+  const cardIn = cardEase(span(p, SWAP[0] + 0.12, SWAP[1]));
   const rim = dark;
 
   // Once the circle is black it is the gallery's iris, so it takes the
@@ -192,6 +240,29 @@ export default function PencilSection({
               willChange: "opacity",
             }}
           />
+          {/* The warm spill on the line's last stretch — CordSection's
+              own, continued. Without it the bottom of the wire went from
+              lit to plain white on the frame the beats changed hands,
+              while the bulb it is lit BY is still hanging right there. */}
+          <div
+            aria-hidden
+            data-pencil="cord-spill"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: Math.max(0, cordBottom - (CORD_SPILL_VH / 100) * vh),
+              height: `${CORD_SPILL_VH}vh`,
+              width: lineWidthPx(vh),
+              transform: "translateX(-50%)",
+              background: CORD_SPILL_BG,
+              boxShadow: CORD_SPILL_GLOW,
+              opacity: cordOpacity,
+              borderRadius: 2,
+              zIndex: 1,
+              pointerEvents: "none",
+              willChange: "opacity",
+            }}
+          />
           <div
             aria-hidden
             data-pencil="cord-glow"
@@ -231,6 +302,38 @@ export default function PencilSection({
         >
           <BulbModel litness={1} pitch={fallT} />
         </div>
+      )}
+
+      {/* THE LIGHT IN THE ROOM, ARRIVING ALREADY LIT.
+          The bulb has been burning for a whole section; the eye moving
+          under it does not switch it on. This layer IS the cord beat's
+          wash — same three falloffs, same spread, same hot spot on the
+          filament — held at full on the frame this beat takes over and
+          cross-dissolved into the wash below as the camera comes beneath
+          the glass and the light stops reading as a lamp in a room and
+          starts reading as a disc. The two opacities sum to (1 - dark)
+          throughout, so the room never dims for the swap; it only changes
+          what shape the light is. */}
+      {fallT < 0.999 && (
+        <div
+          aria-hidden
+          data-pencil="wash-carried"
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 0,
+            width: bulbPx * BULB_WASH_SPREAD,
+            height: bulbPx * BULB_WASH_SPREAD,
+            marginLeft: (-bulbPx * BULB_WASH_SPREAD) / 2,
+            marginTop: (-bulbPx * BULB_WASH_SPREAD) / 2,
+            borderRadius: "50%",
+            background: BULB_WASH_GRADIENT,
+            transform: `translateY(${(bulbTop + bulbPx * BULB_WASH_CENTRE).toFixed(1)}px)`,
+            opacity: (1 - fallT) * (1 - dark),
+            willChange: "transform, opacity",
+            pointerEvents: "none",
+          }}
+        />
       )}
 
       {/* The light in the room, rising as the eye comes under the bulb. */}

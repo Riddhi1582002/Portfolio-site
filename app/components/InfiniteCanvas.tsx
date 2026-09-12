@@ -52,6 +52,7 @@ import {
   glowShadow,
 } from "./HeroSection";
 import { BULB_GLASS_RATIO, bulbSizePx } from "./CordSection";
+import { carry } from "../lib/motion";
 import HoverCard from "./HoverCard";
 
 // One repeating cell of the composition, in canvas px.
@@ -158,6 +159,34 @@ const span = (v: number, a: number, b: number) => clamp01((v - a) / (b - a));
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 const easeInOutCubic = (t: number) =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+// THE PULL-BACK, and THE SETTLE THAT TAKES IT ON.
+//
+// The settle's own comment says the composition "keeps moving for a moment
+// after the camera stops". It did not: easeOutCubic brought the pull-back
+// to a dead halt, easeInOutCubic started the slide from another one, and
+// between them the gallery was a still photograph. Two movements that were
+// written to read as one, joined at zero.
+//
+// The pull-back now lands still drifting backwards, and the slide opens at
+// the speed that drift is carrying, so the composition genuinely keeps
+// going and only then comes to rest. Both still land on exactly 1 —
+// revealScale reaches exactly 1 and the clear space still arrives exactly
+// over ART.
+const revealEase = carry(easeOutCubic, 0, 0.78);
+const settleEase = carry(easeInOutCubic, 0.24, 1);
+
+// THE FLIGHT HOME.
+//
+// `returnT` is already eased toward the gesture's target by the rAF loop
+// below, which responds to a flick instantly. Running it through a plain
+// easeInOutCubic threw that away: the composed curve leaves at zero speed,
+// so the first part of every flick moved the camera by nothing at all and
+// the gesture felt disconnected from the picture. Entered on the curve's
+// shoulder instead, the camera is travelling on the frame the flick lands.
+// It still arrives at exactly 1 — ART reaches exactly the hero's size and
+// position there, which is what makes the handover to page one a no-op.
+const camEase = carry(easeInOutCubic, 0.26, 0.9);
 // A drag shorter than this is a click, not a pan.
 const CLICK_SLOP_PX = 5;
 
@@ -334,11 +363,22 @@ export default function InfiniteCanvas({
   sans,
   vw,
   vh,
+  visible = true,
 }: {
   progress: number;
   sans: string;
   vw: number;
   vh: number;
+  /**
+   * False for the lead-in stretch where this section is mounted early —
+   * fourteen pieces per cell plus the plane's first layout is not work to
+   * do on the frame the pull-back starts — but its own progress has not
+   * begun. This backdrop is opaque, so while it was unconditionally
+   * visible it covered PencilSection with a picture that could not move,
+   * because `progress` is clamped at 0 throughout that stretch. Same
+   * guard CordSection and PencilSection already use.
+   */
+  visible?: boolean;
 }) {
   const p = clamp01(progress);
   const planeRef = useRef<HTMLDivElement>(null);
@@ -369,7 +409,7 @@ export default function InfiniteCanvas({
   // composition scales down about the frame's centre and the rest of the
   // work arrives from outside the frame because it was always there.
   const frame = useMemo(() => irisFrame(vw, vh), [vw, vh]);
-  const revealT = easeOutCubic(span(p, 0, REVEAL_END));
+  const revealT = revealEase(span(p, 0, REVEAL_END));
   // Geometric, not linear: a linear pull-back from 5x reads as the images
   // rushing away and then crawling. Interpolating the LOG of the scale
   // makes each moment of the move cover the same proportion of distance,
@@ -391,7 +431,7 @@ export default function InfiniteCanvas({
   const returnTargetRef = useRef(0);
   const returnTRef = useRef(0);
 
-  const camT = easeInOutCubic(returnT);
+  const camT = camEase(returnT);
   // A real dolly: the composition is near the lens and rushes past it,
   // ART is far behind and swells slowly. Same camera, two depths, which
   // is what makes the move read as travelling THROUGH the gap rather
@@ -514,7 +554,7 @@ export default function InfiniteCanvas({
   // writing the pan for good — nothing should move the composition out
   // from under a hand that is on it.
   const untouchedRef = useRef(true);
-  const settleT = easeInOutCubic(span(p, REVEAL_END, REVEAL_END + 0.22));
+  const settleT = settleEase(span(p, REVEAL_END, REVEAL_END + 0.22));
   useEffect(() => {
     if (revealing) {
       // Hand the pan over at the value the reveal left it on, so the
@@ -873,7 +913,18 @@ export default function InfiniteCanvas({
     opened || returning ? 0 : span(revealT, 0.92, 1);
 
   return (
-    <div style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#000" }}>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        background: visible ? "#000" : "transparent",
+        opacity: visible ? 1 : 0,
+        // Nothing here may take a pointer while the beat underneath it
+        // still owns the frame.
+        pointerEvents: visible ? undefined : "none",
+      }}
+    >
       {/* THE FIXED ROUNDED VIEWPORT. It clips, and that is all it does —
           it is never transformed, so the window is genuinely fixed and
           the composition genuinely moves inside it. */}

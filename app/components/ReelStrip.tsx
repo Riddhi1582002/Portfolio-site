@@ -14,8 +14,9 @@
 // picks which card is centred; the neighbours sit either side and the one
 // entering at the right edge falls into a black gradient.
 
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import HoverCard from "./HoverCard";
+import { carry, easeInOutSine as baseEaseInOutSine } from "../lib/motion";
 
 export type Reel = { id: string; ratio: number; title: string; meta: string };
 
@@ -39,7 +40,34 @@ const STRIP_CENTRE_VH = 61;
 const GAP_VH = 3.2;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
+
+// THE ENTRY, CARRYING THE FAN'S MOMENTUM.
+//
+// The scrub was a plain easeInOutSine, which opens at zero speed — and
+// the move that hands over to it, the fan spreading into this row, used
+// to close at zero speed too. So the row assembled, came to a complete
+// standstill, and then started travelling again from rest: two moves,
+// visibly. The cards' own poses lined up to the pixel, which is exactly
+// why it read as a glitch rather than as a cut — nothing changed except
+// that everything stopped.
+//
+// Sliced off its own flat start, the curve is the same shape, still
+// settles at the far end, and still puts card 0 dead centre at p = 0 (the
+// slice is renormalised, so f(0) is exactly 0 and the handover frame is
+// unchanged) — but the row is ALREADY GLIDING on its first frame, at
+// about 60% of the scrub's average rate, which is the speed DepthCards'
+// spread is still travelling at when it lets go.
+const STRIP_ENTRY_CARRY = 0.14;
+// And sliced a little off its flat END too, for the same reason at the
+// other seam: the camera roll that takes over used to begin turning from
+// a standstill, immediately after this row had come to one. The row now
+// arrives on the last piece still drifting — about a sixth of the scrub's
+// average rate, which reads as a settle in progress rather than a stop —
+// and the roll picks that drift up as its opening speed. f(1) is still
+// exactly 1, so the last piece is still exactly centred, which is the
+// point the camera stands on.
+const STRIP_EXIT_CARRY = 0.96;
+const focusEase = carry(baseEaseInOutSine, STRIP_ENTRY_CARRY, STRIP_EXIT_CARRY);
 
 export { CARD_H_VH, STRIP_CENTRE_VH, GAP_VH };
 
@@ -51,6 +79,26 @@ export const CARD_FACE_BG =
   "linear-gradient(150deg, #191a1e 0%, #111216 55%, #0a0b0d 100%)";
 export const CARD_FACE_BORDER = "1px solid rgba(255,255,255,0.09)";
 export const CARD_RADIUS = 14;
+
+// THE CARD'S GLOW, and the two gradients the frame falls away into. One
+// definition, because the beats either side of this one have to be able to
+// arrive at this frame and leave it: the fan assembles into it and the
+// camera roll opens on it. They were only here, so a card had no glow
+// until the instant REELS took the pane and then had one — the single
+// largest thing that changed at that hand-over.
+export const CARD_GLOW_SHADOW =
+  "0 0 46px rgba(255,255,255,0.2), 0 24px 70px rgba(0,0,0,0.7)";
+/** Glow strength for a card `distance` pieces away from the one in focus. */
+export const cardGlow = (distance: number) =>
+  Math.max(0.25, 1 - distance * 0.32);
+/** Step-back opacity for a card `distance` pieces away from focus. */
+export const cardDim = (distance: number) => Math.max(0.32, 1 - distance * 0.34);
+export const EDGE_FADE_RIGHT =
+  "linear-gradient(to left, #000 0%, rgba(0,0,0,0.85) 6%, rgba(0,0,0,0) 22%)";
+export const EDGE_FADE_LEFT =
+  "linear-gradient(to right, #000 0%, rgba(0,0,0,0.7) 4%, rgba(0,0,0,0) 16%)";
+/** Where the piece's details sit, in vh — the clear band above the strip. */
+export const DETAILS_TOP_VH = STRIP_CENTRE_VH - CARD_H_VH / 2 - 14;
 
 // How much of the strip's scroll the entry occupies: the row arrives
 // already assembled but pulled back, and pushes in to full size before
@@ -114,7 +162,14 @@ export default function ReelStrip({ progress }: { progress: number }) {
   const [vh, setVh] = useState(900);
   const hostRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  // useLayoutEffect, not useEffect. This section MOUNTS MID-SCROLL, on the
+  // exact frame the fan finishes assembling, and every distance in it is
+  // in real viewport units off the state above. A deferred effect let the
+  // 1440x900 placeholder reach the screen for one frame at that precise
+  // seam — the whole row drawn at the wrong scale on the single frame the
+  // handover happens, at every viewport that is not 1440x900. Reading it
+  // before paint removes the one thing guaranteed to be visible.
+  useLayoutEffect(() => {
     const read = () => {
       setVw(window.innerWidth);
       setVh(window.innerHeight);
@@ -131,9 +186,14 @@ export default function ReelStrip({ progress }: { progress: number }) {
   const entryT = 1;
   const scale = 1;
 
-  // Which card is centred. Eased so each card settles rather than sliding
-  // past at constant speed.
-  const focus = easeInOutSine(p) * (REELS.length - 1);
+  // Which card is centred. Eased so the row settles at the far end rather
+  // than sliding to a halt at constant speed — and entered with the
+  // momentum the fan hands over (see focusEase).
+  const focus = focusEase(p) * (REELS.length - 1);
+  // No entrance of their own. DepthCards brings the details up as the fan
+  // assembles (it reads DETAILS_TOP_VH and the piece's own title from
+  // here), so by the frame this section takes the pane they are already
+  // fully up — and a fade here would fade them a second time.
   const lo = Math.floor(focus);
   const hi = Math.min(REELS.length - 1, lo + 1);
   const frac = focus - lo;
@@ -160,11 +220,10 @@ export default function ReelStrip({ progress }: { progress: number }) {
           position: "absolute",
           left: 0,
           right: 0,
-          top: `${STRIP_CENTRE_VH - CARD_H_VH / 2 - 14}vh`,
+          top: `${DETAILS_TOP_VH}vh`,
           textAlign: "center",
           pointerEvents: "none",
           opacity: entryT,
-          transition: "opacity 200ms ease",
         }}
       >
         <div
@@ -219,7 +278,7 @@ export default function ReelStrip({ progress }: { progress: number }) {
           const halfSpan = (vw / 2 + toPx(widths[i]) / 2) / Math.max(1, toPx(1));
           const near = Math.abs(centres[i] - centreVh) < halfSpan + 8;
           // Neighbours stay visible but step back.
-          const dim = Math.max(0.32, 1 - distance * 0.34);
+          const dim = cardDim(distance);
           return (
             <div
               key={reel.id}
@@ -253,9 +312,8 @@ export default function ReelStrip({ progress }: { progress: number }) {
                       position: "absolute",
                       inset: 0,
                       borderRadius: 14,
-                      boxShadow:
-                        "0 0 46px rgba(255,255,255,0.2), 0 24px 70px rgba(0,0,0,0.7)",
-                      opacity: Math.max(0.25, 1 - distance * 0.32),
+                      boxShadow: CARD_GLOW_SHADOW,
+                      opacity: cardGlow(distance),
                       willChange: "opacity",
                       pointerEvents: "none",
                     }}
@@ -289,8 +347,7 @@ export default function ReelStrip({ progress }: { progress: number }) {
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
-          background:
-            "linear-gradient(to left, #000 0%, rgba(0,0,0,0.85) 6%, rgba(0,0,0,0) 22%)",
+          background: EDGE_FADE_RIGHT,
         }}
       />
       <div
@@ -299,8 +356,7 @@ export default function ReelStrip({ progress }: { progress: number }) {
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
-          background:
-            "linear-gradient(to right, #000 0%, rgba(0,0,0,0.7) 4%, rgba(0,0,0,0) 16%)",
+          background: EDGE_FADE_LEFT,
         }}
       />
     </div>

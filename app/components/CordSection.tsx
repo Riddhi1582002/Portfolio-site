@@ -18,6 +18,7 @@ import NarrationLine from "./NarrationLine";
 import BulbModel from "./BulbModel";
 import ArcCarousel, { arcPresence } from "./ArcCarousel";
 import CameraRoll, { lineWidthPx, lineGlow } from "./CameraRoll";
+import { carry, easeInOutSine as baseEaseInOutSine } from "../lib/motion";
 import {
   NARRATION_COLOR,
   NARRATION_GLOW,
@@ -29,11 +30,32 @@ import {
 const ROLL_END = 0.11;
 const LINE_1 = [0.13, 0.29] as const;
 const LINE_2 = [0.31, 0.46] as const;
+// THE TRAVEL BEGINS UNDER THE YAW'S LAST DEGREES, not after them.
+//
+// It used to start at ROLL_END — i.e. once the roll beat was completely
+// over. The yaw inside that beat finishes at 0.94 of it and the cord takes
+// over across the remaining 0.06, so the camera came to a full stop, the
+// swap cross-faded with nothing moving at all, and only then did the
+// descent start from rest. Three movements, two dead frames between them,
+// on a beat that is supposed to read as one continuous fall down the line.
+// Starting here, the eye is already travelling down the line while the
+// line is still forming out of the cards — and the whole camera-roll layer
+// travels with it (see the wrapper below), so the swap stays exact.
+const TRAVEL_START_OF_ROLL = 0.88;
 // The camera stops travelling here: the bulb has arrived and holds still
 // for the rest of the section, so the arc turns around a fixed centre.
 const TRAVEL_END = 0.52;
 // The arc of work, one scroll per card.
-const ARC_START = 0.54;
+//
+// It opened at 0.54 while the camera stopped travelling at 0.52 — so the
+// bulb arrived, the frame held perfectly still for 23vh of scrolling, and
+// only then did the first piece start swinging in. The arc carries 2.6
+// cards of angular lead-in before its first card clears the fade, so
+// opening it here puts that first piece on screen at cordP ~0.515, a
+// breath BEFORE the camera settles: the work arrives into the same
+// movement the bulb arrives on, and the light starts handing over (see
+// `presence` below) as the eye comes to rest rather than afterwards.
+const ARC_START = 0.51;
 
 // Geometry of the bulb, kept here because the arc has to be centred on it
 // — and exported, because the beat that follows keeps descending past the
@@ -65,16 +87,62 @@ const BULB_VW_MAX = 66;
 // remainder. Measured against the render, not assumed.
 export const CAP_RATIO = 0.052;
 
+/**
+ * THE LIGHT IN THE ROOM, as a spec rather than as three literals buried in
+ * this file's JSX — because the beat that follows keeps descending past
+ * the same lit bulb and has to open on exactly this light. It used to
+ * start from nothing and ramp up with the descent, so the room went dark
+ * on the frame the beats changed hands and then re-lit itself: the single
+ * most visible discontinuity on the page, since this glow is most of what
+ * is on screen at that moment.
+ *
+ * Three falloffs rather than one. A single gradient reads as a painted
+ * disc; light in air has a small intense core, a shoulder and a long faint
+ * skirt, and the eye reads the shoulder as distance.
+ */
+export const BULB_WASH_GRADIENT = [
+  "radial-gradient(circle, rgba(255,244,222,0.5) 0%, rgba(255,238,208,0) 11%)",
+  "radial-gradient(circle, rgba(255,226,178,0.26) 0%, rgba(255,220,166,0) 27%)",
+  "radial-gradient(circle, rgba(255,206,140,0.11) 0%, rgba(255,196,124,0) 58%)",
+].join(", ");
+/** The wash's diameter, as a multiple of the bulb's own box. */
+export const BULB_WASH_SPREAD = 3;
+/** Where its hot spot sits down that box — the filament, not the centre. */
+export const BULB_WASH_CENTRE = 0.52;
+
+/** The warm spill on the last stretch of the line, and how long it runs. */
+export const CORD_SPILL_VH = 46;
+export const CORD_SPILL_BG =
+  "linear-gradient(to bottom, rgba(255,214,150,0) 0%, rgba(255,214,150,0.45) 62%, rgba(255,200,130,0.9) 100%)";
+export const CORD_SPILL_GLOW =
+  "0 0 10px rgba(255,206,140,0.5), 0 0 34px rgba(255,190,110,0.28), 0 0 96px rgba(255,178,96,0.13)";
+
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
 const span = (v: number, a: number, b: number) => clamp01((v - a) / (b - a));
 
+// The descent is entered with the yaw's own remaining speed rather than
+// from a standstill: by the time the line has finished forming, the camera
+// is already moving down it. Lands on exactly 1 as before, so where the
+// bulb comes to rest is unchanged.
+const travelEase = carry(baseEaseInOutSine, 0.16, 1);
+
 export default function CordSection({
   progress,
   sans,
+  visible = true,
 }: {
   progress: number;
   sans: string;
+  /**
+   * False for the lead-in stretch where this section is mounted early (to
+   * warm its WebGL context and GLTF) but its own progress has not started.
+   * ReelStrip is still on screen and still scrubbing underneath; an opaque
+   * backdrop here covers it with a frame that cannot move, because this
+   * section's progress is clamped at 0 throughout. Same guard
+   * PencilSection uses for the same reason.
+   */
+  visible?: boolean;
 }) {
   const p = clamp01(progress);
   const [reduced, setReduced] = useState(false);
@@ -105,7 +173,9 @@ export default function CordSection({
   const handoff = clamp01((rollRaw - 0.94) / 0.06);
   // Travel down the cord once the roll has finished, and stop once the
   // bulb is in shot.
-  const travel = easeInOutSine(span(p, ROLL_END, TRAVEL_END));
+  const travel = travelEase(
+    span(p, ROLL_END * TRAVEL_START_OF_ROLL, TRAVEL_END)
+  );
 
   // Narration beats fade in and out; the second replaces the first.
   const n1In = span(p, LINE_1[0], LINE_1[0] + 0.12);
@@ -147,13 +217,36 @@ export default function CordSection({
     easeInOutSine(span(travel, 0.08, 0.5)) * (1 - bulbIn) * (1 - 0.86 * presence);
 
   return (
-    <div ref={hostRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#000" }}>
+    <div
+      ref={hostRef}
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        background: visible ? "#000" : "transparent",
+        opacity: visible ? 1 : 0,
+      }}
+    >
       {/* The camera move that turns the strip into the line. The cards are
           the strip's own cards at the strip's own world positions; only
           the eye moves. It hands over to the cord below at the moment the
           two are the same width in the same place. */}
       {handoff < 1 && (
-        <div style={{ opacity: 1 - handoff, position: "absolute", inset: 0 }}>
+        <div
+          style={{
+            opacity: 1 - handoff,
+            position: "absolute",
+            inset: 0,
+            // TRAVELS WITH THE CORD. The descent now begins while this
+            // layer is still cross-fading out (see TRAVEL_START_OF_ROLL),
+            // and the cord it is handing over to is already translating.
+            // Without this the two would be in different places for the
+            // frames they overlap and the swap — whose whole point is that
+            // it is the same line in the same place — would show as two.
+            transform: `translateY(${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
+            willChange: "transform, opacity",
+          }}
+        >
           <CameraRoll progress={rollRaw} vw={viewport.vw} vh={viewport.vh} />
         </div>
       )}
@@ -232,18 +325,16 @@ export default function CordSection({
         style={{
           position: "absolute",
           left: "50%",
-          top: `${(BULB_TOP_VH + bulbSizeVh * CAP_RATIO - 46).toFixed(2)}vh`,
-          height: "46vh",
+          top: `${(BULB_TOP_VH + bulbSizeVh * CAP_RATIO - CORD_SPILL_VH).toFixed(2)}vh`,
+          height: `${CORD_SPILL_VH}vh`,
           width: lineWidthPx(viewport.vh),
           transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
-          background:
-            "linear-gradient(to bottom, rgba(255,214,150,0) 0%, rgba(255,214,150,0.45) 62%, rgba(255,200,130,0.9) 100%)",
+          background: CORD_SPILL_BG,
           // Constant, so the blur is rasterised once; the beat fades the
           // layer instead of re-blurring it every frame. No blend mode
           // either — over black, screen and normal are the same picture,
           // and the blend forced its own compositing pass.
-          boxShadow:
-            "0 0 10px rgba(255,206,140,0.5), 0 0 34px rgba(255,190,110,0.28), 0 0 96px rgba(255,178,96,0.13)",
+          boxShadow: CORD_SPILL_GLOW,
           opacity: handoff * litGlow * (1 - 0.78 * presence),
           borderRadius: 2,
           zIndex: 3,
@@ -311,24 +402,16 @@ export default function CordSection({
             // Centred on the FILAMENT, not on the model's box. Hung
             // upside down the cap is at the top and the glass below it,
             // so the hot spot sits a little past the middle.
-            top: "52%",
-            width: "300%",
+            top: `${BULB_WASH_CENTRE * 100}%`,
+            width: `${BULB_WASH_SPREAD * 100}%`,
             aspectRatio: "1",
             transform: "translate(-50%, -50%)",
             borderRadius: "50%",
-            // Three falloffs rather than one. A single gradient reads as a
-            // painted disc; light in air has a small intense core, a
-            // shoulder, and a long faint skirt, and the eye reads the
-            // shoulder as distance.
             // The stops are CONSTANT and the layer is faded instead.
             // Re-generating three radial gradients across a 2000px box
             // every frame is a full repaint of the largest element in the
             // beat, and it does not look any different from fading one.
-            background: [
-              "radial-gradient(circle, rgba(255,244,222,0.5) 0%, rgba(255,238,208,0) 11%)",
-              "radial-gradient(circle, rgba(255,226,178,0.26) 0%, rgba(255,220,166,0) 27%)",
-              "radial-gradient(circle, rgba(255,206,140,0.11) 0%, rgba(255,196,124,0) 58%)",
-            ].join(", "),
+            background: BULB_WASH_GRADIENT,
             opacity: litGlow,
             willChange: "opacity",
             pointerEvents: "none",

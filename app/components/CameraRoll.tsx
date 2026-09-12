@@ -55,6 +55,7 @@ import {
   CARD_FACE_BORDER,
   CARD_RADIUS,
 } from "./ReelStrip";
+import { carry, easeInOutSine as baseEaseInOutSine, easeOutCubic } from "../lib/motion";
 
 // Where each move runs, as a share of this beat's progress. They meet with
 // a small overlap so the yaw begins as the roll is settling, and the yaw
@@ -92,8 +93,42 @@ export function lineWidthPx(vh: number) {
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
 const span = (v: number, a: number, b: number) => clamp01((v - a) / (b - a));
+
+// THE TWO MOVES, EASED SO THEY DO NOT STOP BETWEEN THEMSELVES.
+//
+// Both were plain easeInOutSine, which begins and ends at zero speed. The
+// roll therefore braked to a standstill, the yaw started again from one,
+// and the yaw in turn braked to a standstill before the cord took over —
+// three separate turns of the head rather than one continuous move,
+// despite the spans already overlapping. Sliced off their own flat ends
+// the two overlap in SPEED as well as in time: the roll is still turning
+// at about half its average rate when the yaw is already turning at about
+// half of its, and the yaw is still turning when the line hands over to
+// the cord and the descent (already under way) takes the momentum on.
+//
+// Both still land on exactly 1, so the roll is exactly -90 degrees and the
+// yaw exactly 90: the geometry the line depends on is untouched.
+const rollEase = carry(baseEaseInOutSine, 0.12, 0.86);
+const yawEase = carry(baseEaseInOutSine, 0.14, 0.9);
+
+// HOW MUCH OF THE STRIP'S OWN FRAME THIS BEAT STILL CARRIES.
+//
+// The cards' world positions already matched the strip's exactly — but
+// their PRESENTATION did not, and the eye reads presentation. The strip
+// steps its neighbours back to 32% opacity, prints the piece's title and
+// meta in the clear top third, glows each card, and lets the frame fall
+// into black at both edges. None of that existed here, so on the single
+// frame this beat took over, six cards jumped to full brightness, the
+// title vanished and both edges of the frame opened up — a hard cut
+// dressed as a continuation.
+//
+// So the beat OPENS on the strip's frame, exactly, and lets that
+// presentation dissolve as the eye turns: seen edge-on there is no near
+// card, no far card and no frame edge to fall away into, so it has to go —
+// but it goes as part of the camera move rather than instead of it. Gone
+// well before the yaw starts collapsing the column into a line.
+const CHROME_END = 0.42;
 
 /**
  * A soft, layered halo: a tight core, a near falloff and a wide, cool
@@ -128,8 +163,9 @@ export default function CameraRoll({
   const toPx = (v: number) => (v / 100) * vh;
   const cardH = toPx(CARD_H_VH);
 
-  const rollT = easeInOutSine(span(p, ROLL_SPAN[0], ROLL_SPAN[1]));
-  const yawT = easeInOutSine(span(p, YAW_SPAN[0], YAW_SPAN[1]));
+  const rollT = rollEase(span(p, ROLL_SPAN[0], ROLL_SPAN[1]));
+  const yawT = yawEase(span(p, YAW_SPAN[0], YAW_SPAN[1]));
+  const chrome = 1 - easeOutCubic(span(p, 0, CHROME_END));
 
   const roll = ROLL_DEG * rollT;
   const yaw = YAW_DEG * yawT;
@@ -146,6 +182,7 @@ export default function CameraRoll({
   // the frame — which is why no gap between pieces is ever in shot.
   const last = centres.length - 1;
   const camX = toPx(centres[last]);
+  const focused = REELS[last];
   // The strip sits low in the frame; the eye is above centre by exactly
   // that much and comes back to level through the yaw, so the finished
   // line runs down the middle.
@@ -204,6 +241,11 @@ export default function CameraRoll({
       >
         {REELS.map((reel, i) => {
           const w = toPx(widths[i]);
+          // ReelStrip's own two expressions, at the focus it handed over
+          // (the last piece), released to 1 as `chrome` falls away.
+          const distance = last - i;
+          const dim = Math.max(0.32, 1 - distance * 0.34);
+          const glow = Math.max(0.25, 1 - distance * 0.32);
           // Every edge is the same slab of white; which one you see is
           // decided by backface culling and by where the eye is, not by
           // anything animating.
@@ -231,6 +273,24 @@ export default function CameraRoll({
                 transformStyle: "preserve-3d",
               }}
             >
+              {/* The strip's own glow layer, on the face's plane. Constant
+                  shadow, faded — never re-blurred. */}
+              {chrome > 0.001 && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: CARD_RADIUS,
+                    boxShadow:
+                      "0 0 46px rgba(255,255,255,0.2), 0 24px 70px rgba(0,0,0,0.7)",
+                    transform: `translateZ(${(thick / 2).toFixed(2)}px)`,
+                    opacity: glow * chrome,
+                    backfaceVisibility: "hidden",
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
               {/* The face. Identical to the strip's own card, so there is
                   nothing to cross-fade when this beat takes over. */}
               <div
@@ -242,7 +302,18 @@ export default function CameraRoll({
                   border: CARD_FACE_BORDER,
                   transform: `translateZ(${(thick / 2).toFixed(2)}px)`,
                   backfaceVisibility: "hidden",
-                  opacity: faceOpacity,
+                  // The strip's step-back, released by the roll. It is on
+                  // the FACE and not on the card wrapper on purpose: an
+                  // opacity below 1 forces `transform-style: flat` on the
+                  // element it is set on, and the wrapper is the
+                  // preserve-3d container holding the four edge planes —
+                  // dimming it there would collapse the card's own 3D box
+                  // into its face. The face and the glow are coplanar, so
+                  // they can carry it; the edges are invisible for the
+                  // whole stretch `chrome` is non-zero anyway, since the
+                  // yaw that reveals them does not start until 0.46.
+                  opacity: faceOpacity * (1 - (1 - dim) * chrome),
+                  willChange: chrome > 0.001 ? "opacity" : "auto",
                 }}
               />
               {/* TOP edge — the one the yaw arrives at. Looking down the
@@ -299,6 +370,78 @@ export default function CameraRoll({
           );
         })}
       </div>
+
+      {/* THE STRIP'S OWN FRAME FURNITURE, continued into this beat and
+          released by the same `chrome`. These are the strip's exact values
+          — its details block sits at STRIP_CENTRE_VH - CARD_H_VH/2 - 14,
+          its edges carry these two gradients — so the frame this beat
+          opens on is the frame the previous one ended on, down to the
+          black falling away at the sides. */}
+      {chrome > 0.001 && (
+        <>
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: `${STRIP_CENTRE_VH - CARD_H_VH / 2 - 14}vh`,
+              textAlign: "center",
+              pointerEvents: "none",
+              opacity: chrome,
+              willChange: "opacity",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 500,
+                fontSize: "clamp(18px, 1.6vw, 26px)",
+                letterSpacing: "0.01em",
+                color: "#fff",
+                textShadow: "0 0 22px rgba(255,255,255,0.28)",
+              }}
+            >
+              {focused.title}
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                fontWeight: 300,
+                fontSize: "clamp(12px, 0.95vw, 15px)",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.5)",
+              }}
+            >
+              {focused.meta}
+            </div>
+          </div>
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              opacity: chrome,
+              willChange: "opacity",
+              background:
+                "linear-gradient(to left, #000 0%, rgba(0,0,0,0.85) 6%, rgba(0,0,0,0) 22%)",
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              opacity: chrome,
+              willChange: "opacity",
+              background:
+                "linear-gradient(to right, #000 0%, rgba(0,0,0,0.7) 4%, rgba(0,0,0,0) 16%)",
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

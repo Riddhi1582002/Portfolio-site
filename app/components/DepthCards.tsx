@@ -19,7 +19,7 @@
 // The strip pose is computed from ReelStrip's own layout function rather
 // than copied, so the two cannot drift apart.
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useLayoutEffect, useState, type CSSProperties } from "react";
 import NarrationLine from "./NarrationLine";
 import {
   REELS,
@@ -29,7 +29,13 @@ import {
   CARD_FACE_BG,
   CARD_FACE_BORDER,
   CARD_RADIUS,
+  CARD_GLOW_SHADOW,
+  cardGlow,
+  EDGE_FADE_LEFT,
+  EDGE_FADE_RIGHT,
+  DETAILS_TOP_VH,
 } from "./ReelStrip";
+import { carry, easeInOutCubic } from "../lib/motion";
 import {
   NARRATION_COLOR,
   NARRATION_FONT_SIZE,
@@ -65,14 +71,53 @@ const ARRIVE_STAGGER = 0.055;
 // its neighbour after that neighbour had settled, which is the crossing
 // that read as a glitch mid-spread.
 const SPREAD_STAGGER = 0.026;
+// EVERY CARD RUNS TO THE END OF THE SPREAD, not to its own staggered copy
+// of a fixed-length window.
+//
+// With equal-length windows the front card, which leads, also FINISHED
+// first — at arr 0.818 — and then sat perfectly still for the remaining
+// 19vh of scrolling while the cards behind it, all off frame by then,
+// finished up. So the two pieces actually in shot were parked for the
+// stretch immediately before REELS took the pane, which is the worst
+// possible place for the row to stop: the strip's scrub then had nothing
+// to inherit. Staggering only the START keeps the cascade that makes the
+// row assemble rather than snap — the front card still leads — while
+// every card is still travelling on the frame the strip picks it up.
+const SPREAD_LANDS_TOGETHER = true;
 // The spread is the whole of `arrange` now.
 const SPREAD_END = 1;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-const easeInOutCubic = (t: number) =>
-  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+
+// THE SPREAD'S OWN SHAPE — entered moving, left moving.
+//
+// It was a plain easeInOutCubic, which starts at zero speed and ends at
+// zero speed, and it sat between two other movements that also end and
+// start at zero: the cards' arrival brakes into it, and the strip's own
+// scrub opens out of it. Three movements, two full stops, and that is
+// what made the fan and the strip read as separate animations that happen
+// to line up rather than as one continuous assembly.
+//
+// Sliced out of the middle of the same curve, the shape is unchanged and
+// the landing pose is identical to the pixel (carry() renormalises, so
+// spread(1) is still exactly 1 and still exactly ReelStrip's steady
+// frame) — but the card is ALREADY MOVING on its first frame, continuing
+// the arrival that is still finishing behind it, and is STILL MOVING on
+// its last, which is the speed ReelStrip picks up and carries on with.
+const SPREAD_CARRY_IN = 0.26;
+const SPREAD_CARRY_OUT = 0.74;
+const spreadEase = carry(easeInOutCubic, SPREAD_CARRY_IN, SPREAD_CARRY_OUT);
+
+/** Card `i`'s own progress through the spread: staggered start, shared end. */
+function cardSpread(arr: number, i: number): number {
+  const from = i * SPREAD_STAGGER;
+  const to = SPREAD_LANDS_TOGETHER
+    ? SPREAD_END
+    : from + SPREAD_END - SPREAD_STAGGER * (CARD_COUNT - 1);
+  return clamp01((arr - from) / Math.max(1e-6, to - from));
+}
 
 export default function DepthCards({
   progress,
@@ -90,7 +135,13 @@ export default function DepthCards({
   const [vp, setVp] = useState({ vw: 1440, vh: 900 });
   const [hover, setHover] = useState<number | null>(null);
 
-  useEffect(() => {
+  // useLayoutEffect, not useEffect. This stack is laid out in real
+  // viewport px and the state above starts on a 1440x900 guess so the
+  // first render matches the server's. A deferred effect lets that guess
+  // reach the screen for one frame — a whole card stack drawn at the
+  // wrong size on the frame it appears. Reading it before paint keeps
+  // SSR agreeing and the guess invisible.
+  useLayoutEffect(() => {
     const read = () => setVp({ vw: window.innerWidth, vh: window.innerHeight });
     read();
     window.addEventListener("resize", read);
@@ -106,8 +157,29 @@ export default function DepthCards({
   const stripOffset = vw / 2 - toPx(centres[0]);
   const stripTop = toPx(STRIP_CENTRE_VH);
   const stripH = toPx(CARD_H_VH);
+  // Which cards can actually be in frame once this is the strip — ReelStrip's
+  // own `near` test, at the focus it opens on (card 0). Only those get the
+  // glow below, for both of ReelStrip's reasons: it is where ReelStrip puts
+  // one, so the frames match; and a 46px blur on a card several screens off
+  // to the right is a shadow rasterised for nothing.
+  const nearAtStrip = (i: number) => {
+    const halfSpan = (vw / 2 + toPx(widths[i]) / 2) / Math.max(1, toPx(1));
+    return Math.abs(centres[i] - centres[0]) < halfSpan + 8;
+  };
 
-  const hoverable = arr < 0.02 && lead > 0.85;
+  // The arrival and the spread overlap now (see HeroSection's ARRIVE_END
+  // and ARRANGE_START), so the old gate — the front card fully arrived AND
+  // the spread not yet begun — describes a window that no longer exists.
+  // Keyed instead to "the front of the fan has landed and has not
+  // meaningfully left it yet": spreadEase(0.05) is under 3% of the way to
+  // the strip, i.e. still the fan pose, and the window this opens is
+  // slightly wider in scroll than the one it replaces.
+  const hoverable = arr < 0.05 && lead > 0.6;
+
+  // Card 0's spread, computed the same way the loop below does it. The
+  // strip's frame furniture arrives on this rather than on `arr`, so it is
+  // locked to the piece it describes coming to rest.
+  const frontSpread = spreadEase(cardSpread(arr, 0));
 
   return (
     <div
@@ -142,12 +214,7 @@ export default function DepthCards({
           );
           // The front card leads the spread and the back of the fan
           // follows, so the row assembles rather than snapping.
-          const spread = easeInOutCubic(
-            clamp01(
-              (arr / SPREAD_END - i * SPREAD_STAGGER) /
-                (1 - SPREAD_STAGGER * (CARD_COUNT - 1))
-            )
-          );
+          const spread = spreadEase(cardSpread(arr, i));
 
           // --- fan pose ---
           const fw = FRONT_W * k;
@@ -292,6 +359,29 @@ export default function DepthCards({
                 />
               </div>
 
+              {/* AND THE STRIP'S OWN GLOW, arriving with it.
+                  The face matched to the pixel and the glow did not exist
+                  here at all, so a card sat in the row unlit and then, on
+                  the one frame REELS took the pane, was surrounded by a
+                  46px halo and a drop shadow. It was the largest single
+                  thing that changed at that hand-over — bigger than the
+                  cards, which did not move. Constant shadow, faded, the
+                  same way ReelStrip draws it. */}
+              {spread > 0.001 && nearAtStrip(i) && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: CARD_RADIUS,
+                    boxShadow: CARD_GLOW_SHADOW,
+                    opacity: cardGlow(i) * spread,
+                    willChange: "opacity",
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
+
               {/* The card's real thickness, turned a quarter turn out of
                   the face's plane so it shares the cards' 3D space. This
                   is the bright sliver running down the left of every card
@@ -319,6 +409,78 @@ export default function DepthCards({
         })}
       </div>
 
+      {/* THE REST OF THE STRIP'S FRAME, arriving on the same value.
+          The row the fan assembles into is not just eight cards: it is
+          those cards with the piece's details in the clear band above them
+          and the frame falling into black at both edges. All of it was
+          missing here and all of it appeared at once when REELS took over.
+          Keyed to the FRONT card's spread — card 0 is the piece the strip
+          opens in focus, so its arrival is what the details describe. */}
+      {frontSpread > 0.001 && (
+        <>
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: `${DETAILS_TOP_VH}vh`,
+              textAlign: "center",
+              pointerEvents: "none",
+              opacity: arr,
+              fontFamily: sans,
+              willChange: "opacity",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 500,
+                fontSize: "clamp(18px, 1.6vw, 26px)",
+                letterSpacing: "0.01em",
+                color: "#fff",
+                textShadow: "0 0 22px rgba(255,255,255,0.28)",
+              }}
+            >
+              {REELS[0].title}
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                fontWeight: 300,
+                fontSize: "clamp(12px, 0.95vw, 15px)",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.5)",
+              }}
+            >
+              {REELS[0].meta}
+            </div>
+          </div>
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              opacity: frontSpread,
+              willChange: "opacity",
+              background: EDGE_FADE_RIGHT,
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              opacity: frontSpread,
+              willChange: "opacity",
+              background: EDGE_FADE_LEFT,
+            }}
+          />
+        </>
+      )}
+
       {/* The narration, in FRONT of the fan. A later sibling of the
           perspective container, so it is not in the cards' 3D space. */}
       <div
@@ -335,12 +497,19 @@ export default function DepthCards({
           letterSpacing: NARRATION_TRACKING,
           color: NARRATION_COLOR,
           textShadow: NARRATION_GLOW,
+          // Both ends re-keyed, not re-timed: the spread now begins
+          // 0.09 of the tail earlier, so an exit keyed to `arr > 0` would
+          // have started fading this line out while it was still fading
+          // in. The window it is actually legible for is the same length
+          // it always was (~0.10 of the tail); it just no longer coincides
+          // with the moment the fan starts moving.
           opacity:
-            easeOutCubic(clamp01((lead - 0.34) / 0.4)) * (1 - clamp01(arr / 0.3)),
+            easeOutCubic(clamp01((lead - 0.28) / 0.34)) *
+            (1 - clamp01((arr - 0.16) / 0.26)),
         }}
       >
         <NarrationLine
-          progress={clamp01((lead - 0.34) / 0.45)}
+          progress={clamp01((lead - 0.28) / 0.42)}
           text="I work with various mediums, here's motion."
         />
       </div>

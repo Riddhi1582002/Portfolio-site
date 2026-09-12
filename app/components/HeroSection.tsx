@@ -24,6 +24,7 @@ import CordSection from "./CordSection";
 import PencilSection from "./PencilSection";
 import InfiniteCanvas from "./InfiniteCanvas";
 import NarrationLine from "./NarrationLine";
+import { easeInPow, easeOutSine } from "../lib/motion";
 import "./hero-fonts.css";
 import "./hero-hint.css";
 
@@ -246,11 +247,23 @@ const PENCIL_SPAN_END =
 const HERO_BEATS_END = BEATS_VH / HERO_VH;
 // Where the camera push finishes, as a share of the post-beats tail.
 const ZOOM_END = 0.349;
-// The cards begin their travel forward immediately, so the push and the
-// arrival are the same stretch of scrolling rather than two in sequence.
-const CARDS_START = 0.02;
-// The fan holds briefly, then becomes the strip.
-const ARRANGE_START = 0.42;
+// The cards begin their travel forward on the frame the camera releases
+// out of its wind-up (see TRANSITION_LEAD / PUSH_ANTICIPATION below), so
+// the push and the arrival are the same stretch of scrolling rather than
+// two in sequence.
+const CARDS_START = 0.032;
+// WHERE THE ARRIVAL ENDS, and — separately — WHERE THE SPREAD BEGINS.
+//
+// These used to be one number, which is precisely why the fan read as two
+// animations: every card flew forward, BRAKED TO A STOP (easeOutCubic
+// lands at zero speed), sat still for 0.154 of the tail — around 28vh of
+// scrolling with nothing moving at all — and only then began to spread.
+// Split apart, the spread opens while the back of the fan is still
+// travelling forward, so the two moves overlap instead of queueing: the
+// front card flows straight out of its arrival into its place in the row
+// and the cards behind it are still coming in over its shoulder.
+const ARRIVE_END = 0.46;
+const ARRANGE_START = 0.33;
 
 // Camera push into the A's triangular negative space.
 //
@@ -289,6 +302,62 @@ const CAMERA_MAX_ZOOM = 46;
 // beat (the camera scale, the card stack). Past this zoom there is
 // nothing left to keep sharp, so the layer can be locked and reused.
 const ART_CRISP_MAX_ZOOM = 20;
+
+// THE PUSH'S OWN SHAPE.
+//
+// It was easeInOutSine across the whole move — a curve that BRAKES to a
+// dead stop at the end. The end of this move is where the letter's edges
+// are leaving frame (they are still in shot until roughly zoom 20 of 46,
+// i.e. cameraT 0.78), so that brake was not hidden: the eye read a rush,
+// then a visible slow-down, then a cut to something else. A camera does
+// not decelerate into the thing it is flying through.
+//
+// Two parts instead, and no braking in either:
+//
+//   ANTICIPATION — the frame settles BACK a hair before the plunge. The
+//   classic wind-up, and it is what makes the push read as intended
+//   rather than as merely beginning. It decelerates into its own apex, so
+//   the release out of it is a continuous reversal and not a jolt.
+//
+//   RELEASE — accelerates out of the apex and never stops accelerating,
+//   leaving frame at the move's top speed. That speed is not thrown away:
+//   the card stack is already travelling forward on Z by then (see
+//   CARDS_START) and it is what absorbs the momentum the letter carries
+//   out of shot.
+//
+// Depth is in LOG-ZOOM units, which is what `zoom` interpolates — 0.016
+// of it is about a 6% pull-back, perceptible as a breath and no more.
+const PUSH_ANTICIPATION = 0.09;
+const PUSH_ANTICIPATION_DEPTH = 0.016;
+// Accelerates the whole way and exits at 1.35x the move's average rate.
+// A full easeInSine exits faster still but spends too long crawling at
+// the start, which on a log-zoom dolly reads as the push not starting.
+const pushRelease = easeInPow(1.35);
+function cameraPush(u: number): number {
+  if (u <= 0) return 0;
+  if (u < PUSH_ANTICIPATION) {
+    // Eases INTO the apex, so velocity is zero exactly where the
+    // direction reverses.
+    return -PUSH_ANTICIPATION_DEPTH * easeOutSine(u / PUSH_ANTICIPATION);
+  }
+  const t = (u - PUSH_ANTICIPATION) / (1 - PUSH_ANTICIPATION);
+  return (
+    -PUSH_ANTICIPATION_DEPTH + (1 + PUSH_ANTICIPATION_DEPTH) * pushRelease(t)
+  );
+}
+
+// HOW FAR THE PUSH REACHES BACK UNDER THE BEATS.
+//
+// SCROLL_TO_P holds p pinned at 2 across the last 3% of the beats: dead
+// scroll, nothing moving, sitting between the last narration line landing
+// and the camera starting. That hold is exactly where a wind-up belongs,
+// so the transition's own progress now starts there instead of after it.
+// The anticipation plays UNDER the settling narration — the beats hand
+// over while still on screen rather than ending and being replaced — and
+// the sizing is deliberate: PUSH_ANTICIPATION is set so the camera
+// reaches its apex on the very frame the beats finish, and releases from
+// there.
+const TRANSITION_LEAD_OF_BEATS = 0.03;
 
 // Time constant, in seconds, for the scroll-progress smoothing below. A
 // wheel notch is a discrete ~100px jump, so scrubbing straight off
@@ -645,7 +714,11 @@ export default function HeroSection() {
   const p = SCROLL_TO_P(clamp01(heroP / HERO_BEATS_END));
   // THE transition progress. Camera zoom, camera position, reel x, reel
   // opacity and reel entrance scale are all functions of this one value.
-  const transitionP = clamp01((heroP - HERO_BEATS_END) / (1 - HERO_BEATS_END));
+  // It starts BEFORE the beats are over — see TRANSITION_LEAD_OF_BEATS.
+  const transitionStart = HERO_BEATS_END * (1 - TRANSITION_LEAD_OF_BEATS);
+  const transitionP = clamp01(
+    (heroP - transitionStart) / (1 - transitionStart)
+  );
 
   const breath = Math.sin(t * 0.055 * Math.PI * 2) * 0.014;
   const drift = Math.sin(t * 0.04 * Math.PI * 2) * 10;
@@ -802,7 +875,7 @@ export default function HeroSection() {
   // Camera: scale the real composition about the point inside the A and
   // carry that point to the middle of the frame. Transform only.
   // The push owns the first ZOOM_END of the tail; the rest is the stack's.
-  const cameraT = easeInOutSine(clamp01(transitionP / ZOOM_END));
+  const cameraT = cameraPush(clamp01(transitionP / ZOOM_END));
   // Geometric, not linear, in cameraT — the actual visible-motion fix, not
   // a performance one. Interpolating the scale itself from 1 to 46 spends
   // most of cameraT's range on the huge absolute jump from ~25x to 46x
@@ -827,7 +900,28 @@ export default function HeroSection() {
   // frame, and what is left is the black the letter was sitting on. A
   // cross-fade would have softened exactly the edges that need to stay
   // razor clean right up to the moment they exit.
-  const cameraOpacity = 1;
+  //
+  // But once those edges HAVE left — past ART_CRISP_MAX_ZOOM there is
+  // nothing sharp on screen to protect, by this file's own reckoning — the
+  // layer is not black. ART's halo is a 1500px blurred radial gradient,
+  // and the camera has it scaled forty-six times: it washes the entire
+  // frame with a faint blue-grey lift. Measured at the hand-over that lift
+  // is about 2% across every pixel, and the strip's opaque black snuffed
+  // it out in one frame. So "what is left is the black the letter was
+  // sitting on" was not true — and it is the reason the cut to REELS
+  // registered as a cut at all.
+  //
+  // The layer now goes with the edges: it starts fading only once they are
+  // off frame and is gone before the fan begins spreading, so the push
+  // genuinely ends on black and REELS taking the pane changes nothing.
+  // It also stops paying for a 30px-blurred gradient, scaled 46x,
+  // repainted on every frame of the beat behind it.
+  const cameraOpacity =
+    1 -
+    clamp01(
+      (zoom - ART_CRISP_MAX_ZOOM) /
+        (CAMERA_MAX_ZOOM * 0.87 - ART_CRISP_MAX_ZOOM)
+    );
 
   // Closing resets both the open flag and the pop-up animation together —
   // a plain callback, not derived reactively from `contactPopupOpen` in an
@@ -1253,10 +1347,10 @@ export default function HeroSection() {
         {/* Only while the hero owns the frame. Past its slice the strip
             draws these same eight cards in the same places, and leaving
             both mounted meant drawing them twice. */}
-        {scrollP <= HERO_SPAN + 0.002 && (
+        {scrollP <= HERO_SPAN && (
         <DepthCards
           progress={clamp01(
-            (transitionP - CARDS_START) / (ARRANGE_START - CARDS_START)
+            (transitionP - CARDS_START) / (ARRIVE_END - CARDS_START)
           )}
           arrange={clamp01((transitionP - ARRANGE_START) / (1 - ARRANGE_START))}
           sans={SANS}
@@ -1265,7 +1359,7 @@ export default function HeroSection() {
 
         {/* The strip, in the SAME pane. The fan hands over to it at the
             hero's last frame; nothing scrolls between them. */}
-        {scrollP > HERO_SPAN + 0.002 && scrollP < REELS_SPAN_END + 0.004 && (
+        {scrollP <= REELS_SPAN_END && scrollP > HERO_SPAN && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
             <ReelStrip progress={reelsP} />
           </div>
@@ -1274,7 +1368,19 @@ export default function HeroSection() {
         {/* And the cord beat, same pane again. */}
         {scrollP > REELS_SPAN_END - 0.004 && scrollP < CORD_SPAN_END + 0.003 && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
-            <CordSection progress={cordP} sans={SANS} />
+            <CordSection
+              progress={cordP}
+              sans={SANS}
+              // Mounted early (the -0.004 above) so its WebGL context and
+              // GLTF are warm before the beat needs them — but NOT visible
+              // yet. It was opaque from the frame it mounted, and its own
+              // progress is clamped to 0 until the boundary, so for 12vh of
+              // scrolling it covered the still-scrubbing strip with a
+              // completely STATIC picture of the same cards. Twelve
+              // viewport-heights of frozen frame, sitting exactly on the
+              // seam. Same guard PencilSection already uses below.
+              visible={cordP > 0}
+            />
           </div>
         )}
 
@@ -1305,6 +1411,14 @@ export default function HeroSection() {
               sans={SANS}
               vw={viewport.vw}
               vh={viewport.vh}
+              // Mounted early (the -0.002 above) so the plane's first
+              // layout is not paid for on the frame the pull-back starts,
+              // but not VISIBLE until it has something to show: it is an
+              // opaque backdrop, and its progress is clamped to 0 for the
+              // whole lead-in, so it used to cover the last of the pencil
+              // beat with a frame that could not move. Same guard the two
+              // beats above it now use.
+              visible={canvasP > 0}
             />
           </div>
         )}
