@@ -21,6 +21,7 @@ import { SMOOTHER_ACTIVE } from "./SmoothScroll";
 import usePinnedPane from "./usePinnedPane";
 import ReelStrip, { REELS } from "./ReelStrip";
 import ReelProjectView from "./ReelProjectView";
+import ReelVideoViewer from "./ReelVideoViewer";
 import CordSection from "./CordSection";
 import PencilSection from "./PencilSection";
 import InfiniteCanvas from "./InfiniteCanvas";
@@ -492,19 +493,47 @@ export default function HeroSection() {
   const [contactPopupOpen, setContactPopupOpen] = useState(false);
   // Which REELS project is open in the full-screen project index, if any —
   // an index into REELS, not a copy of the reel itself, so prev/next just
-  // moves this number.
+  // moves this number. `selectedVideo` is lifted up here too (rather than
+  // living inside ReelProjectView) so the project index and the
+  // immersive viewer below always agree on which video is current, in
+  // both directions: WATCH hands the viewer whatever was selected, and
+  // Prev/Next Video inside the viewer is reflected back the moment BACK
+  // returns to the project index.
   const [reelOpenIndex, setReelOpenIndex] = useState<number | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState(0);
+  // Which reel the immersive viewer is showing, if any. Independent of
+  // `reelOpenIndex`: a single-video project jumps straight here without
+  // the project index ever opening.
+  const [viewerReelIndex, setViewerReelIndex] = useState<number | null>(null);
   const closeReel = useCallback(() => setReelOpenIndex(null), []);
   const openReel = useCallback((id: string) => {
     const idx = REELS.findIndex((r) => r.id === id);
-    if (idx !== -1) setReelOpenIndex(idx);
+    if (idx === -1) return;
+    setSelectedVideo(0);
+    const reel = REELS[idx];
+    if (reel.videos && reel.videos.length === 1) {
+      // Single-video project: the project index would have nothing to
+      // add over the card itself, so skip straight to the viewer.
+      setViewerReelIndex(idx);
+    } else {
+      setReelOpenIndex(idx);
+    }
   }, []);
-  // Freeze the underlying scroll-driven pane while the project view is
-  // open: this whole page is one continuous ScrollSmoother-driven pane, so
-  // an un-intercepted wheel/touch would keep advancing `scrollP` behind the
-  // overlay and land somewhere else in the REELS strip on close.
+  const navigateReel = useCallback((idx: number) => {
+    setSelectedVideo(0);
+    setReelOpenIndex(idx);
+  }, []);
+  const watchVideo = useCallback(() => {
+    setViewerReelIndex(reelOpenIndex);
+  }, [reelOpenIndex]);
+  const closeViewer = useCallback(() => setViewerReelIndex(null), []);
+  // Freeze the underlying scroll-driven pane while the project view or
+  // the immersive viewer is open: this whole page is one continuous
+  // ScrollSmoother-driven pane, so an un-intercepted wheel/touch would
+  // keep advancing `scrollP` behind the overlay and land somewhere else
+  // in the REELS strip on close.
   useEffect(() => {
-    if (reelOpenIndex == null) return;
+    if (reelOpenIndex == null && viewerReelIndex == null) return;
     const block = (e: Event) => e.preventDefault();
     window.addEventListener("wheel", block, { passive: false });
     window.addEventListener("touchmove", block, { passive: false });
@@ -512,7 +541,7 @@ export default function HeroSection() {
       window.removeEventListener("wheel", block);
       window.removeEventListener("touchmove", block);
     };
-  }, [reelOpenIndex]);
+  }, [reelOpenIndex, viewerReelIndex]);
   // Two states so the pop-up can mount at its BELOW-rest, hidden starting
   // point on one frame and only then transition up onto its landing line —
   // the same before/after-a-frame trick InfiniteCanvas uses to open a
@@ -1749,7 +1778,24 @@ export default function HeroSection() {
           reels={REELS}
           openIndex={reelOpenIndex}
           onClose={closeReel}
-          onNavigate={setReelOpenIndex}
+          onNavigate={navigateReel}
+          selectedVideo={selectedVideo}
+          onSelectVideo={setSelectedVideo}
+          onWatch={watchVideo}
+          sans={SANS}
+        />
+
+        {/* THE IMMERSIVE VIDEO VIEWER. Mounted here for the same reason as
+            the project index above: it has to survive independently of
+            `scrollP`, and returns null on its own once no reel is open in
+            it. Above the project index in paint order (rendered after),
+            since WATCH opens it on top of that page. */}
+        <ReelVideoViewer
+          reels={REELS}
+          reelIndex={viewerReelIndex}
+          videoIndex={selectedVideo}
+          onVideoChange={setSelectedVideo}
+          onClose={closeViewer}
           sans={SANS}
         />
 

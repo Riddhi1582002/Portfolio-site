@@ -27,6 +27,9 @@ export default function ReelProjectView({
   openIndex,
   onClose,
   onNavigate,
+  selectedVideo,
+  onSelectVideo,
+  onWatch,
   sans,
 }: {
   reels: Reel[];
@@ -35,6 +38,11 @@ export default function ReelProjectView({
   onClose: () => void;
   /** Jump to another reel by index (used by prev/next project). */
   onNavigate: (index: number) => void;
+  /** Lifted to HeroSection so the immersive viewer (opened via WATCH)
+      and this page always agree on which video is selected. */
+  selectedVideo: number;
+  onSelectVideo: (index: number) => void;
+  onWatch: () => void;
   sans: string;
 }) {
   const [mounted, setMounted] = useState(false);
@@ -43,7 +51,6 @@ export default function ReelProjectView({
   // after `openIndex` goes back to null, so the panel doesn't go blank an
   // instant before it fades out.
   const [displayIndex, setDisplayIndex] = useState<number | null>(null);
-  const [selectedVideo, setSelectedVideo] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Reacting to the `openIndex` prop, not to a local event, so this is the
@@ -51,16 +58,16 @@ export default function ReelProjectView({
   // effect: state (not a ref — refs can't be read during render) remembers
   // the last prop value seen, and the branch below only runs on the
   // render where it actually changed. Opening (or navigating to another
-  // project) resets straight to video 01, and closing only starts the
-  // exit — `displayIndex`/`mounted` stay put so the panel keeps showing
-  // its last content while it fades out.
+  // project) resets to video 01 (HeroSection owns that reset, since
+  // `selectedVideo` is lifted there — this only tracks mount/exit), and
+  // closing only starts the exit — `displayIndex`/`mounted` stay put so
+  // the panel keeps showing its last content while it fades out.
   const [prevOpenIndex, setPrevOpenIndex] = useState<number | null>(null);
   if (prevOpenIndex !== openIndex) {
     const wasOpen = prevOpenIndex != null;
     setPrevOpenIndex(openIndex);
     if (openIndex != null) {
       setDisplayIndex(openIndex);
-      setSelectedVideo(0);
       // Only a fresh open (from fully closed) needs the below-rest ->
       // shown flip; swapping to another project while already open must
       // leave `shown` at true; setting it false here would fade the
@@ -325,14 +332,7 @@ export default function ReelProjectView({
                 />
                 <button
                   type="button"
-                  onClick={() => {
-                    // Integration point for the immersive video viewer
-                    // (next step) — intentionally a no-op for now. It will
-                    // own play/pause, restart, time, prev/next-video and
-                    // back; this page only has to remember `displayIndex`
-                    // and `selectedVideo` for it to return to, which it
-                    // already keeps regardless of what WATCH does.
-                  }}
+                  onClick={onWatch}
                   style={{
                     position: "absolute",
                     left: "50%",
@@ -377,7 +377,7 @@ export default function ReelProjectView({
                 <button
                   key={v.id}
                   type="button"
-                  onClick={() => setSelectedVideo(i)}
+                  onClick={() => onSelectVideo(i)}
                   aria-current={selected}
                   aria-label={`Video ${i + 1}`}
                   style={{
