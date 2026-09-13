@@ -33,7 +33,16 @@ export type Reel = {
 
 // 16:9 and 9:16, in the order asked for.
 export const REELS: Reel[] = [
-  { id: "r1", ratio: 16 / 9, title: "Showreel", meta: "2025 · motion" },
+  {
+    id: "r1",
+    ratio: 16 / 9,
+    title: "Showreel",
+    meta: "2025 · motion",
+    videos: [
+      { id: "r1v1", src: "https://youtu.be/wzX9HGc-GoI" },
+      { id: "r1v2", src: "https://youtu.be/w3BT-6uKNl0" },
+    ],
+  },
   { id: "r2", ratio: 16 / 9, title: "Second piece", meta: "client · promo" },
   { id: "r3", ratio: 9 / 16, title: "Third piece", meta: "social · vertical" },
   { id: "r4", ratio: 16 / 9, title: "Fourth piece", meta: "corporate" },
