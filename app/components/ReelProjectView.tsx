@@ -161,27 +161,9 @@ export default function ReelProjectView({
           minHeight: 0,
         }}
       >
-        {/* TOP: origin label + close. */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 12,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.45)",
-            }}
-          >
-            Reels
-          </span>
+        {/* TOP: close only — no origin label, so the frame opens straight
+            onto the work rather than announcing where it came from. */}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button
             type="button"
             onClick={onClose}
@@ -189,7 +171,7 @@ export default function ReelProjectView({
               background: "none",
               border: "1px solid rgba(255,255,255,0.18)",
               borderRadius: 999,
-              padding: "8px 18px",
+              padding: "9px 20px",
               color: "#fff",
               fontSize: 12,
               fontWeight: 500,
@@ -202,147 +184,159 @@ export default function ReelProjectView({
           </button>
         </div>
 
-        {/* LEFT / CENTRE-RIGHT: project info + selected video. */}
+        {/* PROJECT INFO, above the media rather than beside it — the
+            title/description/count read as a single block before the eye
+            ever reaches the artwork, and nothing sits in a narrow side
+            column starved for width. Typography matches the About page's
+            own intro/body treatment (same letter-spacing and line-height),
+            just scaled up for this page's larger frame. */}
         <div
           style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "clamp(24px, 4vw, 64px)",
-            marginTop: "clamp(24px, 5vh, 56px)",
-            flex: 1,
-            minHeight: 0,
+            marginTop: "clamp(20px, 3.5vh, 40px)",
+            maxWidth: 900,
           }}
         >
-          <div style={{ flex: "1 1 280px", maxWidth: 420 }}>
-            <h2
-              style={{
-                margin: 0,
-                fontSize: "clamp(24px, 3vw, 40px)",
-                fontWeight: 500,
-                letterSpacing: "0.01em",
-                lineHeight: 1.1,
-              }}
-            >
-              {reel.title}
-            </h2>
-            {reel.description && (
-              <p
-                style={{
-                  marginTop: 18,
-                  fontSize: "clamp(14px, 1.1vw, 16px)",
-                  lineHeight: 1.6,
-                  fontWeight: 300,
-                  color: "rgba(255,255,255,0.72)",
-                  maxWidth: "42ch",
-                }}
-              >
-                {reel.description}
-              </p>
-            )}
-            <div
-              style={{
-                marginTop: 22,
-                fontSize: 12,
-                fontWeight: 500,
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                color: "rgba(255,255,255,0.4)",
-              }}
-            >
-              {videos.length} {videos.length === 1 ? "video" : "videos"}
-            </div>
-          </div>
-
-          <div
+          <h2
             style={{
-              flex: "2 1 420px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              minHeight: 0,
+              margin: 0,
+              fontSize: "clamp(32px, 4.6vw, 60px)",
+              fontWeight: 500,
+              letterSpacing: "0.005em",
+              lineHeight: 1.05,
+              color: "#fff",
             }}
           >
-            {video && (
-              <div
-                style={{
-                  position: "relative",
-                  width: "100%",
-                  maxWidth: 720,
-                  aspectRatio: String(reel.ratio),
-                  borderRadius: 14,
-                  overflow: "hidden",
-                  border: "1px solid rgba(255,255,255,0.09)",
-                  background:
-                    "linear-gradient(150deg, #191a1e 0%, #111216 55%, #0a0b0d 100%)",
-                }}
-              >
-                {video.thumbnail && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={video.thumbnail}
-                    alt=""
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                    draggable={false}
-                  />
-                )}
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    background:
-                      "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 40%)",
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Integration point for the immersive video viewer
-                    // (next step) — intentionally a no-op for now.
-                  }}
-                  style={{
-                    position: "absolute",
-                    left: "50%",
-                    top: "50%",
-                    transform: "translate(-50%, -50%)",
-                    background: "rgba(0,0,0,0.5)",
-                    border: "1px solid rgba(255,255,255,0.5)",
-                    borderRadius: 999,
-                    padding: "14px 30px",
-                    color: "#fff",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    letterSpacing: "0.16em",
-                    textTransform: "uppercase",
-                    cursor: "pointer",
-                  }}
-                >
-                  Watch
-                </button>
-              </div>
-            )}
+            {reel.title}
+          </h2>
+          {reel.description && (
+            <p
+              style={{
+                marginTop: 14,
+                fontSize: "clamp(16px, 1.3vw, 21px)",
+                lineHeight: 1.7,
+                fontWeight: 300,
+                letterSpacing: "0.03em",
+                color: "rgba(255,255,255,0.72)",
+                maxWidth: "62ch",
+              }}
+            >
+              {reel.description}
+            </p>
+          )}
+          <div
+            style={{
+              marginTop: 14,
+              fontSize: 12,
+              fontWeight: 500,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.4)",
+            }}
+          >
+            {videos.length} {videos.length === 1 ? "video" : "videos"}
           </div>
         </div>
 
-        {/* BOTTOM: video index (multi-video only) + project navigation. */}
+        {/* SELECTED MEDIA. Landscape pieces take the wide, confident
+            presentation this page has room for; portrait pieces (Bhajan
+            Clubbing's 9:16 footage) are capped on width instead so they
+            read as portrait video, not as a poster blown up to fill the
+            frame. */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginTop: "clamp(16px, 3vh, 32px)",
+          }}
+        >
+          {video && (
+            <div
+              style={{
+                position: "relative",
+                height: "100%",
+                width: reel.ratio >= 1 ? "100%" : "auto",
+                maxWidth: reel.ratio >= 1 ? 1180 : "min(100%, 46vh)",
+                maxHeight: reel.ratio >= 1 ? "min(100%, 72vh)" : "100%",
+                aspectRatio: String(reel.ratio),
+                borderRadius: 16,
+                overflow: "hidden",
+                border: "1px solid rgba(255,255,255,0.09)",
+                boxShadow: "0 0 60px rgba(255,255,255,0.08), 0 30px 90px rgba(0,0,0,0.6)",
+                background:
+                  "linear-gradient(150deg, #191a1e 0%, #111216 55%, #0a0b0d 100%)",
+              }}
+            >
+              {video.thumbnail && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={video.thumbnail}
+                  alt=""
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                  draggable={false}
+                />
+              )}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background:
+                    "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 40%)",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  // Integration point for the immersive video viewer
+                  // (next step) — intentionally a no-op for now.
+                }}
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
+                  background: "rgba(0,0,0,0.5)",
+                  border: "1px solid rgba(255,255,255,0.5)",
+                  borderRadius: 999,
+                  padding: "16px 34px",
+                  color: "#fff",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  letterSpacing: "0.16em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                }}
+              >
+                Watch
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* BOTTOM: video index (multi-video only, thumbnails now rather
+            than bare numbers) + project navigation, given enough size and
+            weight of its own to balance against the media above it. */}
         <div
           style={{
             display: "flex",
             flexWrap: "wrap",
             justifyContent: "space-between",
-            alignItems: "center",
-            gap: 16,
+            alignItems: "flex-end",
+            gap: 20,
             marginTop: "clamp(20px, 4vh, 40px)",
-            paddingTop: 20,
+            paddingTop: 22,
             borderTop: "1px solid rgba(255,255,255,0.09)",
           }}
         >
-          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", flex: "1 1 auto" }}>
             {videos.length > 1 &&
               videos.map((v, i) => (
                 <button
@@ -350,67 +344,108 @@ export default function ReelProjectView({
                   type="button"
                   onClick={() => setSelectedVideo(i)}
                   aria-current={i === selectedVideo}
+                  aria-label={`Video ${i + 1}`}
                   style={{
-                    background: "none",
-                    border: "none",
+                    position: "relative",
+                    width: 84,
+                    aspectRatio: String(reel.ratio),
+                    borderRadius: 8,
+                    overflow: "hidden",
                     padding: 0,
                     cursor: "pointer",
-                    fontFamily: sans,
-                    fontSize: 13,
-                    fontWeight: 500,
-                    letterSpacing: "0.05em",
-                    color:
-                      i === selectedVideo ? "#fff" : "rgba(255,255,255,0.4)",
-                    borderBottom:
+                    background: "#111216",
+                    border:
                       i === selectedVideo
-                        ? "1px solid rgba(255,255,255,0.8)"
-                        : "1px solid transparent",
-                    paddingBottom: 4,
+                        ? "2px solid rgba(255,255,255,0.9)"
+                        : "1px solid rgba(255,255,255,0.14)",
+                    opacity: i === selectedVideo ? 1 : 0.55,
+                    transition: "opacity 180ms ease, border-color 180ms ease",
                   }}
                 >
-                  {String(i + 1).padStart(2, "0")}
+                  {v.thumbnail && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={v.thumbnail}
+                      alt=""
+                      draggable={false}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  )}
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 5,
+                      bottom: 4,
+                      fontFamily: sans,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: "0.03em",
+                      color: "#fff",
+                      textShadow: "0 1px 4px rgba(0,0,0,0.9)",
+                    }}
+                  >
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
                 </button>
               ))}
           </div>
 
-          <div style={{ display: "flex", gap: 24 }}>
+          <div style={{ display: "flex", gap: 32 }}>
             <button
               type="button"
               onClick={() => prevIndex != null && onNavigate(prevIndex)}
               disabled={prevIndex == null}
               style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
                 background: "none",
                 border: "none",
                 padding: 0,
                 cursor: prevIndex != null ? "pointer" : "default",
                 fontFamily: sans,
-                fontSize: 12,
+                fontSize: "clamp(14px, 1.1vw, 17px)",
                 fontWeight: 500,
-                letterSpacing: "0.1em",
+                letterSpacing: "0.06em",
                 textTransform: "uppercase",
-                color: "rgba(255,255,255,0.6)",
+                color: prevIndex != null ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.3)",
               }}
             >
-              ← Prev project
+              <span style={{ fontSize: "1.3em" }} aria-hidden>
+                ←
+              </span>
+              Prev project
             </button>
             <button
               type="button"
               onClick={() => nextIndex != null && onNavigate(nextIndex)}
               disabled={nextIndex == null}
               style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
                 background: "none",
                 border: "none",
                 padding: 0,
                 cursor: nextIndex != null ? "pointer" : "default",
                 fontFamily: sans,
-                fontSize: 12,
+                fontSize: "clamp(14px, 1.1vw, 17px)",
                 fontWeight: 500,
-                letterSpacing: "0.1em",
+                letterSpacing: "0.06em",
                 textTransform: "uppercase",
-                color: "rgba(255,255,255,0.6)",
+                color: nextIndex != null ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.3)",
               }}
             >
-              Next project →
+              Next project
+              <span style={{ fontSize: "1.3em" }} aria-hidden>
+                →
+              </span>
             </button>
           </div>
         </div>

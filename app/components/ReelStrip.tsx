@@ -17,6 +17,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import HoverCard from "./HoverCard";
 import { carry, easeInOutSine as baseEaseInOutSine } from "../lib/motion";
+import "./reel-card.css";
 
 // Source information needed to identify/load one video. Nothing beyond
 // that — no per-video title/description; the reel's own title/meta cover it.
@@ -70,10 +71,24 @@ export const REELS: Reel[] = [
     meta: "social media",
     description:
       "Over 18 months, I worked across Excelsource International's different departments, creating social media content around what each one actually needed to communicate. These are some of the video pieces from that work.",
+    videos: [
+      { id: "r3v1", src: "https://youtu.be/NaEXnvyCkDY", thumbnail: "/reels/thumbnails/eipl-01.jpeg" },
+      { id: "r3v2", src: "https://youtu.be/CAMlZf6jnaM", thumbnail: "/reels/thumbnails/eipl-02.jpeg" },
+      { id: "r3v3", src: "https://youtu.be/7Lbbfn0cWsA", thumbnail: "/reels/thumbnails/eipl-03.jpeg" },
+      { id: "r3v4", src: "https://youtu.be/BfXzpWco39Q", thumbnail: "/reels/thumbnails/eipl-04.jpeg" },
+      { id: "r3v5", src: "https://youtu.be/Xqbh1J92DzE", thumbnail: "/reels/thumbnails/eipl-05.jpeg" },
+      { id: "r3v6", src: "https://youtu.be/5XEBuj-jyRg", thumbnail: "/reels/thumbnails/eipl-06.jpeg" },
+      { id: "r3v7", src: "https://youtu.be/gOHTE0jKTMs", thumbnail: "/reels/thumbnails/eipl-07.jpeg" },
+      { id: "r3v8", src: "https://youtu.be/vcjuHjs9RX4", thumbnail: "/reels/thumbnails/eipl-08.jpeg" },
+      { id: "r3v9", src: "https://youtube.com/shorts/TwZSJ0yg3kM?feature=share", thumbnail: "/reels/thumbnails/eipl-09.jpeg" },
+      { id: "r3v10", src: "https://youtu.be/qmmr3Pnfy_s", thumbnail: "/reels/thumbnails/eipl-10.jpeg" },
+    ],
   },
   {
     id: "r4",
-    ratio: 16 / 9,
+    // Portrait: the showcase reel (and the rest of this project) is
+    // 1080x1920 footage, not the landscape default the other projects use.
+    ratio: 9 / 16,
     title: "Bhajan Clubbing",
     meta: "Gujarati bhajans",
     description:
@@ -130,7 +145,6 @@ export const REELS: Reel[] = [
       { id: "r7v1", src: "https://youtu.be/vgxNu5STlJM", thumbnail: "/reels/thumbnails/baby-driver.jpeg" },
     ],
   },
-  { id: "r8", ratio: 16 / 9, title: "Eighth piece", meta: "digital comic" },
 ];
 
 // One height for every card; widths follow from the ratios above.
@@ -427,8 +441,11 @@ export default function ReelStrip({
                     }}
                   />
                   <HoverCard aspect={reel.ratio} radius={14}>
-                    {/* Neutral placeholder. Real work replaces the child. */}
+                    {/* The project's showcase (first) video's thumbnail as
+                        the card's artwork. Title/description/video count
+                        are invisible until hovered — see reel-card.css. */}
                     <div
+                      className="reel-card-face"
                       role={reel.videos?.length ? "button" : undefined}
                       tabIndex={reel.videos?.length ? 0 : undefined}
                       aria-label={reel.videos?.length ? `Open ${reel.title}` : undefined}
@@ -448,6 +465,7 @@ export default function ReelStrip({
                       style={{
                         width: "100%",
                         height: "100%",
+                        position: "relative",
                         background: CARD_FACE_BG,
                         border: CARD_FACE_BORDER,
                         cursor: reel.videos?.length ? "pointer" : undefined,
@@ -458,7 +476,34 @@ export default function ReelStrip({
                         // something to open.
                         pointerEvents: reel.videos?.length ? "auto" : undefined,
                       }}
-                    />
+                    >
+                      {reel.videos?.[0]?.thumbnail && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={reel.videos[0].thumbnail}
+                          alt=""
+                          draggable={false}
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      )}
+                      <div className="reel-card-scrim" aria-hidden />
+                      <div className="reel-card-info">
+                        <div className="reel-card-title">{reel.title}</div>
+                        {reel.description && (
+                          <div className="reel-card-desc">{reel.description}</div>
+                        )}
+                        <div className="reel-card-count">
+                          {reel.videos?.length ?? 0}{" "}
+                          {(reel.videos?.length ?? 0) === 1 ? "video" : "videos"}
+                        </div>
+                      </div>
+                    </div>
                   </HoverCard>
                 </>
               )}

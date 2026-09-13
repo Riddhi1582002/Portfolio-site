@@ -1,0 +1,82 @@
+/* THE CARD'S HOVER REVEAL.
+   Project info is invisible by default — only the thumbnail reads. On
+   hover, a bottom-anchored scrim and the title/description/video count
+   fade up together, integrated with the artwork rather than floating
+   over it like a tooltip. Plain CSS :hover, not React state: nothing
+   here needs to survive scroll or re-render, and it stays inert on
+   touch, where hover has no meaning. */
+
+.reel-card-face {
+  overflow: hidden;
+}
+
+.reel-card-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.86) 0%,
+    rgba(0, 0, 0, 0.4) 42%,
+    rgba(0, 0, 0, 0) 68%
+  );
+  opacity: 0;
+  transition: opacity 240ms ease;
+  pointer-events: none;
+}
+
+.reel-card-info {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: clamp(14px, 2.2vh, 24px) clamp(14px, 2vw, 22px);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 240ms ease, transform 240ms ease;
+  pointer-events: none;
+}
+
+.reel-card-face:hover .reel-card-scrim,
+.reel-card-face:hover .reel-card-info {
+  opacity: 1;
+}
+
+.reel-card-face:hover .reel-card-info {
+  transform: translateY(0);
+}
+
+.reel-card-title {
+  font-weight: 500;
+  font-size: clamp(15px, 1.3vw, 20px);
+  letter-spacing: 0.01em;
+  color: #fff;
+  /* The one place this reveal gets a stronger glow than the rest — a
+     title, not a tooltip label. */
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
+}
+
+.reel-card-desc {
+  margin-top: 6px;
+  font-weight: 300;
+  font-size: clamp(12px, 0.95vw, 14px);
+  line-height: 1.55;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.75);
+  max-width: 46ch;
+}
+
+.reel-card-count {
+  margin-top: 9px;
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+@media (hover: none) {
+  .reel-card-scrim,
+  .reel-card-info {
+    display: none;
+  }
+}
