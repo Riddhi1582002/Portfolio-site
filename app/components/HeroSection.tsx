@@ -19,7 +19,8 @@ import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameF
 import DepthCards from "./DepthCards";
 import { SMOOTHER_ACTIVE } from "./SmoothScroll";
 import usePinnedPane from "./usePinnedPane";
-import ReelStrip from "./ReelStrip";
+import ReelStrip, { REELS } from "./ReelStrip";
+import ReelProjectView from "./ReelProjectView";
 import CordSection from "./CordSection";
 import PencilSection from "./PencilSection";
 import InfiniteCanvas from "./InfiniteCanvas";
@@ -489,6 +490,29 @@ export default function HeroSection() {
   // just copied, for a brief confirmation, and clears itself.
   const [contactHover, setContactHover] = useState(false);
   const [contactPopupOpen, setContactPopupOpen] = useState(false);
+  // Which REELS project is open in the full-screen project index, if any —
+  // an index into REELS, not a copy of the reel itself, so prev/next just
+  // moves this number.
+  const [reelOpenIndex, setReelOpenIndex] = useState<number | null>(null);
+  const closeReel = useCallback(() => setReelOpenIndex(null), []);
+  const openReel = useCallback((id: string) => {
+    const idx = REELS.findIndex((r) => r.id === id);
+    if (idx !== -1) setReelOpenIndex(idx);
+  }, []);
+  // Freeze the underlying scroll-driven pane while the project view is
+  // open: this whole page is one continuous ScrollSmoother-driven pane, so
+  // an un-intercepted wheel/touch would keep advancing `scrollP` behind the
+  // overlay and land somewhere else in the REELS strip on close.
+  useEffect(() => {
+    if (reelOpenIndex == null) return;
+    const block = (e: Event) => e.preventDefault();
+    window.addEventListener("wheel", block, { passive: false });
+    window.addEventListener("touchmove", block, { passive: false });
+    return () => {
+      window.removeEventListener("wheel", block);
+      window.removeEventListener("touchmove", block);
+    };
+  }, [reelOpenIndex]);
   // Two states so the pop-up can mount at its BELOW-rest, hidden starting
   // point on one frame and only then transition up onto its landing line —
   // the same before/after-a-frame trick InfiniteCanvas uses to open a
@@ -1668,7 +1692,7 @@ export default function HeroSection() {
             hero's last frame; nothing scrolls between them. */}
         {scrollP <= REELS_SPAN_END && scrollP > HERO_SPAN && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
-            <ReelStrip progress={reelsP} />
+            <ReelStrip progress={reelsP} onOpenReel={openReel} />
           </div>
         )}
 
@@ -1715,6 +1739,19 @@ export default function HeroSection() {
             below it can unmount it, reset it, or start it again. It reads
             the beats; no beat reads it. */}
         <MothLayer reduced={reducedMotion} />
+
+        {/* THE REELS PROJECT INDEX. Mounted here for the same reason as
+            the moth: it has to survive independently of whichever beat
+            `scrollP` currently falls in (scroll is frozen while it's open,
+            but the underlying beat can still change on the frame it
+            closes), and returns null on its own once no reel is open. */}
+        <ReelProjectView
+          reels={REELS}
+          openIndex={reelOpenIndex}
+          onClose={closeReel}
+          onNavigate={setReelOpenIndex}
+          sans={SANS}
+        />
 
         {/* The pull-back out of the iris, and the gallery it opens on. */}
         {scrollP > PENCIL_SPAN_END - 0.002 && (
