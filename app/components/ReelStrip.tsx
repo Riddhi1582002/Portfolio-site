@@ -27,6 +27,8 @@ export type Reel = {
   ratio: number;
   title: string;
   meta: string;
+  /** Optional: project-level description, for the eventual project page. */
+  description?: string;
   /** Optional: 0, 1, or many videos for this reel. Absent = no video yet. */
   videos?: ReelVideo[];
 };
@@ -38,17 +40,87 @@ export const REELS: Reel[] = [
     ratio: 16 / 9,
     title: "Showreel",
     meta: "2025 · motion",
+    description:
+      "My video editing work of now, summarised in a single video. The 2024 version follows, you can judge the difference yourself.",
     videos: [
       { id: "r1v1", src: "https://youtu.be/wzX9HGc-GoI" },
       { id: "r1v2", src: "https://youtu.be/w3BT-6uKNl0" },
     ],
   },
-  { id: "r2", ratio: 16 / 9, title: "Second piece", meta: "client · promo" },
-  { id: "r3", ratio: 9 / 16, title: "Third piece", meta: "social · vertical" },
-  { id: "r4", ratio: 16 / 9, title: "Fourth piece", meta: "corporate" },
-  { id: "r5", ratio: 9 / 16, title: "Fifth piece", meta: "social · vertical" },
-  { id: "r6", ratio: 9 / 16, title: "Sixth piece", meta: "social · vertical" },
-  { id: "r7", ratio: 16 / 9, title: "Seventh piece", meta: "event coverage" },
+  {
+    id: "r2",
+    ratio: 16 / 9,
+    title: "CREATE",
+    meta: "EIPL",
+    description:
+      "Six values. One word. One moving piece. CREATE was my way of giving EIPL's values a visual form.",
+    videos: [{ id: "r2v1", src: "https://youtu.be/Gy-nZqf74_g" }],
+  },
+  {
+    id: "r3",
+    ratio: 9 / 16,
+    title: "Excelsource International Social Media",
+    meta: "social media",
+    description:
+      "Over 18 months, I worked across Excelsource International's different departments, creating social media content around what each one actually needed to communicate. These are some of the video pieces from that work.",
+  },
+  {
+    id: "r4",
+    ratio: 16 / 9,
+    title: "Bhajan Clubbing",
+    meta: "Gujarati bhajans",
+    description:
+      "I didn't expect Gujarati bhajans to look like this. Neither did I expect to make five reels about it.",
+    videos: [
+      { id: "r4v1", src: "https://youtube.com/shorts/AO1LJKXRLME?feature=share" },
+      { id: "r4v2", src: "https://youtube.com/shorts/TXDUKbouvhc?feature=share" },
+      { id: "r4v3", src: "https://youtube.com/shorts/OWAH_nXqhmY?feature=share" },
+      { id: "r4v4", src: "https://youtube.com/shorts/JlDq3TmoC4Q?feature=share" },
+      { id: "r4v5", src: "https://youtube.com/shorts/q_ofEHFIDoE?feature=share" },
+    ],
+  },
+  {
+    id: "r5",
+    ratio: 9 / 16,
+    title: "Freelance / Commercial Work",
+    meta: "freelance",
+    description:
+      "Different people. Different products. Different briefs. A lot of figuring it out as I went.",
+    videos: [
+      { id: "r5v1", src: "https://youtu.be/LwNADWPVBCg" },
+      { id: "r5v2", src: "https://youtu.be/FO19ZkNdR78" },
+      { id: "r5v3", src: "https://youtu.be/XbAmstlYRlA" },
+      { id: "r5v4", src: "https://youtu.be/tQLNsxy-y1o" },
+      { id: "r5v5", src: "https://youtu.be/eqOmeyVMhwY" },
+      { id: "r5v6", src: "https://youtube.com/shorts/hjPuDeRVOIo?feature=share" },
+      { id: "r5v7", src: "https://youtube.com/shorts/haie9TWiJM4?feature=share" },
+      { id: "r5v8", src: "https://youtube.com/shorts/XkYJbxrV3Ks?feature=share" },
+    ],
+  },
+  {
+    id: "r6",
+    ratio: 9 / 16,
+    title: "Personal Art Account",
+    meta: "Instagram",
+    description: "An Instagram account I started to have somewhere to put these things.",
+    videos: [
+      { id: "r6v1", src: "https://youtu.be/XA8ZEEbfR6g" },
+      { id: "r6v2", src: "https://youtu.be/bPXrPa34YsI" },
+      { id: "r6v3", src: "https://youtu.be/4Gk-19KB_Fs" },
+      { id: "r6v4", src: "https://youtube.com/shorts/AIfjS-CaYqY?feature=share" },
+      { id: "r6v5", src: "https://youtube.com/shorts/d6jtmr-Tatg?feature=share" },
+      { id: "r6v6", src: "https://youtube.com/shorts/wSAckMtNREo?feature=share" },
+      { id: "r6v7", src: "https://youtube.com/shorts/zbnz7kXYuOs?feature=share" },
+    ],
+  },
+  {
+    id: "r7",
+    ratio: 16 / 9,
+    title: "Movie Edit",
+    meta: "Baby Driver edit",
+    description: "I watched Baby Driver and immediately wanted to edit it.",
+    videos: [{ id: "r7v1", src: "https://youtu.be/vgxNu5STlJM" }],
+  },
   { id: "r8", ratio: 16 / 9, title: "Eighth piece", meta: "digital comic" },
 ];
 
