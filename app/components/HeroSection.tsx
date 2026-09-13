@@ -8,7 +8,7 @@
 // (rest -> mid -> deep) off actual page scroll instead.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import localFont from "next/font/local";
@@ -38,23 +38,13 @@ gsap.registerPlugin(SplitText, Flip);
 const NAME_CLICK_EXIT_DURATION = 0.6;
 const NAME_CLICK_EXIT_Y = 40;
 
-// The LinkedIn/Gmail popup icons. 26px read as "extremely small" against
-// the rest of the composition — everything else on this stage is sized
-// off the 1920x1080 authored canvas and scales with the viewport
-// (stageScale), while this popup is the one piece of UI in fixed screen
-// px, so on any viewport bigger than the authored canvas the gap only
-// grows. Not made to scale with the stage here (it sits outside it,
-// anchored to the viewport corner, and doing so is a bigger change than
-// this fix calls for) — just given a base size big enough to read as
-// clearly clickable rather than incidental.
-const CONTACT_ICON_H = 84;
-// The two logos' drawn content sits at very different heights within
-// their own native video frame (see contentTop/contentBottom on each
-// icon below) — this is the shared TARGET height, in px, that each is
-// cropped and scaled to reach, so the logos themselves come out the
-// same size and land on the same baseline regardless of how much empty
-// padding their source frame carries.
-const CONTACT_GLYPH_H = 56;
+// The LinkedIn/Gmail popup icons — restored to the original static PNGs,
+// sized a little past their original 26px (still the one piece of UI in
+// fixed screen px, sitting outside the stage's own vw/vh scaling).
+const CONTACT_ICON_SIZE = 34;
+// How long the "copied" confirmation (the icon's glow, and the toast) is
+// shown for before it clears itself.
+const CONTACT_COPIED_MS = 1600;
 
 // THE GALLERY -> HERO SEAM. See the hook beside `heroP` below for why this
 // exists: InfiniteCanvas's own return transition matches ART pixel for
@@ -506,7 +496,19 @@ export default function HeroSection() {
   // that mounts the element and there is nothing for the browser to
   // transition FROM.
   const [contactPopupEntered, setContactPopupEntered] = useState(false);
-  const [contactCopied, setContactCopied] = useState<"linkedin" | "gmail" | null>(null);
+  // LinkedIn navigates (opens the profile in a new tab) rather than
+  // copying, so only Gmail's address is ever actually copied — this
+  // names which confirmation is showing, for the icon's brief glow and
+  // the toast below.
+  const [contactCopied, setContactCopied] = useState<"gmail" | null>(null);
+  // THE TOAST. Two states for the same reason contactPopupEntered is:
+  // `toastMounted` keeps the element in the DOM through its exit
+  // transition, and `toastShown` is what the transition actually
+  // reacts to, flipped a frame after mount so there is something for
+  // the browser to animate FROM. Cleared early — before its own
+  // 1600ms — by a downward scroll, animated out the same way.
+  const [toastMounted, setToastMounted] = useState(false);
+  const [toastShown, setToastShown] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [scrollP, setScrollP] = useState(0); // 0..1 smoothed scroll fraction through the track
   const [t, setT] = useState(0); // seconds elapsed, for the idle breathing/drift motion
@@ -1157,16 +1159,67 @@ export default function HeroSection() {
     };
   }, [contactPopupOpen]);
 
-  const copyContact = (which: "linkedin" | "gmail") => {
-    const text =
-      which === "gmail" ? "rst15aug@gmail.com" : "www.linkedin.com/in/riddhi-thakkar-8800041b";
-    navigator.clipboard?.writeText(text).catch(() => {
+  // Held so a downward scroll (below) can cancel the pending auto-clear
+  // instead of racing it — without this, scrolling right at the end of
+  // the window could clear `contactCopied` twice, the second time for a
+  // copy that had already happened again.
+  const contactCopiedTimeoutRef = useRef<number | null>(null);
+
+  const copyContact = () => {
+    navigator.clipboard?.writeText("rst15aug@gmail.com").catch(() => {
       // Clipboard access can be denied (permissions, insecure context);
       // the popup staying open with nothing copied is the honest result.
     });
-    setContactCopied(which);
-    window.setTimeout(() => setContactCopied((v) => (v === which ? null : v)), 1600);
+    setContactCopied("gmail");
+    setToastMounted(true);
+    if (contactCopiedTimeoutRef.current != null) {
+      window.clearTimeout(contactCopiedTimeoutRef.current);
+    }
+    contactCopiedTimeoutRef.current = window.setTimeout(() => {
+      setContactCopied(null);
+      // Starts the exit transition; the toast's own `transitionend`
+      // (below) unmounts it once that transition has actually finished.
+      setToastShown(false);
+      contactCopiedTimeoutRef.current = null;
+    }, CONTACT_COPIED_MS);
   };
+
+  // THE TOAST's own entrance, mirroring contactPopupEntered above: mount
+  // sitting at its off-screen resting transform (set directly in
+  // copyContact, an event handler, not here), then release it onto its
+  // landing transform a frame later so there is something for the
+  // browser to actually transition FROM.
+  useEffect(() => {
+    if (!toastMounted) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setToastShown(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [toastMounted]);
+
+  // A downward scroll dismisses the toast early, animated out the same
+  // way it came in, rather than leaving it to hang through a transition
+  // it has nothing to do with. `scrollP` is already the smoothed 0..1
+  // fraction the rest of this component reads; a plain increase over the
+  // last render is "the reader scrolled down" without needing a second,
+  // separate scroll listener.
+  const lastScrollForToastRef = useRef(scrollP);
+  useEffect(() => {
+    const prev = lastScrollForToastRef.current;
+    lastScrollForToastRef.current = scrollP;
+    if (scrollP > prev + 0.0004 && contactCopied) {
+      if (contactCopiedTimeoutRef.current != null) {
+        window.clearTimeout(contactCopiedTimeoutRef.current);
+        contactCopiedTimeoutRef.current = null;
+      }
+      setContactCopied(null);
+      setToastShown(false);
+    }
+  }, [scrollP, contactCopied]);
 
   return (
     <div
@@ -1446,7 +1499,7 @@ export default function HeroSection() {
                   bottom: "calc(100% + 14px)",
                   display: "flex",
                   alignItems: "flex-end",
-                  gap: 28,
+                  gap: 22,
                   // Clips the icons' launch position (they start BELOW the
                   // landing line, inside what reads as the toaster slot)
                   // so the pop is a rise into view rather than a jump-cut.
@@ -1455,142 +1508,112 @@ export default function HeroSection() {
               >
                 {(
                   [
-                    {
-                      key: "linkedin" as const,
-                      label: "LinkedIn",
-                      video: "/icons/contact/linkedin.webm",
-                      // Native frame size (117x150).
-                      ratio: 117 / 150,
-                      // Measured directly off the asset (ffmpeg frame
-                      // scan + bounding-box on the non-black pixels): the
-                      // drawn logo is a constant 60x60 square centred in
-                      // the 117x150 frame, its top/bottom edges at 32%
-                      // and 71.3% of the frame height. Gmail's envelope,
-                      // by contrast, nearly fills its own frame (its
-                      // closed/rest state runs 38.7%-87.3%). Sizing both
-                      // videos off their RAW frame height — what this
-                      // rendered before — made linkedin's logo come out
-                      // at roughly half gmail's visual size, sitting on a
-                      // different baseline, because the two frames carry
-                      // very different amounts of empty padding around
-                      // the actual glyph.
-                      contentTop: 0.32,
-                      contentBottom: 0.713,
-                    },
-                    {
-                      key: "gmail" as const,
-                      label: "Gmail",
-                      video: "/icons/contact/gmail.webm",
-                      ratio: 150 / 150,
-                      // The envelope's closed/rest state (what the loop
-                      // returns to between its brief "open" pulse).
-                      contentTop: 0.387,
-                      contentBottom: 0.873,
-                    },
+                    { key: "linkedin" as const, icon: "/icons/contact/linkedin.png" },
+                    { key: "gmail" as const, icon: "/icons/contact/gmail.png" },
                   ]
-                ).map((item, i) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => copyContact(item.key)}
-                    aria-label={`Copy ${item.label} contact`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      padding: "6px 2px",
-                      border: "none",
-                      background: "transparent",
-                      cursor: "pointer",
-                      // THE POP: launches from below the landing line and
-                      // slightly small, overshoots a touch past it, then
-                      // settles — a back-out ease is what gives the
-                      // overshoot without a second, explicit keyframe.
-                      // Staggered per icon so they pop one after another
-                      // rather than both at once.
-                      transform: contactPopupEntered
-                        ? "translateY(0) scale(1)"
-                        : `translateY(${CONTACT_ICON_H}px) scale(0.8)`,
-                      opacity: contactPopupEntered ? 1 : 0,
-                      transition:
-                        "transform 560ms cubic-bezier(0.2,1.8,0.32,1), opacity 260ms ease, filter 160ms ease",
-                      transitionDelay: contactPopupEntered ? `${i * 90}ms` : "0ms",
-                      // A layered drop-shadow — a soft dark cast shadow
-                      // below/behind plus a tight rim shadow along the
-                      // icon's own edge — is what reads as "raised off the
-                      // page" for a flat asset with no actual geometry.
-                      // The copied state adds a bright glow on top of that
-                      // same base so the feedback doesn't flatten the icon
-                      // back out.
-                      filter:
-                        contactCopied === item.key
-                          ? "drop-shadow(0 10px 16px rgba(0,0,0,0.5)) drop-shadow(0 2px 3px rgba(0,0,0,0.4)) drop-shadow(0 0 10px rgba(255,255,255,0.65))"
-                          : "drop-shadow(0 10px 16px rgba(0,0,0,0.5)) drop-shadow(0 2px 3px rgba(0,0,0,0.4))",
-                    }}
-                  >
-                    {/* The supplied assets: opaque black background, no
-                        alpha channel (checked directly — VP8/yuv420p,
-                        not yuva420p). mix-blend-mode:"screen" is the
-                        standard way to composite exactly that kind of
-                        video as if transparent: screen(black, x) = x
-                        exactly, so the black square vanishes into
-                        whatever sits behind it and only the icon's own
-                        drawn pixels show. Each clip is itself a closed
-                        loop — envelope shut -> open with a notification
-                        -> shut again; logo -> person icon -> logo — so
-                        `loop` alone gives the spec's "play the pop/settle
-                        animation, then loop while active": the first
-                        pass through IS the pop/settle, and every repeat
-                        after it is the loop, with no separate state to
-                        track for which phase this is. `autoPlay` starts
-                        it the instant this button mounts, which only
-                        happens once the popup is open — the click that
-                        opens it is the "on click" the spec asks for. */}
-                    {(() => {
-                      // Scale the whole native frame up until the DRAWN
-                      // content (not the frame) is CONTACT_GLYPH_H tall,
-                      // then shift it up by its own top margin so the
-                      // glyph's top lands at the clip container's top —
-                      // the container is exactly CONTACT_GLYPH_H tall, so
-                      // the glyph ends up filling it edge to edge, same
-                      // size and same baseline for both icons, whatever
-                      // padding their source frame happens to carry.
-                      const contentFrac = item.contentBottom - item.contentTop;
-                      const videoH = CONTACT_GLYPH_H / contentFrac;
-                      const videoW = videoH * item.ratio;
-                      const offsetY = -(item.contentTop * videoH);
-                      return (
-                        <div
-                          style={{
-                            width: videoW,
-                            height: CONTACT_GLYPH_H,
-                            overflow: "hidden",
-                            position: "relative",
-                          }}
-                        >
-                          <video
-                            src={item.video}
-                            autoPlay
-                            muted
-                            loop
-                            playsInline
-                            preload="auto"
-                            aria-hidden
-                            style={{
-                              display: "block",
-                              position: "absolute",
-                              left: 0,
-                              top: offsetY,
-                              height: videoH,
-                              width: videoW,
-                              pointerEvents: "none",
-                              mixBlendMode: "screen",
-                            }}
-                          />
-                        </div>
-                      );
-                    })()}
-                  </button>
-                ))}
+                ).map((item, i) => {
+                  const img = (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.icon}
+                      alt=""
+                      width={CONTACT_ICON_SIZE}
+                      height={CONTACT_ICON_SIZE}
+                      draggable={false}
+                      style={{ display: "block" }}
+                    />
+                  );
+                  const sharedStyle: CSSProperties = {
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "6px 2px",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    textDecoration: "none",
+                    // THE POP: launches from below the landing line and
+                    // slightly small, overshoots a touch past it, then
+                    // settles — a back-out ease is what gives the
+                    // overshoot without a second, explicit keyframe.
+                    // Staggered per icon so they pop one after another
+                    // rather than both at once.
+                    transform: contactPopupEntered
+                      ? "translateY(0) scale(1)"
+                      : `translateY(${CONTACT_ICON_SIZE}px) scale(0.8)`,
+                    opacity: contactPopupEntered ? 1 : 0,
+                    transition:
+                      "transform 560ms cubic-bezier(0.2,1.8,0.32,1), opacity 260ms ease, filter 160ms ease",
+                    transitionDelay: contactPopupEntered ? `${i * 90}ms` : "0ms",
+                    // The icons are the attached references, unmodified —
+                    // no drop-shadow, no permanent glow. The only visual
+                    // change on click is Gmail's own copy confirmation.
+                    filter:
+                      contactCopied === item.key
+                        ? "drop-shadow(0 0 8px rgba(255,255,255,0.6))"
+                        : "none",
+                  };
+                  return item.key === "linkedin" ? (
+                    <a
+                      key={item.key}
+                      href="https://www.linkedin.com/in/riddhi-thakkar-8800041b"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Open LinkedIn profile"
+                      style={sharedStyle}
+                    >
+                      {img}
+                    </a>
+                  ) : (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={copyContact}
+                      aria-label="Copy Gmail contact"
+                      style={sharedStyle}
+                    >
+                      {img}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {/* THE TOAST. Fixed to the viewport corner rather than
+                anchored to the popup: it has to stay put and stay legible
+                however the popup itself is moving, and its entrance/exit
+                transform is what "smoothly into view, reversed out on a
+                downward scroll" runs on directly. */}
+            {toastMounted && (
+              <div
+                role="status"
+                aria-live="polite"
+                onClick={(e) => e.stopPropagation()}
+                onTransitionEnd={(e) => {
+                  if (e.propertyName === "opacity" && !toastShown) setToastMounted(false);
+                }}
+                style={{
+                  position: "fixed",
+                  right: 32,
+                  bottom: 32,
+                  zIndex: 30,
+                  padding: "10px 18px",
+                  borderRadius: 8,
+                  background: "rgba(18,18,18,0.92)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+                  color: "#fff",
+                  fontFamily: SANS,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  letterSpacing: "0.02em",
+                  whiteSpace: "nowrap",
+                  pointerEvents: "none",
+                  transform: toastShown ? "translateY(0)" : "translateY(14px)",
+                  opacity: toastShown ? 1 : 0,
+                  transition:
+                    "transform 380ms cubic-bezier(0.16,1,0.3,1), opacity 300ms ease",
+                }}
+              >
+                Email copied
               </div>
             )}
           </div>
