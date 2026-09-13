@@ -132,6 +132,7 @@ export default function ReelProjectView({
       role="dialog"
       aria-modal="true"
       aria-label={reel.title}
+      data-reel-modal-scroll
       onClick={(e) => {
         if (e.target === panelRef.current) onClose();
       }}
@@ -166,7 +167,13 @@ export default function ReelProjectView({
           display: "flex",
           flexDirection: "column",
           flex: 1,
-          minHeight: 0,
+          // No minHeight:0 override: this column's natural content height
+          // (a long description plus a full thumbnail index can genuinely
+          // exceed one screen) is what should decide its size. With it
+          // capped at exactly the dialog's own height instead, taller
+          // content didn't push the dialog's own scroll — it overflowed
+          // straight through the row below it, text painted over
+          // thumbnails rather than the page simply scrolling to fit.
         }}
       >
         {/* TOP: Close only — no origin label, per an earlier explicit
@@ -204,7 +211,6 @@ export default function ReelProjectView({
             gap: "clamp(28px, 5vw, 72px)",
             marginTop: "clamp(20px, 3.5vh, 40px)",
             flex: 1,
-            minHeight: 0,
           }}
         >
           {/* LEFT: index within the real projects, title, whatever of its
@@ -276,14 +282,17 @@ export default function ReelProjectView({
             </div>
           </div>
 
-          {/* RIGHT: the selected video. Landscape pieces take the wide,
-              confident presentation this page has room for; portrait
-              pieces (Bhajan Clubbing's 9:16 footage) are capped on width
-              instead so they read as portrait video, not as a poster
-              blown up to fill the column. */}
+          {/* RIGHT: the selected video. Confident, but capped well short
+              of the column's own width — a poster this size shouldn't
+              read as "the whole page," only as the most prominent single
+              thing on it, balanced against the left column and the
+              thumbnail index below rather than crowding both out. Portrait
+              pieces (Bhajan Clubbing's 9:16 footage) are capped further
+              still, on width, so they read as portrait video rather than
+              a poster blown up to fill the column. */}
           <div
             style={{
-              flex: "1 1 420px",
+              flex: "1 1 340px",
               minHeight: 0,
               display: "flex",
               alignItems: "center",
@@ -296,8 +305,16 @@ export default function ReelProjectView({
                   position: "relative",
                   height: "100%",
                   width: reel.ratio >= 1 ? "100%" : "auto",
-                  maxWidth: reel.ratio >= 1 ? "100%" : "min(100%, 48vh)",
-                  maxHeight: reel.ratio >= 1 ? "min(100%, 74vh)" : "100%",
+                  // A fixed ceiling rather than a share of the column: on a
+                  // wide desktop split the column itself is most of the
+                  // page, and a percentage of THAT is still "almost full
+                  // width." Capping the pixel size directly is what keeps
+                  // this prominent without dominating — and on a narrow
+                  // stacked layout, where there is no sidebar left to
+                  // crowd, "min(100%, ...)" still lets it fill what little
+                  // width there is instead of shrinking twice over.
+                  maxWidth: reel.ratio >= 1 ? "min(100%, 640px)" : "min(100%, 34vh)",
+                  maxHeight: reel.ratio >= 1 ? "min(100%, 46vh)" : "100%",
                   aspectRatio: String(reel.ratio),
                   borderRadius: 16,
                   overflow: "hidden",
@@ -394,7 +411,7 @@ export default function ReelProjectView({
                   <div
                     style={{
                       position: "relative",
-                      width: "clamp(96px, 9vw, 148px)",
+                      width: "clamp(150px, 14vw, 232px)",
                       aspectRatio: String(reel.ratio),
                       borderRadius: 10,
                       overflow: "hidden",

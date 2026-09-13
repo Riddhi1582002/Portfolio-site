@@ -63,6 +63,8 @@ type YTNamespace = {
     el: HTMLElement,
     opts: {
       videoId: string;
+      width?: string | number;
+      height?: string | number;
       playerVars?: Record<string, number>;
       events?: {
         onReady?: (e: { target: YTPlayerInstance }) => void;
@@ -238,6 +240,16 @@ export default function ReelVideoViewer({
       .then((YT) => {
         if (cancelled || !hostRef.current || playerRef.current) return;
         const player = new YT.Player(hostRef.current, {
+          // Without these the IFrame API defaults to a fixed 640x390 iframe
+          // and — since creating the player REPLACES the host element
+          // rather than filling it — the CSS on that host (position:
+          // absolute; inset:0) goes with it. The result is a small,
+          // conventional embed sitting at the top-left of its container
+          // instead of filling the composed frame this viewer builds for
+          // it, so both dimensions are pinned to 100% here and the iframe's
+          // own inline style is reasserted below as a second guarantee.
+          width: "100%",
+          height: "100%",
           videoId,
           playerVars: {
             autoplay: 1,
@@ -252,10 +264,16 @@ export default function ReelVideoViewer({
             onReady: (e) => {
               if (cancelled) return;
               try {
-                e.target.getIframe().setAttribute(
+                const iframe = e.target.getIframe();
+                iframe.setAttribute(
                   "allow",
                   "autoplay; encrypted-media; picture-in-picture"
                 );
+                iframe.style.position = "absolute";
+                iframe.style.inset = "0";
+                iframe.style.width = "100%";
+                iframe.style.height = "100%";
+                iframe.style.border = "0";
               } catch {
                 // Non-essential; playback still works without it.
               }
@@ -368,7 +386,11 @@ export default function ReelVideoViewer({
         position: "fixed",
         inset: 0,
         zIndex: 70,
-        background: "#000",
+        // A soft centre-weighted wash rather than flat black — the frame
+        // this player sits in reads as composed instead of as an edge with
+        // nothing beyond it.
+        background:
+          "radial-gradient(120% 120% at 50% 50%, #101114 0%, #08080a 55%, #000 100%)",
         opacity: t,
         transition: "opacity 380ms cubic-bezier(0.16,1,0.3,1)",
         fontFamily: sans,
@@ -405,13 +427,28 @@ export default function ReelVideoViewer({
               height: "100%",
               width: isLandscape ? "100%" : "auto",
               maxWidth: isLandscape ? "100%" : "min(100%, 62vh)",
-              maxHeight: isLandscape ? "min(100%, 90vh)" : "100%",
+              maxHeight: isLandscape ? "min(100%, 88vh)" : "94%",
               aspectRatio: String(reel.ratio),
+              borderRadius: 6,
+              overflow: "hidden",
               background: "#050505",
+              border: "1px solid rgba(255,255,255,0.08)",
+              // The same restrained premium glow the rest of the site's
+              // cards carry, so the player reads as composed within the
+              // frame rather than as a flat rectangle floating on black.
+              boxShadow:
+                "0 0 70px rgba(255,255,255,0.05), 0 40px 110px rgba(0,0,0,0.75)",
             }}
           >
             <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />
-            {!ready && !errorMsg && (
+            {/* An OPAQUE mask, not just a label: YouTube's own cued-state
+                chrome (its title card, thumbnail and logo) sits on the
+                iframe the instant it is created, well before `onReady`, and
+                a transparent overlay would leave that showing through
+                behind the text — exactly the branding this viewer is
+                meant to keep out of sight. Solid until ready, then a plain
+                fade rather than an abrupt unmount. */}
+            {!errorMsg && (
               <div
                 aria-hidden
                 style={{
@@ -420,12 +457,15 @@ export default function ReelVideoViewer({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  background: "#050505",
+                  opacity: ready ? 0 : 1,
+                  transition: "opacity 260ms ease",
+                  pointerEvents: "none",
                   fontSize: 12,
                   fontWeight: 500,
                   letterSpacing: "0.14em",
                   textTransform: "uppercase",
                   color: "rgba(255,255,255,0.4)",
-                  pointerEvents: "none",
                 }}
               >
                 Loading…

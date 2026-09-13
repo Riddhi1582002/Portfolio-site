@@ -292,12 +292,16 @@ export default function CameraRoll({
                 />
               )}
               {/* The face. Identical to the strip's own card, so there is
-                  nothing to cross-fade when this beat takes over. */}
+                  nothing to cross-fade when this beat takes over — the
+                  showcase thumbnail included, so the image layer is still
+                  alive for the whole roll rather than dropping to a blank
+                  gradient the instant this beat takes the pane. */}
               <div
                 style={{
                   position: "absolute",
                   inset: 0,
                   borderRadius: CARD_RADIUS,
+                  overflow: "hidden",
                   background: CARD_FACE_BG,
                   border: CARD_FACE_BORDER,
                   transform: `translateZ(${(thick / 2).toFixed(2)}px)`,
@@ -315,7 +319,23 @@ export default function CameraRoll({
                   opacity: faceOpacity * (1 - (1 - dim) * chrome),
                   willChange: chrome > 0.001 ? "opacity" : "auto",
                 }}
-              />
+              >
+                {reel.videos?.[0]?.thumbnail && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={reel.videos[0].thumbnail}
+                    alt=""
+                    draggable={false}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                  />
+                )}
+              </div>
               {/* TOP edge — the one the yaw arrives at. Looking down the
                   card's plane, this band IS the line. */}
               <div

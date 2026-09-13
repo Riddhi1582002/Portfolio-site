@@ -534,7 +534,18 @@ export default function HeroSection() {
   // in the REELS strip on close.
   useEffect(() => {
     if (reelOpenIndex == null && viewerReelIndex == null) return;
-    const block = (e: Event) => e.preventDefault();
+    // The project index itself is allowed to scroll — a long description
+    // paired with a full thumbnail index can genuinely be taller than one
+    // screen, and this same effect otherwise swallows every wheel/touch
+    // event on the page, the panel's own included, which would make that
+    // overflow unreachable rather than merely offscreen. Only events
+    // outside it need blocking, to keep the pane underneath from advancing.
+    const block = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest("[data-reel-modal-scroll]")) {
+        return;
+      }
+      e.preventDefault();
+    };
     window.addEventListener("wheel", block, { passive: false });
     window.addEventListener("touchmove", block, { passive: false });
     return () => {

@@ -342,93 +342,6 @@ export default function ReelStrip({
         background: "#000",
       }}
     >
-      {/* Details for the card in focus. Sits in the clear top third.
-          Number + name are always shown for whichever card is centred;
-          hovering that same (focused) card additionally reveals its
-          description and video count in the same spot — the project's
-          fuller information, without ever writing it inside the card
-          itself or inventing a tooltip floating over the art. */}
-      {(() => {
-        const focusedIndex = Math.round(focus);
-        const focusedReel = REELS[focusedIndex];
-        const expanded = hoveredIndex === focusedIndex;
-        const videoCount = focusedReel.videos?.length ?? 0;
-        return (
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: `${DETAILS_TOP_VH}vh`,
-              textAlign: "center",
-              pointerEvents: "none",
-              opacity: entryT,
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 500,
-                fontSize: "clamp(12px, 0.95vw, 15px)",
-                letterSpacing: "0.08em",
-                color: "rgba(255,255,255,0.45)",
-              }}
-            >
-              {String(focusedIndex + 1).padStart(2, "0")}
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontWeight: 500,
-                fontSize: "clamp(18px, 1.6vw, 26px)",
-                letterSpacing: "0.01em",
-                color: "#fff",
-                textShadow: "0 0 22px rgba(255,255,255,0.28)",
-              }}
-            >
-              {focusedReel.title}
-            </div>
-            <div
-              style={{
-                marginTop: expanded ? 10 : 0,
-                maxHeight: expanded ? 160 : 0,
-                opacity: expanded ? 1 : 0,
-                overflow: "hidden",
-                transition: "opacity 200ms ease, margin-top 200ms ease, max-height 200ms ease",
-              }}
-            >
-              {focusedReel.description && (
-                <div
-                  style={{
-                    fontWeight: 300,
-                    fontSize: "clamp(13px, 1vw, 16px)",
-                    lineHeight: 1.5,
-                    letterSpacing: "0.02em",
-                    color: "rgba(255,255,255,0.72)",
-                    maxWidth: "48ch",
-                    marginLeft: "auto",
-                    marginRight: "auto",
-                  }}
-                >
-                  {focusedReel.description}
-                </div>
-              )}
-              <div
-                style={{
-                  marginTop: 8,
-                  fontWeight: 500,
-                  fontSize: 12,
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  color: "rgba(255,255,255,0.45)",
-                }}
-              >
-                {videoCount} {videoCount === 1 ? "video" : "videos"}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       <div
         style={{
           position: "absolute",
@@ -556,6 +469,97 @@ export default function ReelStrip({
                       )}
                     </div>
                   </HoverCard>
+
+                  {/* THE PROJECT NUMBER. Stays put below the card whether
+                      hovered or not — the one piece of text the card ever
+                      carries by default. */}
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      top: "100%",
+                      marginTop: 10,
+                      textAlign: "center",
+                      pointerEvents: "none",
+                      fontWeight: 500,
+                      fontSize: "clamp(12px, 0.95vw, 15px)",
+                      letterSpacing: "0.08em",
+                      color: "rgba(255,255,255,0.45)",
+                    }}
+                  >
+                    {String(i + 1).padStart(2, "0")}
+                  </div>
+
+                  {/* THE HOVER INFO BLOCK. Anchored to THIS card's own top
+                      edge and growing upward into the clear space above —
+                      never the card's own layout, so it can never push the
+                      card down or spill below it. Name, description and
+                      video count read as one group, not three separate
+                      labels: the name is the only one with any glow (a
+                      restrained one, not neon), the other two are plain
+                      text set smaller than it. Hidden entirely until this
+                      exact card is hovered — nothing here is ever shown
+                      permanently. */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: "50%",
+                      bottom: "100%",
+                      marginBottom: 20,
+                      transform: `translate(-50%, ${hoveredIndex === i ? "0px" : "8px"})`,
+                      width: "max(140%, 260px)",
+                      maxWidth: "min(56vw, 480px)",
+                      textAlign: "center",
+                      pointerEvents: "none",
+                      opacity: hoveredIndex === i ? 1 : 0,
+                      transition: "opacity 240ms ease, transform 240ms ease",
+                      zIndex: hoveredIndex === i ? 3 : 1,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "clamp(19px, 1.7vw, 28px)",
+                        letterSpacing: "0.01em",
+                        color: "#fff",
+                        textShadow:
+                          "0 0 1px rgba(255,255,255,0.5), 0 0 20px rgba(255,255,255,0.24), 0 2px 22px rgba(0,0,0,0.55)",
+                      }}
+                    >
+                      {reel.title}
+                    </div>
+                    {reel.description && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          fontWeight: 300,
+                          fontSize: "clamp(13px, 1vw, 16px)",
+                          lineHeight: 1.5,
+                          letterSpacing: "0.02em",
+                          color: "rgba(255,255,255,0.72)",
+                          maxWidth: "42ch",
+                          marginLeft: "auto",
+                          marginRight: "auto",
+                        }}
+                      >
+                        {reel.description}
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        marginTop: 8,
+                        fontWeight: 500,
+                        fontSize: 12,
+                        letterSpacing: "0.1em",
+                        textTransform: "uppercase",
+                        color: "rgba(255,255,255,0.45)",
+                      }}
+                    >
+                      {reel.videos?.length ?? 0} {(reel.videos?.length ?? 0) === 1 ? "video" : "videos"}
+                    </div>
+                  </div>
                 </>
               )}
               {!near && (
