@@ -2,14 +2,15 @@
 
 // THE REELS PROJECT INDEX.
 //
-// Opened from a REELS card that has videos. A calm, editorial full-screen
-// panel — project title/description/count on the left, the selected
-// video's supplied thumbnail on the right with a WATCH cue over it, a
-// numbered index along the bottom for multi-video projects, and
+// Opened from a REELS card. A calm, editorial full-screen split: project
+// index/title/meta/description/count on the left, the selected video's
+// supplied thumbnail large on the right with a WATCH cue over it, a
+// thumbnail index along the bottom for multi-video projects, and
 // prev/next-project navigation next to it.
 //
-// This is the first UI step only: WATCH is a stub integration point for
-// the immersive viewer that comes next, not a player.
+// WATCH is a stub integration point for the immersive viewer that comes
+// next, not a player — this page's own state (which project, which
+// video) is exactly what that viewer will need to return to.
 //
 // Mount/unmount mirrors the contact popup and toast elsewhere in
 // HeroSection: two flags so the panel can enter and exit with a real
@@ -161,9 +162,20 @@ export default function ReelProjectView({
           minHeight: 0,
         }}
       >
-        {/* TOP: close only — no origin label, so the frame opens straight
-            onto the work rather than announcing where it came from. */}
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        {/* TOP: a minimal origin label opposite Close, both small enough
+            to stay out of the way of the split below. */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.4)",
+            }}
+          >
+            Reels
+          </span>
           <button
             type="button"
             onClick={onClose}
@@ -184,141 +196,175 @@ export default function ReelProjectView({
           </button>
         </div>
 
-        {/* PROJECT INFO, above the media rather than beside it — the
-            title/description/count read as a single block before the eye
-            ever reaches the artwork, and nothing sits in a narrow side
-            column starved for width. Typography matches the About page's
-            own intro/body treatment (same letter-spacing and line-height),
-            just scaled up for this page's larger frame. */}
+        {/* THE SPLIT: project info on the left, the selected video large
+            on the right. A row rather than a stack, so the text reads
+            beside the work instead of pushing it further down the page —
+            the layout this page is short on room to spare without. */}
         <div
           style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "clamp(28px, 5vw, 72px)",
             marginTop: "clamp(20px, 3.5vh, 40px)",
-            maxWidth: 900,
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "clamp(32px, 4.6vw, 60px)",
-              fontWeight: 500,
-              letterSpacing: "0.005em",
-              lineHeight: 1.05,
-              color: "#fff",
-            }}
-          >
-            {reel.title}
-          </h2>
-          {reel.description && (
-            <p
-              style={{
-                marginTop: 14,
-                fontSize: "clamp(16px, 1.3vw, 21px)",
-                lineHeight: 1.7,
-                fontWeight: 300,
-                letterSpacing: "0.03em",
-                color: "rgba(255,255,255,0.72)",
-                maxWidth: "62ch",
-              }}
-            >
-              {reel.description}
-            </p>
-          )}
-          <div
-            style={{
-              marginTop: 14,
-              fontSize: 12,
-              fontWeight: 500,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.4)",
-            }}
-          >
-            {videos.length} {videos.length === 1 ? "video" : "videos"}
-          </div>
-        </div>
-
-        {/* SELECTED MEDIA. Landscape pieces take the wide, confident
-            presentation this page has room for; portrait pieces (Bhajan
-            Clubbing's 9:16 footage) are capped on width instead so they
-            read as portrait video, not as a poster blown up to fill the
-            frame. */}
-        <div
-          style={{
             flex: 1,
             minHeight: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            marginTop: "clamp(16px, 3vh, 32px)",
           }}
         >
-          {video && (
+          {/* LEFT: index within the real projects, title, whatever of its
+              own data the project actually has (meta/description), and
+              the video count. Nothing here is invented — a project with
+              no description simply has no paragraph. */}
+          <div style={{ flex: "1 1 300px", maxWidth: 420 }}>
             <div
               style={{
-                position: "relative",
-                height: "100%",
-                width: reel.ratio >= 1 ? "100%" : "auto",
-                maxWidth: reel.ratio >= 1 ? 1180 : "min(100%, 46vh)",
-                maxHeight: reel.ratio >= 1 ? "min(100%, 72vh)" : "100%",
-                aspectRatio: String(reel.ratio),
-                borderRadius: 16,
-                overflow: "hidden",
-                border: "1px solid rgba(255,255,255,0.09)",
-                boxShadow: "0 0 60px rgba(255,255,255,0.08), 0 30px 90px rgba(0,0,0,0.6)",
-                background:
-                  "linear-gradient(150deg, #191a1e 0%, #111216 55%, #0a0b0d 100%)",
+                fontSize: 13,
+                fontWeight: 500,
+                letterSpacing: "0.08em",
+                color: "rgba(255,255,255,0.42)",
               }}
             >
-              {video.thumbnail && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={video.thumbnail}
-                  alt=""
+              {String(pos + 1).padStart(2, "0")} / {String(navigable.length).padStart(2, "0")}
+            </div>
+            <h2
+              style={{
+                margin: 0,
+                marginTop: 14,
+                fontSize: "clamp(28px, 3.6vw, 52px)",
+                fontWeight: 500,
+                letterSpacing: "0.005em",
+                lineHeight: 1.08,
+                color: "#fff",
+              }}
+            >
+              {reel.title}
+            </h2>
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: "clamp(12px, 0.95vw, 15px)",
+                fontWeight: 300,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.5)",
+              }}
+            >
+              {reel.meta}
+            </div>
+            {reel.description && (
+              <p
+                style={{
+                  marginTop: 18,
+                  fontSize: "clamp(16px, 1.3vw, 21px)",
+                  lineHeight: 1.7,
+                  fontWeight: 300,
+                  letterSpacing: "0.03em",
+                  color: "rgba(255,255,255,0.72)",
+                  maxWidth: "42ch",
+                }}
+              >
+                {reel.description}
+              </p>
+            )}
+            <div
+              style={{
+                marginTop: 18,
+                fontSize: 12,
+                fontWeight: 500,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.4)",
+              }}
+            >
+              {videos.length} {videos.length === 1 ? "video" : "videos"}
+            </div>
+          </div>
+
+          {/* RIGHT: the selected video. Landscape pieces take the wide,
+              confident presentation this page has room for; portrait
+              pieces (Bhajan Clubbing's 9:16 footage) are capped on width
+              instead so they read as portrait video, not as a poster
+              blown up to fill the column. */}
+          <div
+            style={{
+              flex: "1 1 420px",
+              minHeight: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {video && (
+              <div
+                style={{
+                  position: "relative",
+                  height: "100%",
+                  width: reel.ratio >= 1 ? "100%" : "auto",
+                  maxWidth: reel.ratio >= 1 ? "100%" : "min(100%, 48vh)",
+                  maxHeight: reel.ratio >= 1 ? "min(100%, 74vh)" : "100%",
+                  aspectRatio: String(reel.ratio),
+                  borderRadius: 16,
+                  overflow: "hidden",
+                  border: "1px solid rgba(255,255,255,0.09)",
+                  boxShadow: "0 0 60px rgba(255,255,255,0.08), 0 30px 90px rgba(0,0,0,0.6)",
+                  background:
+                    "linear-gradient(150deg, #191a1e 0%, #111216 55%, #0a0b0d 100%)",
+                }}
+              >
+                {video.thumbnail && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={video.thumbnail}
+                    alt=""
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                    draggable={false}
+                  />
+                )}
+                <div
                   style={{
                     position: "absolute",
                     inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
+                    background:
+                      "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 40%)",
                   }}
-                  draggable={false}
                 />
-              )}
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background:
-                    "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 40%)",
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  // Integration point for the immersive video viewer
-                  // (next step) — intentionally a no-op for now.
-                }}
-                style={{
-                  position: "absolute",
-                  left: "50%",
-                  top: "50%",
-                  transform: "translate(-50%, -50%)",
-                  background: "rgba(0,0,0,0.5)",
-                  border: "1px solid rgba(255,255,255,0.5)",
-                  borderRadius: 999,
-                  padding: "16px 34px",
-                  color: "#fff",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  letterSpacing: "0.16em",
-                  textTransform: "uppercase",
-                  cursor: "pointer",
-                }}
-              >
-                Watch
-              </button>
-            </div>
-          )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Integration point for the immersive video viewer
+                    // (next step) — intentionally a no-op for now. It will
+                    // own play/pause, restart, time, prev/next-video and
+                    // back; this page only has to remember `displayIndex`
+                    // and `selectedVideo` for it to return to, which it
+                    // already keeps regardless of what WATCH does.
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    transform: "translate(-50%, -50%)",
+                    background: "rgba(0,0,0,0.5)",
+                    border: "1px solid rgba(255,255,255,0.5)",
+                    borderRadius: 999,
+                    padding: "16px 34px",
+                    color: "#fff",
+                    fontSize: 14,
+                    fontWeight: 500,
+                    letterSpacing: "0.16em",
+                    textTransform: "uppercase",
+                    cursor: "pointer",
+                  }}
+                >
+                  Watch
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* BOTTOM: video index (multi-video only, thumbnails now rather
