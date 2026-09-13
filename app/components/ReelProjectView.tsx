@@ -162,20 +162,10 @@ export default function ReelProjectView({
           minHeight: 0,
         }}
       >
-        {/* TOP: a minimal origin label opposite Close, both small enough
-            to stay out of the way of the split below. */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              letterSpacing: "0.16em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.4)",
-            }}
-          >
-            Reels
-          </span>
+        {/* TOP: Close only — no origin label, per an earlier explicit
+            design decision that the project page should not carry a
+            "Reels" label in the top-left. */}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button
             type="button"
             onClick={onClose}
