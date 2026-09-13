@@ -18,7 +18,18 @@ import { useLayoutEffect, useRef, useState } from "react";
 import HoverCard from "./HoverCard";
 import { carry, easeInOutSine as baseEaseInOutSine } from "../lib/motion";
 
-export type Reel = { id: string; ratio: number; title: string; meta: string };
+// Source information needed to identify/load one video. Nothing beyond
+// that — no per-video title/description; the reel's own title/meta cover it.
+export type ReelVideo = { id: string; src: string };
+
+export type Reel = {
+  id: string;
+  ratio: number;
+  title: string;
+  meta: string;
+  /** Optional: 0, 1, or many videos for this reel. Absent = no video yet. */
+  videos?: ReelVideo[];
+};
 
 // 16:9 and 9:16, in the order asked for.
 export const REELS: Reel[] = [
