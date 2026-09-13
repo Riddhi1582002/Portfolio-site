@@ -346,7 +346,12 @@ export default function DepthCards({
                 {/* The strip's own face — exactly what ReelStrip draws for
                     this same card, so at spread=1 the two are pixel
                     identical and there is nothing left to pop when
-                    ReelStrip takes over. */}
+                    ReelStrip takes over. ReelStrip draws the showcase
+                    thumbnail on this face now, not just the flat
+                    gradient — reproduced here for the same reason: without
+                    it, the thumbnail only ever appeared the instant
+                    ReelStrip mounted, popping in well after the card
+                    itself had been visible throughout this whole beat. */}
                 <div
                   aria-hidden
                   style={{
@@ -355,8 +360,25 @@ export default function DepthCards({
                     opacity: spread,
                     background: CARD_FACE_BG,
                     border: CARD_FACE_BORDER,
+                    overflow: "hidden",
                   }}
-                />
+                >
+                  {REELS[i].videos?.[0]?.thumbnail && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={REELS[i].videos![0].thumbnail}
+                      alt=""
+                      draggable={false}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  )}
+                </div>
               </div>
 
               {/* AND THE STRIP'S OWN GLOW, arriving with it.
@@ -435,6 +457,17 @@ export default function DepthCards({
             <div
               style={{
                 fontWeight: 500,
+                fontSize: "clamp(12px, 0.95vw, 15px)",
+                letterSpacing: "0.08em",
+                color: "rgba(255,255,255,0.45)",
+              }}
+            >
+              01
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontWeight: 500,
                 fontSize: "clamp(18px, 1.6vw, 26px)",
                 letterSpacing: "0.01em",
                 color: "#fff",
@@ -442,18 +475,6 @@ export default function DepthCards({
               }}
             >
               {REELS[0].title}
-            </div>
-            <div
-              style={{
-                marginTop: 6,
-                fontWeight: 300,
-                fontSize: "clamp(12px, 0.95vw, 15px)",
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                color: "rgba(255,255,255,0.5)",
-              }}
-            >
-              {REELS[0].meta}
             </div>
           </div>
           <div

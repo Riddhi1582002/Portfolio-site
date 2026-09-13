@@ -108,15 +108,15 @@ export default function ReelProjectView({
   const video = videos[selectedVideo] ?? videos[0];
 
   // Only reels that currently have videos are real, navigable projects —
-  // one with none yet (e.g. Excelsource, still pending its footage) has
-  // nothing to show in this view, and r8 is explicitly unused/reserved.
+  // one with none yet has nothing to show in this view. The list is
+  // linear, not circular: the first project has no Prev, the last has no
+  // Next, and neither wraps around to the other end.
   const navigable = reels
     .map((r, i) => (r.videos && r.videos.length > 0 ? i : -1))
     .filter((i) => i !== -1);
   const pos = navigable.indexOf(displayIndex);
-  const prevIndex =
-    pos === -1 ? null : navigable[(pos - 1 + navigable.length) % navigable.length];
-  const nextIndex = pos === -1 ? null : navigable[(pos + 1) % navigable.length];
+  const prevIndex = pos > 0 ? navigable[pos - 1] : null;
+  const nextIndex = pos !== -1 && pos < navigable.length - 1 ? navigable[pos + 1] : null;
 
   const t = clamp01(shown ? 1 : 0);
 
@@ -357,86 +357,110 @@ export default function ReelProjectView({
           </div>
         </div>
 
-        {/* BOTTOM: video index (multi-video only, thumbnails now rather
-            than bare numbers) + project navigation, given enough size and
-            weight of its own to balance against the media above it. */}
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            justifyContent: "space-between",
-            alignItems: "flex-end",
-            gap: 20,
-            marginTop: "clamp(20px, 4vh, 40px)",
-            paddingTop: 22,
-            borderTop: "1px solid rgba(255,255,255,0.09)",
-          }}
-        >
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", flex: "1 1 auto" }}>
-            {videos.length > 1 &&
-              videos.map((v, i) => (
+        {/* BOTTOM: the video index (multi-video only) in its own row,
+            thumbnails large enough to actually read as previews, each
+            with its number below rather than lettered over the art. */}
+        {videos.length > 1 && (
+          <div
+            style={{
+              display: "flex",
+              gap: "clamp(14px, 2vw, 26px)",
+              flexWrap: "wrap",
+              marginTop: "clamp(20px, 4vh, 40px)",
+              paddingTop: 22,
+              borderTop: "1px solid rgba(255,255,255,0.09)",
+            }}
+          >
+            {videos.map((v, i) => {
+              const selected = i === selectedVideo;
+              return (
                 <button
                   key={v.id}
                   type="button"
                   onClick={() => setSelectedVideo(i)}
-                  aria-current={i === selectedVideo}
+                  aria-current={selected}
                   aria-label={`Video ${i + 1}`}
                   style={{
-                    position: "relative",
-                    width: 84,
-                    aspectRatio: String(reel.ratio),
-                    borderRadius: 8,
-                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "none",
+                    border: "none",
                     padding: 0,
                     cursor: "pointer",
-                    background: "#111216",
-                    border:
-                      i === selectedVideo
-                        ? "2px solid rgba(255,255,255,0.9)"
-                        : "1px solid rgba(255,255,255,0.14)",
-                    opacity: i === selectedVideo ? 1 : 0.55,
-                    transition: "opacity 180ms ease, border-color 180ms ease",
                   }}
                 >
-                  {v.thumbnail && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={v.thumbnail}
-                      alt=""
-                      draggable={false}
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  )}
+                  <div
+                    style={{
+                      position: "relative",
+                      width: "clamp(96px, 9vw, 148px)",
+                      aspectRatio: String(reel.ratio),
+                      borderRadius: 10,
+                      overflow: "hidden",
+                      background: "#111216",
+                      border: selected
+                        ? "2px solid rgba(255,255,255,0.9)"
+                        : "1px solid rgba(255,255,255,0.16)",
+                      opacity: selected ? 1 : 0.55,
+                      transition: "opacity 180ms ease, border-color 180ms ease",
+                    }}
+                  >
+                    {v.thumbnail && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={v.thumbnail}
+                        alt=""
+                        draggable={false}
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    )}
+                  </div>
                   <span
                     style={{
-                      position: "absolute",
-                      left: 5,
-                      bottom: 4,
                       fontFamily: sans,
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight: 600,
-                      letterSpacing: "0.03em",
-                      color: "#fff",
-                      textShadow: "0 1px 4px rgba(0,0,0,0.9)",
+                      letterSpacing: "0.04em",
+                      color: selected ? "#fff" : "rgba(255,255,255,0.42)",
+                      borderBottom: selected
+                        ? "1px solid rgba(255,255,255,0.85)"
+                        : "1px solid transparent",
+                      paddingBottom: 2,
+                      transition: "color 180ms ease, border-color 180ms ease",
                     }}
                   >
                     {String(i + 1).padStart(2, "0")}
                   </span>
                 </button>
-              ))}
+              );
+            })}
           </div>
+        )}
 
-          <div style={{ display: "flex", gap: 32 }}>
+        {/* PROJECT NAVIGATION, in its own row so Prev/Next always land in
+            the bottom corners regardless of whether the video index above
+            rendered. Linear, not circular: at either end, the unavailable
+            direction simply isn't rendered rather than sitting there
+            disabled. */}
+        <div
+          style={{
+            display: "flex",
+            marginTop: videos.length > 1 ? "clamp(16px, 3vh, 28px)" : "clamp(20px, 4vh, 40px)",
+            paddingTop: videos.length > 1 ? 0 : 22,
+            borderTop: videos.length > 1 ? "none" : "1px solid rgba(255,255,255,0.09)",
+          }}
+        >
+          {prevIndex != null && (
             <button
               type="button"
-              onClick={() => prevIndex != null && onNavigate(prevIndex)}
-              disabled={prevIndex == null}
+              onClick={() => onNavigate(prevIndex)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -444,13 +468,13 @@ export default function ReelProjectView({
                 background: "none",
                 border: "none",
                 padding: 0,
-                cursor: prevIndex != null ? "pointer" : "default",
+                cursor: "pointer",
                 fontFamily: sans,
                 fontSize: "clamp(14px, 1.1vw, 17px)",
                 fontWeight: 500,
                 letterSpacing: "0.06em",
                 textTransform: "uppercase",
-                color: prevIndex != null ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.3)",
+                color: "rgba(255,255,255,0.85)",
               }}
             >
               <span style={{ fontSize: "1.3em" }} aria-hidden>
@@ -458,24 +482,26 @@ export default function ReelProjectView({
               </span>
               Prev project
             </button>
+          )}
+          {nextIndex != null && (
             <button
               type="button"
-              onClick={() => nextIndex != null && onNavigate(nextIndex)}
-              disabled={nextIndex == null}
+              onClick={() => onNavigate(nextIndex)}
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
+                marginLeft: "auto",
                 background: "none",
                 border: "none",
                 padding: 0,
-                cursor: nextIndex != null ? "pointer" : "default",
+                cursor: "pointer",
                 fontFamily: sans,
                 fontSize: "clamp(14px, 1.1vw, 17px)",
                 fontWeight: 500,
                 letterSpacing: "0.06em",
                 textTransform: "uppercase",
-                color: nextIndex != null ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.3)",
+                color: "rgba(255,255,255,0.85)",
               }}
             >
               Next project
@@ -483,7 +509,7 @@ export default function ReelProjectView({
                 →
               </span>
             </button>
-          </div>
+          )}
         </div>
       </div>
     </div>

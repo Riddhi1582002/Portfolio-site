@@ -66,7 +66,8 @@ export const REELS: Reel[] = [
   },
   {
     id: "r3",
-    ratio: 9 / 16,
+    // Landscape: only Bhajan Clubbing's showcase card is portrait.
+    ratio: 16 / 9,
     title: "Excelsource International Social Media",
     meta: "social media",
     description:
@@ -103,7 +104,8 @@ export const REELS: Reel[] = [
   },
   {
     id: "r5",
-    ratio: 9 / 16,
+    // Landscape: only Bhajan Clubbing's showcase card is portrait.
+    ratio: 16 / 9,
     title: "Freelance / Commercial Work",
     meta: "freelance",
     description:
@@ -121,7 +123,8 @@ export const REELS: Reel[] = [
   },
   {
     id: "r6",
-    ratio: 9 / 16,
+    // Landscape: only Bhajan Clubbing's showcase card is portrait.
+    ratio: 16 / 9,
     title: "Personal Art Account",
     meta: "Instagram",
     description: "An Instagram account I started to have somewhere to put these things.",
@@ -282,6 +285,9 @@ export default function ReelStrip({
   const { widths, centres } = layout(REELS);
   const [vw, setVw] = useState(1440);
   const [vh, setVh] = useState(900);
+  // Which card the pointer is actually over, for the hover reveal above
+  // the strip below — separate from `focus`, which is scroll-driven.
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
 
   // useLayoutEffect, not useEffect. This section MOUNTS MID-SCROLL, on the
@@ -336,42 +342,92 @@ export default function ReelStrip({
         background: "#000",
       }}
     >
-      {/* Details for the card in focus. Sits in the clear top third. */}
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          top: `${DETAILS_TOP_VH}vh`,
-          textAlign: "center",
-          pointerEvents: "none",
-          opacity: entryT,
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 500,
-            fontSize: "clamp(18px, 1.6vw, 26px)",
-            letterSpacing: "0.01em",
-            color: "#fff",
-            textShadow: "0 0 22px rgba(255,255,255,0.28)",
-          }}
-        >
-          {REELS[Math.round(focus)].title}
-        </div>
-        <div
-          style={{
-            marginTop: 6,
-            fontWeight: 300,
-            fontSize: "clamp(12px, 0.95vw, 15px)",
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            color: "rgba(255,255,255,0.5)",
-          }}
-        >
-          {REELS[Math.round(focus)].meta}
-        </div>
-      </div>
+      {/* Details for the card in focus. Sits in the clear top third.
+          Number + name are always shown for whichever card is centred;
+          hovering that same (focused) card additionally reveals its
+          description and video count in the same spot — the project's
+          fuller information, without ever writing it inside the card
+          itself or inventing a tooltip floating over the art. */}
+      {(() => {
+        const focusedIndex = Math.round(focus);
+        const focusedReel = REELS[focusedIndex];
+        const expanded = hoveredIndex === focusedIndex;
+        const videoCount = focusedReel.videos?.length ?? 0;
+        return (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: `${DETAILS_TOP_VH}vh`,
+              textAlign: "center",
+              pointerEvents: "none",
+              opacity: entryT,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 500,
+                fontSize: "clamp(12px, 0.95vw, 15px)",
+                letterSpacing: "0.08em",
+                color: "rgba(255,255,255,0.45)",
+              }}
+            >
+              {String(focusedIndex + 1).padStart(2, "0")}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontWeight: 500,
+                fontSize: "clamp(18px, 1.6vw, 26px)",
+                letterSpacing: "0.01em",
+                color: "#fff",
+                textShadow: "0 0 22px rgba(255,255,255,0.28)",
+              }}
+            >
+              {focusedReel.title}
+            </div>
+            <div
+              style={{
+                marginTop: expanded ? 10 : 0,
+                maxHeight: expanded ? 160 : 0,
+                opacity: expanded ? 1 : 0,
+                overflow: "hidden",
+                transition: "opacity 200ms ease, margin-top 200ms ease, max-height 200ms ease",
+              }}
+            >
+              {focusedReel.description && (
+                <div
+                  style={{
+                    fontWeight: 300,
+                    fontSize: "clamp(13px, 1vw, 16px)",
+                    lineHeight: 1.5,
+                    letterSpacing: "0.02em",
+                    color: "rgba(255,255,255,0.72)",
+                    maxWidth: "48ch",
+                    marginLeft: "auto",
+                    marginRight: "auto",
+                  }}
+                >
+                  {focusedReel.description}
+                </div>
+              )}
+              <div
+                style={{
+                  marginTop: 8,
+                  fontWeight: 500,
+                  fontSize: 12,
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.45)",
+                }}
+              >
+                {videoCount} {videoCount === 1 ? "video" : "videos"}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div
         style={{
@@ -442,8 +498,10 @@ export default function ReelStrip({
                   />
                   <HoverCard aspect={reel.ratio} radius={14}>
                     {/* The project's showcase (first) video's thumbnail as
-                        the card's artwork. Title/description/video count
-                        are invisible until hovered — see reel-card.css. */}
+                        the card's artwork, and only that — title/
+                        description/video count show above the strip
+                        instead (see the focused-details block above),
+                        revealed on hover of this same card. */}
                     <div
                       className="reel-card-face"
                       role={reel.videos?.length ? "button" : undefined}
@@ -461,6 +519,10 @@ export default function ReelStrip({
                               }
                             }
                           : undefined
+                      }
+                      onMouseEnter={() => setHoveredIndex(i)}
+                      onMouseLeave={() =>
+                        setHoveredIndex((v) => (v === i ? null : v))
                       }
                       style={{
                         width: "100%",
@@ -492,17 +554,6 @@ export default function ReelStrip({
                           }}
                         />
                       )}
-                      <div className="reel-card-scrim" aria-hidden />
-                      <div className="reel-card-info">
-                        <div className="reel-card-title">{reel.title}</div>
-                        {reel.description && (
-                          <div className="reel-card-desc">{reel.description}</div>
-                        )}
-                        <div className="reel-card-count">
-                          {reel.videos?.length ?? 0}{" "}
-                          {(reel.videos?.length ?? 0) === 1 ? "video" : "videos"}
-                        </div>
-                      </div>
                     </div>
                   </HoverCard>
                 </>
