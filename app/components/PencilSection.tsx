@@ -7,14 +7,26 @@
 // left it — so it rises through the frame and turns from a frontal view
 // to its underside as the eye passes beneath it. Seen from under, with
 // the filament driven up, the envelope stops reading as an object and
-// becomes a bright white circle. That circle then darkens into a black
-// iris, and the card it is painted on comes up behind it.
+// becomes a bright white circle. That circle stays exactly what it is —
+// lit, white, unchanging — and glides to the gallery's own centred
+// position; the cut to the gallery's real artwork (InfiniteCanvas,
+// already sitting behind this section at the identical size and
+// position — see IRIS_HANDOFF_AT and HeroSection's own use of it) happens
+// only once it has arrived there and settled. There used to be a second
+// stage in between — the circle itself darkening to a flat black disc,
+// with a white rim drawn on it to read as a hole rather than a gap, and a
+// placeholder card fading in behind that black disc before the real
+// artwork ever appeared — which is exactly the intermediate state the
+// spec rules out: no black circle, no white outline on an empty circle,
+// ever visible on screen. WHITE CIRCLE -> IRIS ARTWORK, nothing between.
 //
 // The circle NEVER changes size. It is the bulb's own glass, so it is
-// whatever the bulb is on screen, and the card behind it takes the size
-// that keeps the card-to-circle ratio the gallery's own card has. Both
-// numbers come from InfiniteCanvas's `irisFrame`, so the frame this beat
-// ends on and the frame the pull-back opens on are the same pixels.
+// whatever the bulb is on screen, and InfiniteCanvas's own card behind it
+// takes the size that keeps the card-to-circle ratio the gallery's own
+// card has. Both numbers come from InfiniteCanvas's `irisFrame`, so the
+// frame this beat ends on and the frame the pull-back opens on are the
+// same pixels — which is what makes the hard cut between the two
+// components land seamlessly instead of as a jump.
 //
 // Everything round here is sized with a TRANSFORM on a fixed base box and
 // every blur is constant: a disc that grows by changing its width, with a
@@ -52,26 +64,31 @@ import {
 // move. The descent starts on the frame this beat becomes visible now.
 const FALL = [0, 0.6] as const;
 // The white circle takes over from the model as the camera arrives under it.
-const BLOOM = [0.4, 0.6] as const;
+// Driven off `fallT` below rather than off `p` directly — see its use — so
+// the crossfade cannot start until the descent has actually nearly landed.
 // The narration belongs to the white-circle scene: it comes up under the
 // circle once the descent has landed, and leaves as the circle darkens.
 const LINE = [0.46, 0.72] as const;
-// THE CUT, re-timed at both ends — not re-choreographed. The order it
-// reads in is untouched (the light goes out, THEN the card comes up under
-// it, at the same 0.12 offset and the same relative pacing).
-//
-// It began at 0.64 while the descent landed at 0.60, so the frame simply
-// stopped for 17vh between arriving under the bulb and the light starting
-// to die. It began going out at 0.60 instead: the camera settles INTO the
-// light failing rather than settling, waiting, and then the light failing.
-//
-// And it ended at 0.90, which left the last 42vh of this beat — a tenth
-// of a 420vh section — on a completely static frame before the gallery's
-// pull-back picked it up. The card's arrival now lands exactly on the
-// frame the pull-back starts, so the camera leaves through the iris on
-// the beat the card finishes coming up behind it rather than a sixth of
-// a section later.
-const SWAP = [0.6, 1] as const;
+// THE SETTLE: once the narration has had its say, the (still white, still
+// lit) circle glides from its own resting position — a little above
+// centre, with room for that narration under it — to the gallery's own
+// centred position, arriving exactly as InfiniteCanvas's real artwork
+// takes over. Starts a beat after LINE's own fade-out finishes (0.72) so
+// the two moves never overlap, and finishes at IRIS_HANDOFF_AT, which
+// HeroSection uses verbatim as the exact scroll position it hands the
+// beat to InfiniteCanvas — so the circle is already sitting still, at the
+// gallery's own size and position, for a moment before the cut, not
+// caught mid-glide by it.
+const SETTLE = [0.74, 0.92] as const;
+/**
+ * Where this section hands off to InfiniteCanvas (as a share of THIS
+ * section's own progress) — exported so HeroSection can make InfiniteCanvas
+ * visible at exactly this point rather than only at progress 1. A hard cut,
+ * not a cross-fade: the two are drawn from the same `irisFrame` geometry
+ * (see the file-level comment), so at this exact frame they are pixel
+ * identical and swapping which one is on screen changes nothing visible.
+ */
+export const IRIS_HANDOFF_AT = 0.94;
 
 // Where the circle settles: a little above the middle, with room under it
 // for the narration.
@@ -90,16 +107,6 @@ const span = (v: number, a: number, b: number) => clamp01((v - a) / (b - a));
 // intention. This is the curve that actually keeps it: entered with speed,
 // and still settling to rest under the bulb exactly as before.
 const fallEase = carry(baseEaseInOutSine, 0.18, 1);
-// The light starts going out while the camera is still settling, so the
-// two overlap instead of queueing. Lands on exactly 1, so the iris is
-// exactly as black as it was.
-const darkEase = carry(baseEaseInOutSine, 0.16, 1);
-// The card behind the iris is still coming up on the frame the gallery's
-// pull-back takes over. easeInOutSine brakes to nothing, so the last of
-// this beat was a held frame again even after SWAP was extended to 1 —
-// the arrival LANDED on the seam but arrived at it stopped. Lands on
-// exactly 1, so the card is exactly as present as it was.
-const cardEase = carry(baseEaseInOutSine, 0, 0.94);
 
 export default function PencilSection({
   progress,
@@ -138,13 +145,22 @@ export default function PencilSection({
   const circleY = bulbTop + bulbPx / 2;
 
   // The white circle takes over from the model as the underside blows out.
-  const bloom = easeInOutSine(span(p, BLOOM[0], BLOOM[1]));
+  //
+  // Driven off `fallT` (how far the descent has actually landed), not off
+  // `p` directly. It used to be span(p, 0.4, 0.6) — a fixed window of
+  // scroll that started well before the camera had actually arrived under
+  // the bulb, so the model-to-circle crossfade was visibly under way while
+  // the descent was still only two-thirds landed. Gated on fallT instead,
+  // it cannot begin until the camera is nearly all the way there, and it
+  // still finishes on exactly the same frame as before (fallT reaches 1
+  // exactly when FALL's own p-window ends).
+  const bloom = easeInOutSine(span(fallT, 0.82, 1));
 
   // THE CIRCLE'S OWN SIZE, while it is still crossfading with the model.
   //
   // frame.iris (used once the descent has landed) is calibrated for the
   // bulb seen from directly beneath — a foreshortened ~54% of its box.
-  // BLOOM and FALL end at the same point (p 0.6), so for the whole
+  // `bloom`'s own window and FALL end at the same point, so for the whole
   // crossfade the camera is STILL pitching down and the model is still
   // showing something closer to its frontal silhouette, which fills far
   // more of the box. Fading the flat circle in at its final, foreshortened
@@ -165,19 +181,12 @@ export default function PencilSection({
   const circleDia =
     bulbPx * (CIRCLE_START_RATIO + (BULB_GLASS_RATIO - CIRCLE_START_RATIO) * circleShrinkT);
 
-  // The cut. The card comes up first, then the circle darkens — so the
-  // order the eye reads is "there is something behind this light", then
-  // "the light was a hole".
-  // The circle goes black FIRST and the card comes up under it after.
-  // Overlapping them showed a lit white circle sitting on a card with the
-  // narration still over it — three states of the beat at once.
-  const dark = darkEase(span(p, SWAP[0], SWAP[0] + 0.16));
-  const cardIn = cardEase(span(p, SWAP[0] + 0.12, SWAP[1]));
-  const rim = dark;
-
-  // Once the circle is black it is the gallery's iris, so it takes the
-  // gallery's position: the card's centre, which is the frame's centre.
-  const discCentreY = circleY + (vh / 2 - circleY) * dark;
+  // THE GLIDE to the gallery's own centred position — see SETTLE's own
+  // comment. The circle's colour and size are untouched by this; only
+  // where it sits moves, so that by IRIS_HANDOFF_AT it is dead centre,
+  // exactly where InfiniteCanvas's own reveal is centred too.
+  const settle = easeInOutSine(span(p, SETTLE[0], SETTLE[1]));
+  const discCentreY = circleY + (vh / 2 - circleY) * settle;
 
   const lineFocus = span(p, LINE[0], LINE[1] - 0.1);
   const lineOpacity = Math.min(
@@ -311,9 +320,9 @@ export default function PencilSection({
           filament — held at full on the frame this beat takes over and
           cross-dissolved into the wash below as the camera comes beneath
           the glass and the light stops reading as a lamp in a room and
-          starts reading as a disc. The two opacities sum to (1 - dark)
-          throughout, so the room never dims for the swap; it only changes
-          what shape the light is. */}
+          starts reading as a disc. The two opacities always sum to 1,
+          so the room never dims for the swap; it only changes what shape
+          the light is. */}
       {fallT < 0.999 && (
         <div
           aria-hidden
@@ -329,7 +338,7 @@ export default function PencilSection({
             borderRadius: "50%",
             background: BULB_WASH_GRADIENT,
             transform: `translateY(${(bulbTop + bulbPx * BULB_WASH_CENTRE).toFixed(1)}px)`,
-            opacity: (1 - fallT) * (1 - dark),
+            opacity: 1 - fallT,
             willChange: "transform, opacity",
             pointerEvents: "none",
           }}
@@ -355,41 +364,11 @@ export default function PencilSection({
             (circleDia * 3.6) /
             BASE
           ).toFixed(4)})`,
-          opacity: fallT * (1 - dark),
+          opacity: fallT,
           willChange: "transform, opacity",
           pointerEvents: "none",
         }}
       />
-
-      {/* THE CARD, at the size that keeps the gallery's card-to-circle
-          ratio. It is the gallery's own card, one camera move away. */}
-      {cardIn > 0.001 && (
-        <div
-          aria-hidden
-          data-pencil="card"
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            width: frame.cardW,
-            height: frame.cardH,
-            marginLeft: -frame.cardW / 2,
-            marginTop: -frame.cardH / 2,
-            // These four are the gallery's own card, at this beat's scale —
-            // the cut between the beats is geometry, so they have to stay
-            // in step with InfiniteCanvas's Placeholder.
-            borderRadius: 10 * frame.scale,
-            background: "linear-gradient(150deg, #212328 0%, #16171c 55%, #0d0e11 100%)",
-            border: `${Math.max(1, frame.scale)}px solid rgba(255,255,255,0.1)`,
-            boxShadow: `0 0 ${(18 * frame.scale).toFixed(0)}px rgba(255,255,255,0.05), 0 ${(
-              10 * frame.scale
-            ).toFixed(0)}px ${(30 * frame.scale).toFixed(0)}px rgba(0,0,0,0.6)`,
-            opacity: cardIn,
-            willChange: "opacity",
-            pointerEvents: "none",
-          }}
-        />
-      )}
 
       {/* The bloom around the light, while it is still a light. */}
       <div
@@ -410,7 +389,7 @@ export default function PencilSection({
             (circleDia * 1.7) /
             BASE
           ).toFixed(4)})`,
-          opacity: bloom * (1 - dark),
+          opacity: bloom,
           zIndex: 2,
           willChange: "transform, opacity",
           pointerEvents: "none",
@@ -418,8 +397,10 @@ export default function PencilSection({
       />
 
       {/* THE CIRCLE. The bulb's own glass, at the bulb's own size, for the
-          rest of the beat: white while it is a light, black once it is an
-          iris. Its size never changes — only its colour. */}
+          rest of the beat — lit white throughout. Its size never changes,
+          and neither does its colour: it hands off to InfiniteCanvas's
+          real artwork (IRIS_HANDOFF_AT, see HeroSection) while still this
+          same white, rather than darkening into a placeholder first. */}
       <div
         aria-hidden
         data-pencil="iris"
@@ -432,40 +413,12 @@ export default function PencilSection({
           marginLeft: -BASE / 2,
           marginTop: -BASE / 2,
           borderRadius: "50%",
-          background: `rgb(${(255 * (1 - dark)).toFixed(0)}, ${(250 * (1 - dark)).toFixed(
-            0
-          )}, ${(240 * (1 - dark)).toFixed(0)})`,
+          background: "rgb(255, 250, 240)",
           transform: `translateY(${discCentreY.toFixed(1)}px) scale(${(
             circleDia / BASE
           ).toFixed(4)})`,
-          opacity: Math.max(bloom, dark),
+          opacity: bloom,
           zIndex: 3,
-          willChange: "transform, opacity",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* The iris's rim. A black disc alone is a gap in the page; the rim
-          is what makes it read as something you are looking through. */}
-      <div
-        aria-hidden
-        data-pencil="rim"
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: 0,
-          width: BASE,
-          height: BASE,
-          marginLeft: -BASE / 2,
-          marginTop: -BASE / 2,
-          borderRadius: "50%",
-          boxShadow:
-            "0 0 0 1.4px rgba(255,255,255,0.42), 0 0 20px rgba(255,255,255,0.2)",
-          transform: `translateY(${discCentreY.toFixed(1)}px) scale(${(
-            circleDia / BASE
-          ).toFixed(4)})`,
-          opacity: rim,
-          zIndex: 4,
           willChange: "transform, opacity",
           pointerEvents: "none",
         }}

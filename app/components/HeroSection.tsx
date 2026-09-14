@@ -23,7 +23,7 @@ import ReelStrip, { REELS } from "./ReelStrip";
 import ReelProjectView from "./ReelProjectView";
 import ReelVideoViewer from "./ReelVideoViewer";
 import CordSection from "./CordSection";
-import PencilSection from "./PencilSection";
+import PencilSection, { IRIS_HANDOFF_AT } from "./PencilSection";
 import InfiniteCanvas from "./InfiniteCanvas";
 import NarrationLine from "./NarrationLine";
 import { easeInPow, easeOutSine } from "../lib/motion";
@@ -278,6 +278,20 @@ const REELS_SPAN_END = (HERO_VH + REELS_VH) / SCROLL_LENGTH_VH;
 const CORD_SPAN_END = (HERO_VH + REELS_VH + CORD_VH) / SCROLL_LENGTH_VH;
 const PENCIL_SPAN_END =
   (HERO_VH + REELS_VH + CORD_VH + PENCIL_VH) / SCROLL_LENGTH_VH;
+// Where PencilSection hands its beat to InfiniteCanvas — a HARD CUT, not
+// the beat's own end (PENCIL_SPAN_END). PencilSection's white iris circle
+// glides to the gallery's centred position and stops there (see its own
+// IRIS_HANDOFF_AT), and from that exact scroll position on, InfiniteCanvas
+// — already mounted, sitting at revealScale's maximum zoom, showing the
+// SAME circle at the SAME size and position but painted with the real
+// artwork — is what the reader is actually looking at. Swapping which of
+// the two is on screen at that shared frame is invisible; letting
+// PencilSection's own progress keep running past it, all the way to
+// PENCIL_SPAN_END, is what used to leave a flat black placeholder disc
+// on screen with nothing behind it for a long stretch of scrolling before
+// the real artwork ever appeared.
+const IRIS_HANDOFF_SCROLL_P =
+  CORD_SPAN_END + (PENCIL_SPAN_END - CORD_SPAN_END) * IRIS_HANDOFF_AT;
 // Derived, not hard-coded: whatever HERO_VH ends up being, this is the
 // fraction of it that BEATS_VH itself occupies, which is what keeps the
 // beats' own pacing exactly as tuned regardless of how TAIL_VH changes.
@@ -1811,21 +1825,33 @@ export default function HeroSection() {
         />
 
         {/* The pull-back out of the iris, and the gallery it opens on. */}
-        {scrollP > PENCIL_SPAN_END - 0.002 && (
+        {scrollP > IRIS_HANDOFF_SCROLL_P - 0.015 && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
             <InfiniteCanvas
               progress={canvasP}
               sans={SANS}
               vw={viewport.vw}
               vh={viewport.vh}
-              // Mounted early (the -0.002 above) so the plane's first
-              // layout is not paid for on the frame the pull-back starts,
-              // but not VISIBLE until it has something to show: it is an
-              // opaque backdrop, and its progress is clamped to 0 for the
-              // whole lead-in, so it used to cover the last of the pencil
-              // beat with a frame that could not move. Same guard the two
-              // beats above it now use.
-              visible={canvasP > 0}
+              // Mounted early (the -0.015 above, wider than the usual
+              // lead-in because IRIS_HANDOFF_SCROLL_P — where this becomes
+              // VISIBLE, below — is itself well before this beat's own
+              // PENCIL_SPAN_END) so the plane's first layout is already
+              // paid for by the time it needs to appear.
+              //
+              // VISIBLE from IRIS_HANDOFF_SCROLL_P, not from PENCIL_SPAN_END:
+              // PencilSection's own white iris circle glides to a stop at
+              // exactly the gallery's centred position by that scroll
+              // point (see PencilSection's IRIS_HANDOFF_AT) and this is
+              // already sitting there underneath it at revealScale's
+              // maximum zoom, painted with the SAME `irisFrame` geometry —
+              // so the hard cut from one to the other is pixel-identical.
+              // Waiting for PENCIL_SPAN_END instead (this beat's own
+              // progress reaching 1) used to leave PencilSection's own
+              // placeholder — a circle darkened to flat black, with a
+              // white rim drawn on it — on screen for a long stretch of
+              // scrolling with nothing behind it, before the real artwork
+              // this component draws ever appeared.
+              visible={scrollP > IRIS_HANDOFF_SCROLL_P}
             />
           </div>
         )}

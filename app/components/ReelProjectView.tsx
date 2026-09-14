@@ -86,7 +86,10 @@ export default function ReelProjectView({
   // mount below-rest/invisible on one frame, only flip to the resting
   // state on the next so the browser has something to transition from.
   // Only re-fires when `mounted` itself flips false -> true (a fresh
-  // open), not on a prev/next content swap while already shown.
+  // open), not on a prev/next content swap while already shown — and it
+  // does flip back to false, via the panel's own onTransitionEnd below
+  // once the close fade finishes, so `mounted` really does cycle on every
+  // open/close pair rather than only ever going true once.
   useEffect(() => {
     if (!mounted) return;
     let raf2 = 0;

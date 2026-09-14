@@ -33,7 +33,6 @@ import {
   cardGlow,
   EDGE_FADE_LEFT,
   EDGE_FADE_RIGHT,
-  DETAILS_TOP_VH,
 } from "./ReelStrip";
 import { carry, easeInOutCubic } from "../lib/motion";
 import {
@@ -431,52 +430,16 @@ export default function DepthCards({
         })}
       </div>
 
-      {/* THE REST OF THE STRIP'S FRAME, arriving on the same value.
-          The row the fan assembles into is not just eight cards: it is
-          those cards with the piece's details in the clear band above them
-          and the frame falling into black at both edges. All of it was
-          missing here and all of it appeared at once when REELS took over.
-          Keyed to the FRONT card's spread — card 0 is the piece the strip
-          opens in focus, so its arrival is what the details describe. */}
+      {/* THE REST OF THE STRIP'S FRAME, arriving on the same value: the
+          frame falling into black at both edges. The piece's title/number
+          used to render here too, but that left it on screen for the whole
+          spread — this is a hand-off frame, not the strip itself, and
+          ReelStrip already shows the title on hover once the strip is the
+          thing on screen. Keyed to the FRONT card's spread — card 0 is the
+          piece the strip opens in focus, so its arrival is what the edges
+          describe. */}
       {frontSpread > 0.001 && (
         <>
-          <div
-            aria-hidden
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: `${DETAILS_TOP_VH}vh`,
-              textAlign: "center",
-              pointerEvents: "none",
-              opacity: arr,
-              fontFamily: sans,
-              willChange: "opacity",
-            }}
-          >
-            <div
-              style={{
-                fontWeight: 500,
-                fontSize: "clamp(12px, 0.95vw, 15px)",
-                letterSpacing: "0.08em",
-                color: "rgba(255,255,255,0.45)",
-              }}
-            >
-              01
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontWeight: 500,
-                fontSize: "clamp(18px, 1.6vw, 26px)",
-                letterSpacing: "0.01em",
-                color: "#fff",
-                textShadow: "0 0 22px rgba(255,255,255,0.28)",
-              }}
-            >
-              {REELS[0].title}
-            </div>
-          </div>
           <div
             aria-hidden
             style={{

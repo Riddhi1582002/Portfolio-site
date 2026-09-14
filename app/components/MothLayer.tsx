@@ -231,9 +231,15 @@ const SRC_PULL = [
   NARRATION_ATTRACTION_STRENGTH,
 ];
 // How much each source LIGHTS the moth, as distinct from how much it pulls
-// on it. The bulb is the room's light; ART and the cards are secondary;
-// narration is barely a glow on white type.
-const SRC_LIGHT = [1.0, 0.42, 0.3, 0.1];
+// on it. The bulb is the room's light; the cards are its own lit screens —
+// close-up, the strongest thing in the room besides the bulb itself, which
+// is why this sits above ART's rather than below it — and narration is
+// barely a glow on white type. Raised from 0.3 (still visible, but read as
+// a faint wash rather than as the creature actually catching a nearby
+// card's glow) so a pass close to a REELS card or a gallery piece —
+// K_CARD covers both, see SELECTORS above — reads as reflected light
+// rather than ambient fill.
+const SRC_LIGHT = [1.0, 0.42, 0.55, 0.1];
 const SRC_COLOUR = [0xffb45a, 0xd6e4ff, 0xe6edff, 0xffffff];
 // HOW BRIGHT A SOURCE IS, and how its light thins out with distance.
 //
