@@ -31,8 +31,9 @@
 // Clicking an image (a click, not a drag) expands it in place: the card
 // grows from the exact box it occupied in the composition to a focused
 // card at the middle of the window, with the rest of the gallery still
-// visible behind it. A small arrow at its top-right turns it over on Y to
-// its details, and closing sends it back to the box it came from.
+// visible behind it, its medium/details now always showing over the same
+// bottom gradient the grid card reveals on hover — no flip, no back face,
+// no separate panel. Closing sends it back to the box it came from.
 //
 // Scrolling DOWN out of the settled gallery — past the natural end of the
 // page's own scroll track — does not do nothing and does not reverse the
@@ -80,7 +81,7 @@ const CELL_H = 4550;
  * is the artwork's folder name from
  * the supplied archive (verbatim, except one explicit rename — see the
  * generator); `details`, when supplied, is the only other text a card
- * ever shows, and only on its flipped back.
+ * ever shows, and only in the hover/focused info gradient (see ArtCard).
  */
 type Piece = {
   id: string;
@@ -166,14 +167,28 @@ const PIECES: Piece[] = [
 // space the return transition flies through.
 const GAP = { x: 1180, y: 2275 };
 
-// THE piece the iris sits on: the black disc the previous beat leaves the
+// THE piece the iris sits on: the white circle the previous beat leaves the
 // frame on is the pupil painted on this card, and the zoom out starts
 // hard against it. PencilSection draws its last frame from the same
 // numbers, so the swap between the two is geometry, not a cross-fade.
 // TRS_8286 (an eye study) is the supplied artwork for this role.
 const IRIS_PIECE_ID = "graphite-or-charcoal-trs-8286";
-/** The iris's diameter as a share of its card's height. */
-const IRIS_RATIO = 0.78;
+// THE IRIS'S ACTUAL GEOMETRY, measured directly off trs-8286.jpg (1800x1198):
+// the drawn iris (the textured coloured disc around the pupil, limbus to
+// limbus) sits at pixel centre (882, 605) with radius 158 — a circle
+// visually fit against the source file, not assumed. This used to be
+// IRIS_RATIO = 0.78, a guess close to three times too large, which is
+// exactly why the hand-off circle read as "random" rather than seamless:
+// the ring drawn at that size enclosed the whole eye (lashes and all)
+// instead of tracing the iris itself, and the card was under-zoomed to
+// match, so the SIZE was wrong even though the ring happened to sit near
+// the card's centre.
+/** The iris's diameter as a share of its card's height (316 / 1198). */
+const IRIS_RATIO = 316 / 1198;
+/** The iris's centre as a fraction of the card's own width/height — very
+ *  close to (0.5, 0.5) but not exact, so kept explicit rather than assumed. */
+const IRIS_CENTER_X_FRAC = 882 / 1800;
+const IRIS_CENTER_Y_FRAC = 605 / 1198;
 /** How much of the reveal the camera spends pulling back. */
 const REVEAL_END = 0.5;
 
@@ -264,6 +279,11 @@ export function irisFrame(vw: number, vh: number) {
   // and the camera's distance is whatever puts that card at that size.
   const iris = bulbSizePx(vw, vh) * BULB_GLASS_RATIO;
   const scale = iris / IRIS_RATIO / cardH;
+  // The drawn iris's own centre, offset from the card's geometric centre —
+  // in CARD-LOCAL canvas px, before `scale`/`fit` are applied, so callers
+  // can add it straight onto whatever coordinate space they're already in.
+  const irisOffsetX = (IRIS_CENTER_X_FRAC - 0.5) * piece.w;
+  const irisOffsetY = (IRIS_CENTER_Y_FRAC - 0.5) * piece.h;
   return {
     piece,
     fit,
@@ -273,6 +293,8 @@ export function irisFrame(vw: number, vh: number) {
     cardH: cardH * scale,
     iris,
     irisPlane: piece.h * IRIS_RATIO,
+    irisOffsetX,
+    irisOffsetY,
   };
 }
 
@@ -311,20 +333,33 @@ const ringDelta = (a: number, b: number, m: number) => {
 const FALLBACK_BG = "linear-gradient(150deg, #1a1c22 0%, #121318 58%, #090a0d 100%)";
 
 /**
- * The artwork card, front face: the image and nothing else. No title, no
- * medium, no caption — the card in its default state is only ever the
- * picture, at its own exact aspect ratio (the box this sits in is already
- * sized from the source image's ratio, so `object-fit: cover` here never
- * actually crops anything — there is no mismatch left for it to resolve).
+ * The artwork card: the image, and nothing else until the reader asks for
+ * more. IDLE is only ever the picture, at its own exact aspect ratio (the
+ * box this sits in is already sized from the source image's ratio, so
+ * `object-fit: cover` here never actually crops anything). `infoVisible`
+ * (hover, on the small gallery cards; always-on once a card is focused —
+ * see the "opened" render below) fades in a bottom gradient carrying the
+ * medium and, if supplied, its details. There is no flip and no back
+ * face any more: the information lives ON the artwork, not behind it.
  */
 function ArtCard({
   src,
+  medium,
+  details,
   radius = 10,
   hovered = false,
+  infoVisible = false,
+  infoScale = 1,
 }: {
   src: string;
+  medium?: string;
+  details?: string;
   radius?: number;
   hovered?: boolean;
+  /** Show the medium/details gradient — hover on a grid card, always true once focused. */
+  infoVisible?: boolean;
+  /** Scales the info type up for the large focused card vs. the small grid one. */
+  infoScale?: number;
 }) {
   return (
     <div
@@ -365,6 +400,79 @@ function ArtCard({
           objectFit: "cover",
         }}
       />
+      {/* THE INFORMATION. A gradient rising from the bottom edge, carrying
+          the medium (and, if supplied, its details) — not a solid panel:
+          it has to dissolve into the picture rather than read as a bar
+          laid over it, so it is three stops fading to fully transparent
+          well short of the card's own middle, and the type sits inside
+          the densest part of it. Rendered here, inside the same rounded/
+          clipped box the image is in, so both the small grid card's hover
+          and the focused card's always-on info (see the "opened" render
+          below, which reuses this same component) share one treatment —
+          there is no separate back face or information panel any more. */}
+      {medium != null && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: "58%",
+              background:
+                "linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.52) 30%, rgba(0,0,0,0.2) 58%, rgba(0,0,0,0) 100%)",
+              opacity: infoVisible ? 1 : 0,
+              transition: "opacity 280ms ease",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              padding: `${(10 * infoScale).toFixed(1)}px ${(12 * infoScale).toFixed(1)}px`,
+              opacity: infoVisible ? 1 : 0,
+              transform: infoVisible ? "translateY(0)" : "translateY(6px)",
+              transition: "opacity 280ms ease, transform 320ms cubic-bezier(0.22,0.7,0.24,1)",
+            }}
+          >
+            <div
+              style={{
+                color: "#fff",
+                fontWeight: 600,
+                fontSize: 12 * infoScale,
+                letterSpacing: "0.07em",
+                textTransform: "uppercase",
+                textShadow: "0 1px 10px rgba(0,0,0,0.5)",
+              }}
+            >
+              {medium}
+            </div>
+            {details && (
+              <div
+                style={{
+                  marginTop: 3 * infoScale,
+                  color: "rgba(255,255,255,0.72)",
+                  fontWeight: 300,
+                  fontSize: 10.5 * infoScale,
+                  lineHeight: 1.4,
+                  maxWidth: `${34 * infoScale}ch`,
+                }}
+              >
+                {details}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -409,7 +517,20 @@ export default function InfiniteCanvas({
   // Keyed by cell AND piece: the same piece is drawn several times, so
   // keying on its id alone lit every copy at once.
   const [hovered, setHovered] = useState<string | null>(null);
-  const [flipped, setFlipped] = useState(false);
+  // A touch device has no real hover: it fires a synthetic mouseenter on
+  // first tap in some browsers, which would otherwise pop the info
+  // gradient on immediately alongside — or in place of — the tap opening
+  // the card. Gating grid-card info on a genuine `hover` media feature
+  // keeps the small cards clean on touch, as specified; the focused card's
+  // own info is unaffected (`infoVisible` there is unconditional).
+  const [canHover, setCanHover] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const update = () => setCanHover(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   const fit = galleryFit(vw);
   const fitRef = useRef(fit);
@@ -540,8 +661,8 @@ export default function InfiniteCanvas({
   // lens; taking it modulo the cell can name the copy one cell over, which
   // is off screen. Wrapping resumes when the reveal ends and the full
   // block is drawn again, and the two offsets are the same position by then.
-  const irisX = frame.piece.x + frame.piece.w / 2 - vw / 2;
-  const irisY = frame.piece.y + frame.piece.h / 2 - vh / 2;
+  const irisX = frame.piece.x + frame.piece.w / 2 + frame.irisOffsetX - vw / 2;
+  const irisY = frame.piece.y + frame.piece.h / 2 + frame.irisOffsetY - vh / 2;
 
   // Writing the transform from a ref keeps a drag off React's render path;
   // at fourteen pieces per cell a state update per pointermove is visible.
@@ -641,11 +762,75 @@ export default function InfiniteCanvas({
   // keeps the pan alive when the pointer leaves the surface mid-throw.
   const capturedRef = useRef(false);
 
+  // ── MOMENTUM ─────────────────────────────────────────────────────────
+  //
+  // The drag itself still tracks the pointer 1:1 (see onPointerMove) —
+  // that stays tight and direct, the way a hand on the composition should.
+  // What was missing is what happens the instant the hand lifts: the pan
+  // used to just stop dead where the pointer left off. `velRef` tracks the
+  // pan's own recent velocity (canvas px/ms, smoothed rather than taken
+  // from a single last sample so one twitchy final event can't fling it),
+  // and `endDrag` hands that off to a friction-decayed rAF loop that keeps
+  // the composition drifting and settling on its own, the way the Liquid
+  // Glass Carousel reference does it — no second competing render loop,
+  // just this same `write()` the drag itself already uses.
+  const velRef = useRef({ x: 0, y: 0 });
+  const lastMoveTimeRef = useRef(0);
+  const momentumRafRef = useRef<number | null>(null);
+  const MOMENTUM_MIN_SPEED = 0.025; // canvas px/ms; below this, not worth animating
+  const MOMENTUM_MAX_SPEED = 3.2; // clamps an unrealistically fast flick
+  const MOMENTUM_HALF_LIFE_MS = 220; // time for the coast to lose half its speed
+
+  const stopMomentum = useCallback(() => {
+    if (momentumRafRef.current != null) {
+      cancelAnimationFrame(momentumRafRef.current);
+      momentumRafRef.current = null;
+    }
+  }, []);
+
+  const startMomentum = useCallback(() => {
+    const speed = Math.hypot(velRef.current.x, velRef.current.y);
+    if (speed < MOMENTUM_MIN_SPEED) return;
+    const clampScale = Math.min(1, MOMENTUM_MAX_SPEED / speed);
+    let vx = velRef.current.x * clampScale;
+    let vy = velRef.current.y * clampScale;
+    let last = performance.now();
+    const decayPerMs = Math.pow(0.5, 1 / MOMENTUM_HALF_LIFE_MS);
+    const tick = (now: number) => {
+      const dt = Math.min(48, now - last);
+      last = now;
+      panRef.current.x += vx * dt;
+      panRef.current.y += vy * dt;
+      write();
+      const decay = Math.pow(decayPerMs, dt);
+      vx *= decay;
+      vy *= decay;
+      if (Math.hypot(vx, vy) < MOMENTUM_MIN_SPEED * 0.4) {
+        momentumRafRef.current = null;
+        return;
+      }
+      momentumRafRef.current = requestAnimationFrame(tick);
+    };
+    momentumRafRef.current = requestAnimationFrame(tick);
+  }, [write]);
+
+  // A drag started elsewhere (revealing/returning/an opened card) never
+  // reaches onPointerDown, but a coast in progress should still yield the
+  // instant either of those genuinely takes over — a return gesture or an
+  // opened card fighting a still-drifting gallery underneath it would read
+  // as two animations at once.
   const interactive = !revealing && !returning && !opened;
+  useEffect(() => {
+    if (!interactive) stopMomentum();
+  }, [interactive, stopMomentum]);
+  useEffect(() => stopMomentum, [stopMomentum]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
     if (!interactive) return;
+    stopMomentum();
+    velRef.current = { x: 0, y: 0 };
+    lastMoveTimeRef.current = performance.now();
     draggingRef.current = true;
     capturedRef.current = false;
     movedRef.current = 0;
@@ -670,6 +855,21 @@ export default function InfiniteCanvas({
     panRef.current.x -= dx / fitRef.current;
     panRef.current.y -= dy / fitRef.current;
     write();
+
+    // Smoothed (not instantaneous) velocity of the PAN itself, in the
+    // same canvas px/ms the momentum loop above consumes directly — an
+    // exponential moving average so the one jittery final pointermove
+    // before release can't fling the coast off in a direction the drag
+    // wasn't actually travelling.
+    const now = performance.now();
+    const dt = Math.max(1, now - lastMoveTimeRef.current);
+    lastMoveTimeRef.current = now;
+    const instVx = -(dx / fitRef.current) / dt;
+    const instVy = -(dy / fitRef.current) / dt;
+    velRef.current = {
+      x: velRef.current.x * 0.72 + instVx * 0.28,
+      y: velRef.current.y * 0.72 + instVy * 0.28,
+    };
   };
 
   const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -680,6 +880,7 @@ export default function InfiniteCanvas({
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
     capturedRef.current = false;
+    if (movedRef.current > CLICK_SLOP_PX) startMomentum();
   };
 
   // ── EXPANDING A PIECE ───────────────────────────────────────────────
@@ -697,16 +898,6 @@ export default function InfiniteCanvas({
     const h = piece.h * s;
     return { w, h, left: (vw - w) / 2, top: (vh - h) / 2 };
   }, [opened, vw, vh]);
-
-  // The back face's medium text, sized off the CARD's own box rather than
-  // the viewport — see the render below. Padding eats ~12% of the box on
-  // each side (clamp(18px,3vw,42px)), so the type itself has to fit
-  // inside roughly what's left; whichever of the card's own width/height
-  // is the tighter fit wins, which is what keeps a long medium name from
-  // overflowing a narrow (portrait) card the way a flat vw-based size did.
-  const mediumFontPx = openTarget
-    ? Math.max(14, Math.min(openTarget.w * 0.1, openTarget.h * 0.12, 40))
-    : 24;
 
   const openFrom = useMemo(() => {
     if (!opened || !openTarget) return null;
@@ -733,9 +924,8 @@ export default function InfiniteCanvas({
   }, [opened]);
 
   const closeOpened = useCallback(() => {
-    setFlipped(false);
     setOpenT(0);
-  }, [setFlipped, setOpenT]);
+  }, [setOpenT]);
 
   // Unmount only once the card has finished travelling back.
   const onCardTransitionEnd = (e: React.TransitionEvent) => {
@@ -1073,6 +1263,18 @@ export default function InfiniteCanvas({
               transformOrigin: "50% 50%",
               willChange: "transform",
               pointerEvents: opened ? "none" : "auto",
+              // THE REST OF THE GALLERY RECEDING behind a focused card — a
+              // soft depth-of-field cue (the scrim below already dims it
+              // flat; this is what makes it read as pushed back in SPACE
+              // rather than just darker) layered on `filter` only, never
+              // `transform`: `transform` here is the reveal/return beats'
+              // own continuously JS-eased scale, and a CSS transition on
+              // it would fight that easing the same way a second scroll
+              // smoother fights the first. `filter` carries no such
+              // conflict, so it is the one property that can animate on
+              // its own timing without disturbing anything else.
+              filter: opened ? "blur(3px) saturate(0.88) brightness(0.82)" : "none",
+              transition: "filter 380ms ease",
               // A drag gesture is a mousedown-then-move over image/text
               // content, which the browser reads as a selection drag
               // unless told otherwise — the images and captions here would
@@ -1122,7 +1324,6 @@ export default function InfiniteCanvas({
                               key,
                               from: e.currentTarget.getBoundingClientRect(),
                             });
-                            setFlipped(false);
                             setOpenT(0);
                           }}
                           onMouseEnter={() => setHovered(key)}
@@ -1161,27 +1362,38 @@ export default function InfiniteCanvas({
                             aspect={piece.w / piece.h}
                             radius={10}
                           >
-                            <ArtCard src={piece.src} hovered={hovered === key} />
+                            <ArtCard
+                              src={piece.src}
+                              medium={piece.medium}
+                              details={piece.details}
+                              hovered={hovered === key}
+                              infoVisible={hovered === key && canHover}
+                            />
                           </HoverCard>
                           {piece.id === IRIS_PIECE_ID && irisFade > 0.001 && (
                             // The ring the camera came out through: a
-                            // circular frame ON the card, at the card's own
-                            // centre, so pulling back shrinks it exactly as
-                            // it shrinks everything else. NOT a filled
-                            // disc — the previous beat hands off to this
-                            // artwork directly, so the iris artwork itself
-                            // is the visual from the first frame; this is
-                            // only the rim, same as PencilSection draws
-                            // around its own circle, giving the handoff a
-                            // frame to land in without ever covering the
-                            // picture it is landing on.
+                            // circular frame ON the card, sized and placed
+                            // to trace the DRAWN iris itself (see
+                            // IRIS_RATIO/IRIS_CENTER_*_FRAC — measured off
+                            // the source file, not assumed to be the card's
+                            // own centre), so pulling back shrinks it
+                            // exactly as it shrinks everything else and the
+                            // ring never reads as floating over the wrong
+                            // part of the picture. NOT a filled disc — the
+                            // previous beat hands off to this artwork
+                            // directly, so the iris artwork itself is the
+                            // visual from the first frame; this is only the
+                            // rim, same as PencilSection draws around its
+                            // own circle, giving the handoff a frame to
+                            // land in without ever covering the picture it
+                            // is landing on.
                             <div
                               aria-hidden
                               data-canvas="iris"
                               style={{
                                 position: "absolute",
-                                left: "50%",
-                                top: "50%",
+                                left: `calc(50% + ${frame.irisOffsetX.toFixed(2)}px)`,
+                                top: `calc(50% + ${frame.irisOffsetY.toFixed(2)}px)`,
                                 width: frame.irisPlane,
                                 height: frame.irisPlane,
                                 marginLeft: -frame.irisPlane / 2,
@@ -1287,185 +1499,23 @@ export default function InfiniteCanvas({
               willChange: "transform",
             }}
           >
-            <div
-              data-canvas="flipper"
-              style={{
-                position: "relative",
-                width: "100%",
-                height: "100%",
-                transformStyle: "preserve-3d",
-                transform: `rotateY(${flipped ? 180 : 0}deg)`,
-                transition: "transform 700ms cubic-bezier(0.22,0.7,0.24,1)",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  backfaceVisibility: "hidden",
-                  WebkitBackfaceVisibility: "hidden",
-                }}
-              >
-                <ArtCard src={opened.piece.src} radius={16} />
-              </div>
-              <div
-                data-canvas="back"
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  backfaceVisibility: "hidden",
-                  WebkitBackfaceVisibility: "hidden",
-                  // Counter-rotated, same as before — this is what makes
-                  // THIS face (as opposed to the front one above) the one
-                  // that ends up pointing at the camera once the flipper
-                  // has actually turned, via backface-visibility. Nothing
-                  // about that toggle changes; only the artwork inside it
-                  // now carries its OWN further rotation (see the image
-                  // below) so it visibly mirrors rather than sitting there
-                  // unrotated while only the card appears to turn around it.
-                  transform: "rotateY(180deg)",
-                  borderRadius: 16,
-                  overflow: "hidden",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "#0a0b0d",
-                }}
-              >
-                {/* The artwork, still there behind the information — just
-                    subdued, so the card reads as the same piece turned
-                    over rather than a different panel. A SECOND rotateY —
-                    on top of this whole face's own counter-rotation above —
-                    is what makes it genuinely mirror with the card instead
-                    of reading identically to the front. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={opened.piece.src}
-                  alt=""
-                  draggable={false}
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                    opacity: 0.22,
-                    filter: "saturate(0.75) brightness(0.8)",
-                    transform: "rotateY(180deg)",
-                  }}
-                />
-                <div
-                  aria-hidden
-                  style={{ position: "absolute", inset: 0, background: "rgba(6,7,9,0.55)" }}
-                />
-                {/* The information group, centred both ways — never
-                    pinned to the top, so a piece with no details still
-                    reads as one balanced card rather than a title
-                    stranded over empty space. Upright: it carries no
-                    rotation of its own, only this face's shared
-                    counter-rotation above (same as the artwork WOULD have
-                    read before it was mirrored). */}
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    textAlign: "center",
-                    padding: "clamp(18px, 3vw, 42px)",
-                    fontFamily: sans,
-                  }}
-                >
-                  <p
-                    style={{
-                      margin: 0,
-                      color: "#fff",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                      // Sized off the CARD's own box, not the viewport —
-                      // a vw-based size put the same large type on a
-                      // narrow (tall/portrait) card as on a wide one, and
-                      // a long medium name overflowed it. Scaling with
-                      // whichever of the card's own dimensions is
-                      // tighter keeps long names fitting on every shape.
-                      fontSize: mediumFontPx,
-                      lineHeight: 1.15,
-                      overflowWrap: "break-word",
-                      wordBreak: "break-word",
-                      textShadow: "0 2px 18px rgba(0,0,0,0.6)",
-                    }}
-                  >
-                    {opened.piece.medium}
-                  </p>
-                  {opened.piece.details && (
-                    <p
-                      style={{
-                        marginTop: 14,
-                        fontWeight: 300,
-                        fontSize: "clamp(12px, 1vw, 16px)",
-                        lineHeight: 1.7,
-                        letterSpacing: "0.03em",
-                        color: "rgba(255,255,255,0.75)",
-                        maxWidth: "34ch",
-                      }}
-                    >
-                      {opened.piece.details}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* The arrow, small and at the card's own top-right. Outside
-                the flipper, so it stays put while the card turns over. */}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setFlipped((v) => !v);
-              }}
-              aria-label={flipped ? "Show the piece" : "Show the details"}
-              data-canvas="flip-arrow"
-              style={{
-                position: "absolute",
-                top: 14,
-                right: 14,
-                width: 48,
-                height: 48,
-                borderRadius: "50%",
-                display: "grid",
-                placeItems: "center",
-                background: "rgba(16,17,20,0.68)",
-                border: "1.5px solid rgba(255,255,255,0.42)",
-                boxShadow: "0 4px 18px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.2)",
-                color: "#fff",
-                cursor: "pointer",
-                padding: 0,
-                opacity: openT,
-                transition: "opacity 320ms ease 180ms, background 160ms ease, transform 160ms ease",
-                backdropFilter: "blur(6px)",
-                WebkitBackdropFilter: "blur(6px)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(28,29,34,0.82)";
-                e.currentTarget.style.transform = "scale(1.06)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "rgba(16,17,20,0.68)";
-                e.currentTarget.style.transform = "scale(1)";
-              }}
-            >
-              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path
-                  d={flipped ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}
-                  stroke="currentColor"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
+            {/* No flip, no back face, no separate information panel: the
+                focused card is the same ArtCard the grid uses, just larger
+                and with its info always on (infoVisible — there is no
+                "hover" state for a card already at the centre of the
+                screen, on a touch device least of all, so this is what
+                satisfies "show medium/details when focused" on mobile
+                too). `infoScale` sizes the gradient's type off the actual
+                on-screen card, not the viewport, so a narrow portrait
+                focused card doesn't inherit a landscape card's type size. */}
+            <ArtCard
+              src={opened.piece.src}
+              medium={opened.piece.medium}
+              details={opened.piece.details}
+              radius={16}
+              infoVisible
+              infoScale={Math.max(1, Math.min(openTarget.w, openTarget.h) / 220)}
+            />
           </div>
         </>
       )}
