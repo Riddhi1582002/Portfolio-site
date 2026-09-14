@@ -293,7 +293,14 @@ export default function ReelProjectView({
           <div
             style={{
               flex: "1 1 340px",
-              minHeight: 0,
+              // No minHeight:0 here either (see the split row above, for
+              // the same reason): it let this column shrink to match
+              // whatever height the LEFT column's text happened to need,
+              // which for a short description (Bhajan Clubbing's two
+              // sentences) was far less than a 9:16 video wants — the
+              // video ended up capped by that borrowed short height
+              // instead of by its own maxWidth/maxHeight, rendering it
+              // tiny regardless of how generous those caps were.
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -303,8 +310,21 @@ export default function ReelProjectView({
               <div
                 style={{
                   position: "relative",
-                  height: "100%",
-                  width: reel.ratio >= 1 ? "100%" : "auto",
+                  // Landscape drives off height:100% (of its row) with a
+                  // definite maxHeight ceiling — a percentage that DOES
+                  // resolve, since the row's own height ends up settled
+                  // through the outer flex layout regardless. Portrait
+                  // drives off an explicit, viewport-relative WIDTH
+                  // instead (not "auto" — an auto width on a box with no
+                  // actual content, just an absolutely-positioned image
+                  // inside it, shrink-to-fits to nothing) so its height,
+                  // derived from that definite width via aspect-ratio, is
+                  // a real, unambiguous sizing need — one the flex layout
+                  // can actually grow the row (and, if needed, the whole
+                  // scrollable panel) to fit, rather than a percentage
+                  // referencing a row height that was not yet settled.
+                  height: reel.ratio >= 1 ? "100%" : "auto",
+                  width: reel.ratio >= 1 ? "100%" : "min(100%, 42vh)",
                   // A fixed ceiling rather than a share of the column: on a
                   // wide desktop split the column itself is most of the
                   // page, and a percentage of THAT is still "almost full
@@ -313,8 +333,8 @@ export default function ReelProjectView({
                   // stacked layout, where there is no sidebar left to
                   // crowd, "min(100%, ...)" still lets it fill what little
                   // width there is instead of shrinking twice over.
-                  maxWidth: reel.ratio >= 1 ? "min(100%, 640px)" : "min(100%, 34vh)",
-                  maxHeight: reel.ratio >= 1 ? "min(100%, 46vh)" : "100%",
+                  maxWidth: reel.ratio >= 1 ? "min(100%, 640px)" : undefined,
+                  maxHeight: reel.ratio >= 1 ? "min(100%, 46vh)" : "min(100%, 80vh)",
                   aspectRatio: String(reel.ratio),
                   borderRadius: 16,
                   overflow: "hidden",
@@ -411,7 +431,18 @@ export default function ReelProjectView({
                   <div
                     style={{
                       position: "relative",
-                      width: "clamp(150px, 14vw, 232px)",
+                      // Landscape thumbnails are sized off their WIDTH
+                      // (clamp(150-232px)), with the aspect ratio giving a
+                      // modest ~85-130px height. Portrait ones (Bhajan
+                      // Clubbing) need the SAME clamp applied to whichever
+                      // dimension it actually constrains — for 9:16 that's
+                      // the height, not the width; sizing off width the
+                      // same way made each thumbnail ~410px tall, which
+                      // ate most of the panel's vertical budget and left
+                      // the split row above (and the selected video in it)
+                      // squeezed down to a sliver.
+                      width: reel.ratio >= 1 ? "clamp(150px, 14vw, 232px)" : "auto",
+                      height: reel.ratio >= 1 ? "auto" : "clamp(150px, 14vw, 232px)",
                       aspectRatio: String(reel.ratio),
                       borderRadius: 10,
                       overflow: "hidden",

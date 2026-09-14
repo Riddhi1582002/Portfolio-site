@@ -51,6 +51,9 @@ function formatTime(seconds: number): string {
 type YTPlayerInstance = {
   playVideo(): void;
   pauseVideo(): void;
+  mute(): void;
+  unMute(): void;
+  isMuted(): boolean;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   loadVideoById(videoId: string): void;
   getCurrentTime(): number;
@@ -147,6 +150,7 @@ export default function ReelVideoViewer({
 
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -214,6 +218,11 @@ export default function ReelVideoViewer({
   // to the external YT API, never to reset local UI state itself.
   const videoKey = video ? `${displayReelIndex}:${videoIndex}` : null;
   const [lastVideoKey, setLastVideoKey] = useState<string | null>(null);
+  // The loading mask (below) stays up a little past `ready` — see its own
+  // effect — but always comes back the instant the video itself changes,
+  // reset here in the same "adjust state during render" pass as the rest
+  // of this per-video UI.
+  const [maskVisible, setMaskVisible] = useState(true);
   if (videoKey !== lastVideoKey) {
     setLastVideoKey(videoKey);
     if (videoKey != null) {
@@ -221,12 +230,30 @@ export default function ReelVideoViewer({
       setPlaying(false);
       setCurrentTime(0);
       setErrorMsg(videoId ? null : "This video couldn't be loaded.");
+      setMaskVisible(true);
     }
   }
 
-  // Create the player once per open session, then swap videos in place —
-  // this is what makes Prev/Next feel like the same viewer continuing
-  // rather than a reload.
+  // The loading mask stays up a little past `ready`: YouTube's own
+  // cued-state chrome (title card, channel avatar, "watch on YouTube")
+  // sits on the iframe for a moment even after the player itself reports
+  // ready and starts playing, and that chrome is exactly the branding this
+  // viewer is meant to keep out of sight. A fixed extra beat covers it
+  // without an ongoing overlay sitting over live playback indefinitely.
+  useEffect(() => {
+    if (!ready) return;
+    const t = window.setTimeout(() => setMaskVisible(false), 900);
+    return () => window.clearTimeout(t);
+  }, [ready, videoKey]);
+
+  // Create the player ONCE EVER per page session, then swap videos in
+  // place — via `loadVideoById`, never a fresh iframe — for every open
+  // after that, whether that is Prev/Next within a reel or a completely
+  // different reel opened later. Repeatedly destroying and recreating the
+  // YT.Player on every close/reopen is what made the viewer occasionally
+  // glitch badly enough to need a page reload; the player and its iframe
+  // now live for as long as the tab does; see the visibility effect below
+  // for how closing just pauses and hides it instead of tearing it down.
   useEffect(() => {
     if (!videoId) return;
 
@@ -258,6 +285,7 @@ export default function ReelVideoViewer({
             rel: 0,
             playsinline: 1,
             iv_load_policy: 3,
+            cc_load_policy: 0,
             fs: 0,
           },
           events: {
@@ -278,6 +306,18 @@ export default function ReelVideoViewer({
                 // Non-essential; playback still works without it.
               }
               setReady(true);
+              // Muted first: unmuted autoplay is blocked outright by most
+              // browsers unless the visitor has already interacted with
+              // this exact site, and a blocked autoplay leaves the video
+              // sitting on YouTube's own paused/cued frame — thumbnail,
+              // channel card and all — which is exactly the "YouTube
+              // branding" chrome this viewer is meant to keep out of
+              // sight. Muted autoplay is universally allowed, so the
+              // video always actually starts; the mute button lets the
+              // reader turn sound on with their own click, which is a
+              // real user gesture and always permitted.
+              e.target.mute();
+              setMuted(true);
               e.target.playVideo();
             },
             onStateChange: (e) => {
@@ -300,14 +340,15 @@ export default function ReelVideoViewer({
     };
   }, [videoId]);
 
-  // Destroy the player once the panel has actually finished closing (not
-  // when the exit transition merely starts) and as a plain unmount guard.
+  // Pause (never destroy) the instant the panel starts closing — the fade
+  // is still playing, but the audience for the audio has already left.
   useEffect(() => {
-    if (!mounted && playerRef.current) {
-      playerRef.current.destroy();
-      playerRef.current = null;
-    }
-  }, [mounted]);
+    if (!shown) playerRef.current?.pauseVideo();
+  }, [shown]);
+
+  // The one and only teardown: a real unmount of this component (the page
+  // itself navigating away), not a close. Opening/closing the viewer never
+  // reaches this.
   useEffect(
     () => () => {
       playerRef.current?.destroy();
@@ -359,6 +400,17 @@ export default function ReelVideoViewer({
     player.seekTo(0, true);
     player.playVideo();
   };
+  const toggleMute = () => {
+    const player = playerRef.current;
+    if (!player) return;
+    if (muted) {
+      player.unMute();
+      setMuted(false);
+    } else {
+      player.mute();
+      setMuted(true);
+    }
+  };
   const seek = (e: ReactPointerEvent<HTMLDivElement>) => {
     const player = playerRef.current;
     if (!player || duration <= 0) return;
@@ -374,14 +426,9 @@ export default function ReelVideoViewer({
     <div
       role="dialog"
       aria-modal="true"
+      aria-hidden={!shown}
       aria-label={`${reel.title} — video ${videoIndex + 1} of ${videos.length}`}
       ref={panelRef}
-      onTransitionEnd={(e) => {
-        if (e.propertyName === "opacity" && !shown) {
-          setMounted(false);
-          setDisplayReelIndex(null);
-        }
-      }}
       style={{
         position: "fixed",
         inset: 0,
@@ -393,6 +440,11 @@ export default function ReelVideoViewer({
           "radial-gradient(120% 120% at 50% 50%, #101114 0%, #08080a 55%, #000 100%)",
         opacity: t,
         transition: "opacity 380ms cubic-bezier(0.16,1,0.3,1)",
+        // The panel is never unmounted on close any more (see the
+        // player-creation effect above) — only faded out and left
+        // non-interactive, the same idiom the control bars below already
+        // use for their own show/hide.
+        pointerEvents: shown ? "auto" : "none",
         fontFamily: sans,
         color: "#fff",
       }}
@@ -457,15 +509,26 @@ export default function ReelVideoViewer({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  background: "#050505",
-                  opacity: ready ? 0 : 1,
-                  transition: "opacity 260ms ease",
+                  // The selected video's own thumbnail, not a flat colour
+                  // — the reader sees the actual piece immediately instead
+                  // of a blank wait, and the dark wash keeps the "Loading…"
+                  // label (and, incidentally, whatever native chrome the
+                  // iframe shows before playback starts) legible and out
+                  // of the way underneath it.
+                  backgroundImage: video?.thumbnail
+                    ? `linear-gradient(rgba(5,5,5,0.6), rgba(5,5,5,0.6)), url(${video.thumbnail})`
+                    : undefined,
+                  backgroundColor: "#050505",
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  opacity: maskVisible ? 1 : 0,
+                  transition: "opacity 400ms ease",
                   pointerEvents: "none",
                   fontSize: 12,
                   fontWeight: 500,
                   letterSpacing: "0.14em",
                   textTransform: "uppercase",
-                  color: "rgba(255,255,255,0.4)",
+                  color: "rgba(255,255,255,0.75)",
                 }}
               >
                 Loading…
@@ -608,6 +671,12 @@ export default function ReelVideoViewer({
             />
           </div>
 
+          {/* The transport itself, as one coherent bar rather than a loose
+              row of icons — a big central play/pause with its own restful
+              ring, prev/next either side of it, restart and mute as the
+              cluster's own two satellites, the same set of controls as
+              before just read as one grouped instrument instead of eight
+              things scattered along a line. */}
           <div
             style={{
               marginTop: 14,
@@ -616,6 +685,12 @@ export default function ReelVideoViewer({
               justifyContent: "space-between",
               gap: 16,
               flexWrap: "wrap",
+              padding: "8px 18px",
+              borderRadius: 999,
+              background: "rgba(14,15,18,0.55)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
             }}
           >
             <div
@@ -630,38 +705,59 @@ export default function ReelVideoViewer({
               {formatTime(currentTime)} / {formatTime(duration)}
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "clamp(16px, 2.5vw, 30px)" }}>
-              {canPrev && (
+            <div
+              style={{
+                flex: "1 1 auto",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "clamp(10px, 2vw, 20px)",
+              }}
+            >
+              <button type="button" onClick={restart} aria-label="Restart" style={transportSatelliteStyle}>
+                ↺
+              </button>
+              {canPrev ? (
                 <button
                   type="button"
                   onClick={() => onVideoChange(videoIndex - 1)}
                   aria-label="Previous video"
-                  style={iconButtonStyle}
+                  style={transportRingStyle}
                 >
                   ⏮
                 </button>
+              ) : (
+                <span aria-hidden style={transportRingSpacerStyle} />
               )}
-              <button type="button" onClick={restart} aria-label="Restart" style={iconButtonStyle}>
-                ↺
-              </button>
               <button
                 type="button"
                 onClick={togglePlay}
                 aria-label={playing ? "Pause" : "Play"}
-                style={{ ...iconButtonStyle, fontSize: 22 }}
+                style={playButtonStyle}
               >
                 {playing ? "❚❚" : "▶"}
               </button>
-              {canNext && (
+              {canNext ? (
                 <button
                   type="button"
                   onClick={() => onVideoChange(videoIndex + 1)}
                   aria-label="Next video"
-                  style={iconButtonStyle}
+                  style={transportRingStyle}
                 >
                   ⏭
                 </button>
+              ) : (
+                <span aria-hidden style={transportRingSpacerStyle} />
               )}
+              <button
+                type="button"
+                onClick={toggleMute}
+                aria-label={muted ? "Unmute" : "Mute"}
+                aria-pressed={muted}
+                style={transportSatelliteStyle}
+              >
+                {muted ? "🔇" : "🔊"}
+              </button>
             </div>
 
             <div
@@ -763,12 +859,58 @@ export default function ReelVideoViewer({
   );
 }
 
-const iconButtonStyle: CSSProperties = {
+// The transport cluster's three tiers, smallest to largest — a satellite
+// icon (restart, mute), a ringed prev/next, and the big central
+// play/pause with its own resting glow. Same restrained language as the
+// rest of the site (a soft white glow, never a colour), just given more
+// presence than a bare row of glyphs.
+const transportSatelliteStyle: CSSProperties = {
   background: "none",
   border: "none",
-  padding: 4,
+  padding: 6,
   cursor: "pointer",
-  color: "#fff",
+  color: "rgba(255,255,255,0.85)",
   fontSize: 16,
+  lineHeight: 1,
+};
+
+const transportRingStyle: CSSProperties = {
+  width: 38,
+  height: 38,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.2)",
+  color: "#fff",
+  cursor: "pointer",
+  padding: 0,
+  fontSize: 15,
+  lineHeight: 1,
+};
+
+// Holds the prev/next slot's width at either end of a project, so the
+// play button stays dead centre in the cluster whether or not that side's
+// button is rendered — a missing prev/next should not visibly recentre
+// the whole transport.
+const transportRingSpacerStyle: CSSProperties = {
+  width: 38,
+  height: 38,
+  display: "inline-block",
+};
+
+const playButtonStyle: CSSProperties = {
+  width: 54,
+  height: 54,
+  borderRadius: "50%",
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(255,255,255,0.1)",
+  border: "1.5px solid rgba(255,255,255,0.55)",
+  boxShadow: "0 0 0 4px rgba(255,255,255,0.06), 0 0 24px rgba(255,255,255,0.16)",
+  color: "#fff",
+  cursor: "pointer",
+  padding: 0,
+  fontSize: 20,
   lineHeight: 1,
 };

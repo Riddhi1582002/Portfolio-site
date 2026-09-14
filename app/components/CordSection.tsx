@@ -224,16 +224,10 @@ export default function CordSection({
   );
   const bulbCentreVh = BULB_TOP_VH - travel * TRAVEL_VH + bulbSizeVh / 2;
 
-  // The wash and the spill on the line's lower stretch — see below — lead
-  // the model's own fade-in well ahead: the bulb is already lit, so its
-  // light is what should arrive first, with the object following into it.
+  // The spill on the line's lower stretch — see below — leads the model's
+  // own fade-in well ahead: the bulb is already lit, so its light is what
+  // should arrive first, with the object following into it.
   const litGlow = easeInOutSine(span(travel, 0.24, 0.85)) * (1 - 0.86 * presence);
-  // The light bleeding up from just off the bottom edge of the frame,
-  // before the bulb itself has come far enough up into shot to be seen —
-  // the same light, arriving early. It hands off to the model's own glow
-  // as bulbIn takes over, rather than the two overlapping.
-  const bottomGlow =
-    easeInOutSine(span(travel, 0.08, 0.5)) * (1 - bulbIn) * (1 - 0.86 * presence);
 
   return (
     <div
@@ -359,31 +353,6 @@ export default function CordSection({
           zIndex: 3,
           pointerEvents: "none",
           willChange: "transform, opacity",
-        }}
-      />
-
-      {/* Light from just off the bottom of the frame — the bulb is already
-          lit before it has travelled far enough up into shot to be seen,
-          so the room below the visible frame is not dark. Fixed to the
-          VIEWPORT, not to the travelling line: the bulb itself is still
-          off-screen at this point, so nothing here can be anchored to its
-          position yet. Hands off to the model's own wash as bulbIn takes
-          over (see bottomGlow), rather than the two stacking. */}
-      <div
-        aria-hidden
-        data-cord-bottom-glow
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: "42vh",
-          background:
-            "linear-gradient(to top, rgba(255,205,140,0.5) 0%, rgba(255,196,124,0.22) 40%, rgba(255,196,124,0) 100%)",
-          opacity: handoff * bottomGlow,
-          zIndex: 1,
-          pointerEvents: "none",
-          willChange: "opacity",
         }}
       />
 
