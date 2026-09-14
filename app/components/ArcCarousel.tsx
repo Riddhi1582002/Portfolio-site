@@ -70,8 +70,15 @@ const span = (v: number, a: number, b: number) => clamp01((v - a) / (b - a));
 
 /**
  * How much of the room the arc is taking up, 0..1. Rises as the first card
- * comes on, holds while the arc is running, falls as the last leaves. The
- * caller dims the bulb by this.
+ * comes on, holds while the arc is running, falls as the last leaves.
+ *
+ * CordSection used to dim every lit thing in the beat by exactly this, and
+ * that is what made the light switch off rather than hand over — this rise
+ * is a tenth of the arc's window, under 300px of scrolling for the largest
+ * change of light on the page. It now keeps its own, longer curve for that
+ * (`lightYield` there) so the room darkens AROUND the arriving work rather
+ * than ahead of it. This is still the honest description of the arc's own
+ * occupancy, which is why it stays here.
  */
 export function arcPresence(progress: number) {
   const p = clamp01(progress);

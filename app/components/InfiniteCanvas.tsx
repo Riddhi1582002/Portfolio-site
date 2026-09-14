@@ -166,6 +166,7 @@ const PIECES: Piece[] = [
 // space the return transition flies through.
 const GAP = { x: 1180.0, y: 2440.07 };
 
+
 // THE piece the iris sits on: the white circle the previous beat leaves the
 // frame on is the pupil painted on this card, and the zoom out starts
 // hard against it. PencilSection draws its last frame from the same
@@ -245,6 +246,114 @@ const settleEase = carry(easeInOutCubic, 0.24, 1);
 const camEase = carry(easeInOutCubic, 0.26, 0.9);
 // A drag shorter than this is a click, not a pan.
 const CLICK_SLOP_PX = 5;
+
+// ── THE FIELD'S PHYSICS ────────────────────────────────────────────────
+//
+// One motion system, not two. The pan used to be written straight from the
+// pointer during a drag and then handed to a separate friction loop on
+// release, so the gesture had two regimes with a seam between them: rigid
+// while the hand was down, coasting after. Both the Liquid Glass Carousel
+// and the Codrops infinite slider are built the other way round — input
+// moves a TARGET, and what is actually rendered is a follower easing
+// toward it every frame. Everything then shares one curve: a drag has
+// weight because the field trails the hand slightly, a release is the same
+// motion continuing rather than a new animation starting, and the stop is
+// the follower catching up rather than a timer expiring.
+//
+// Time constants, not per-frame factors: a `* 0.09` lerp is a different
+// speed on a 60Hz and a 120Hz display. These are converted per frame with
+// `1 - exp(-dt / TAU)`, which is frame-rate independent.
+//
+// A mouse gets weight; a finger does not. On a touch screen the content is
+// under the finger, and any lag at all reads as the picture sticking to
+// the glass rather than to the hand.
+const FOLLOW_TAU_MOUSE = 95; // ms — the field's inertia behind a mouse drag
+const FOLLOW_TAU_TOUCH = 38; // ms — a finger holds the picture almost 1:1
+const FOLLOW_TAU_COAST = 120; // ms — heavier once the hand is off it
+// Flick decay. Longer than the old 220ms half-life: the follower adds its
+// own tail on top of this one, and the two together are what make a throw
+// travel and then ease to nothing instead of stopping.
+const FLICK_HALF_LIFE_MS = 340;
+const FLICK_MIN_SPEED = 0.02; // canvas px/ms — below this there is no throw
+const FLICK_MAX_SPEED = 3.2; // clamps an unrealistically fast flick
+
+// ── DEPTH ─────────────────────────────────────────────────────────────
+//
+// Three bands, assigned by how large a piece is drawn: a bigger picture
+// reads as nearer, so this is the distribution the composition already
+// implies rather than a random one laid over it.
+//
+// What they do is LAG. Each band follows the pan on its own time constant,
+// and what is rendered is the difference — so the far band trails while
+// the field is moving and every band is at exactly zero offset once it
+// settles. That matters twice over: the resting composition is the tuned
+// one, pixel for pixel, and the offset is identical in every tiled copy of
+// a cell, so the infinite wrap stays seamless. Parallax as a consequence
+// of movement, the way it is when you actually move past things, not a
+// static 3D scene.
+const DEPTH_BANDS = 3;
+// How far behind the field each band sits, expressed as the time it is
+// behind: a band trailing by `tau` ms sits `v * tau` canvas px back while
+// the field travels at `v`. At a brisk 1.4 canvas px/ms that is 17px for
+// the mid band and 34px for the far one — depth you read, not a layer
+// coming unstuck.
+//
+// Derived from the field's VELOCITY rather than run as a second follower
+// per band. A follower's lag collapses when frames get long (the drive
+// loop clamps dt so a stalled tab cannot teleport the field, and that
+// clamp costs the follower most of its lag), which would quietly delete
+// the parallax on exactly the low-end device where the rest of the motion
+// is already suffering. Off velocity it is the same displacement at any
+// frame rate, and it still settles to nothing because the velocity does.
+const DEPTH_LAG_TAU = [0, 12, 24] as const;
+// How quickly the parallax answers a change of speed. Not instant: this is
+// what gives the bands their trailing, settling character instead of
+// snapping to a new offset the moment the hand changes direction.
+const DEPTH_VEL_TAU = 90; // ms
+// And a ceiling, because v is not bounded by taste: a hard throw would put
+// the far band sixty pixels off its neighbours and the composition would
+// visibly shear. Applied as tanh rather than a clamp so it is linear where
+// it matters and simply stops growing where it does not — no kink at the
+// limit, which a hard clamp would show as the parallax hitting a wall.
+const DEPTH_MAX_OFFSET = 26; // canvas px
+// How much of that lag is spent, 0..1. Full parallax on a desktop-sized
+// frame; a phone shows a third of the pieces at half the scale, and the
+// same displacement there reads as the composition coming apart.
+const DEPTH_GAIN_WIDE = 1;
+const DEPTH_GAIN_NARROW = 0.45;
+
+/** Which depth band a piece belongs to — largest third nearest. */
+function depthBandFor(piece: Piece, sorted: number[]): number {
+  const major = Math.max(piece.w, piece.h);
+  const i = sorted.findIndex((m) => m <= major);
+  const rank = i < 0 ? sorted.length - 1 : i;
+  return Math.min(DEPTH_BANDS - 1, Math.floor((rank / sorted.length) * DEPTH_BANDS));
+}
+
+// How far the field spreads away from a piece that has been focused. The
+// plane scales about the focused piece itself, so that piece does not move
+// at all and everything else opens outward from it — the card is pulled
+// forward OUT of the composition rather than just growing on top of it.
+const FOCUS_DOLLY = 0.055;
+const FOCUS_DOLLY_TAU = 150; // ms
+
+// The field speed, in canvas px/ms, at which the HUD over the composition
+// has receded as far as it goes. A deliberate pan sits well above this; a
+// nudge does not move it much at all.
+const FIELD_CALM_SPEED = 0.55;
+
+// Every piece's major edge, largest first — the ranking `depthBandFor`
+// reads to decide how near a piece sits. Computed once, off the same
+// literal the layout is baked into, so the bands are stable across
+// renders and identical in every tiled copy of the cell.
+const MAJOR_EDGES_DESC = PIECES.map((p) => Math.max(p.w, p.h)).sort((a, b) => b - a);
+/** The pieces of each depth band, near (0) to far (DEPTH_BANDS - 1). */
+const DEPTH_GROUPS: Piece[][] = Array.from({ length: DEPTH_BANDS }, () => []);
+for (const piece of PIECES) DEPTH_GROUPS[depthBandFor(piece, MAJOR_EDGES_DESC)].push(piece);
+// Painted far band first, so when two pieces do pass close during a
+// parallax slide the nearer one is the one in front — the DOM order is
+// the only depth sorting a 2D composition has.
+const DEPTH_RENDER_ORDER = Array.from({ length: DEPTH_BANDS }, (_, i) => DEPTH_BANDS - 1 - i);
 
 // The composition is laid out in fixed canvas px, so without this a 420px
 // piece sat on a 320px phone larger than the screen — one image visible
@@ -390,11 +499,17 @@ function ArtCard({
         // tilt tracking the pointer would fight the pan happening under
         // the same gesture.
         boxShadow: hovered
-          ? "0 0 22px rgba(255,255,255,0.11), 0 12px 34px rgba(0,0,0,0.7)"
+          ? "0 0 26px rgba(255,255,255,0.12), 0 18px 44px rgba(0,0,0,0.72)"
           : "0 0 18px rgba(255,255,255,0.05), 0 10px 30px rgba(0,0,0,0.6)",
-        transform: hovered ? "translateY(-3px)" : "translateY(0)",
-        transition:
-          "transform 300ms cubic-bezier(0.22,0.7,0.24,1), box-shadow 300ms ease, border-color 300ms ease",
+        transform: hovered ? "translateY(-5px)" : "translateY(0)",
+        // ASYMMETRIC. Coming under attention is slower and softer than
+        // leaving it: the picture rises into the pointer over most of half
+        // a second, and drops back in under a third of one. Matched
+        // timings read as a switch being thrown; this reads as weight —
+        // something taking a moment to answer and then letting go cleanly.
+        transition: hovered
+          ? "transform 480ms cubic-bezier(0.16,1,0.3,1), box-shadow 480ms cubic-bezier(0.16,1,0.3,1), border-color 480ms ease"
+          : "transform 260ms cubic-bezier(0.4,0,0.6,1), box-shadow 260ms ease, border-color 260ms ease",
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -441,7 +556,15 @@ function ArtCard({
               background:
                 "linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.52) 30%, rgba(0,0,0,0.2) 58%, rgba(0,0,0,0) 100%)",
               opacity: infoVisible ? 1 : 0,
-              transition: "opacity 280ms ease",
+              // The shade RISES out of the bottom edge rather than simply
+              // appearing at full height: anchored at the bottom and grown
+              // from four fifths, it reads as something welling up through
+              // the picture instead of a panel being switched on over it.
+              transformOrigin: "50% 100%",
+              transform: infoVisible ? "scaleY(1)" : "scaleY(0.8)",
+              transition: infoVisible
+                ? "opacity 460ms cubic-bezier(0.16,1,0.3,1), transform 560ms cubic-bezier(0.16,1,0.3,1)"
+                : "opacity 220ms cubic-bezier(0.4,0,0.6,1), transform 260ms cubic-bezier(0.4,0,0.6,1)",
             }}
           />
           <div
@@ -452,8 +575,14 @@ function ArtCard({
               bottom: 0,
               padding: `${(10 * infoScale).toFixed(1)}px ${(12 * infoScale).toFixed(1)}px`,
               opacity: infoVisible ? 1 : 0,
-              transform: infoVisible ? "translateY(0)" : "translateY(6px)",
-              transition: "opacity 280ms ease, transform 320ms cubic-bezier(0.22,0.7,0.24,1)",
+              transform: infoVisible ? "translateY(0)" : "translateY(9px)",
+              // The type follows the shade rather than arriving with it —
+              // 70ms behind on the way in, and gone first on the way out.
+              // One coordinated reveal with an order to it, not two
+              // elements cross-fading on the same timer.
+              transition: infoVisible
+                ? "opacity 420ms cubic-bezier(0.16,1,0.3,1) 70ms, transform 540ms cubic-bezier(0.16,1,0.3,1) 70ms"
+                : "opacity 180ms cubic-bezier(0.4,0,0.6,1), transform 240ms cubic-bezier(0.4,0,0.6,1)",
             }}
           >
             <div
@@ -515,8 +644,29 @@ export default function InfiniteCanvas({
   visible?: boolean;
 }) {
   const p = clamp01(progress);
+  // The surface's own root, so the drive loop can publish the field's
+  // state to the HUD drawn over it without a render per frame.
+  const rootRef = useRef<HTMLDivElement>(null);
   const planeRef = useRef<HTMLDivElement>(null);
+  // What is RENDERED. Always a follower easing toward panTargetRef — see
+  // the drive loop below and the FOLLOW_TAU constants above.
   const panRef = useRef({ x: 0, y: 0 });
+  // What the pointer (and any leftover flick) is asking for.
+  const panTargetRef = useRef({ x: 0, y: 0 });
+  // The field's own smoothed velocity, in canvas px/ms. Every depth band's
+  // offset is this times that band's trailing time, so the parallax is
+  // zero whenever the field is still — by construction, not by convergence.
+  const fieldVelRef = useRef({ x: 0, y: 0 });
+  const prevPanRef = useRef({ x: 0, y: 0 });
+  const depthGainRef = useRef(DEPTH_GAIN_WIDE);
+  // 0 = the field is at rest, 1 = fully opened away from a focused piece.
+  const dollyRef = useRef(0);
+  const dollyTargetRef = useRef(0);
+  // The drive loop, reachable from effects declared above it. Wiring it
+  // through a ref rather than naming `drive` directly is what lets those
+  // effects hand off to it without a temporal-dead-zone reference in a
+  // dependency array evaluated during render.
+  const driveFnRef = useRef<() => void>(() => {});
   const draggingRef = useRef(false);
   const movedRef = useRef(0);
   const lastRef = useRef({ x: 0, y: 0 });
@@ -687,9 +837,20 @@ export default function InfiniteCanvas({
     if (revealing) {
       // Locked to the iris while the camera pulls back — the reader has
       // no say over the framing until the gallery has arrived.
+      //
+      // The depth bands are flattened for the duration. The hand-off from
+      // the previous beat is geometry: PencilSection's last frame and this
+      // one are computed from the same numbers, and a band holding even a
+      // pixel of lag would put the iris card somewhere those numbers do
+      // not describe. Depth is something the field gains once it is the
+      // reader's to move.
       plane.style.transform = `translate3d(${(-irisX).toFixed(2)}px, ${(-irisY).toFixed(
         2
       )}px, 0)`;
+      for (let b = 1; b < DEPTH_BANDS; b++) {
+        plane.style.setProperty(`--depth-${b}-x`, "0px");
+        plane.style.setProperty(`--depth-${b}-y`, "0px");
+      }
       return;
     }
     const h = homeRef.current;
@@ -701,7 +862,43 @@ export default function InfiniteCanvas({
     const ty = mod(GAP.y - vh / 2, CELL_H);
     const ox = wx + ringDelta(wx, tx, CELL_W) * h;
     const oy = wy + ringDelta(wy, ty, CELL_H) * h;
-    plane.style.transform = `translate3d(${(-ox).toFixed(2)}px, ${(-oy).toFixed(2)}px, 0)`;
+    // The focus dolly. The plane's transform-origin is parked on the
+    // focused piece (see openDollyOrigin), so this scale opens the field
+    // AWAY from that piece without moving the piece itself — which is
+    // what makes the expanding card read as being drawn forward out of
+    // the composition rather than growing on top of a still picture.
+    const dolly = 1 + FOCUS_DOLLY * dollyRef.current;
+    plane.style.transform =
+      `translate3d(${(-ox).toFixed(2)}px, ${(-oy).toFixed(2)}px, 0)` +
+      (dollyRef.current > 0.0005 ? ` scale(${dolly.toFixed(5)})` : "");
+
+    // The depth bands' lag, published as custom properties on the plane so
+    // one write reaches every tiled copy of every band instead of walking
+    // rows x cols x bands elements each frame.
+    const gain = depthGainRef.current;
+    const ceiling = DEPTH_MAX_OFFSET * gain;
+    for (let b = 1; b < DEPTH_BANDS; b++) {
+      const ox2 = -fieldVelRef.current.x * DEPTH_LAG_TAU[b] * gain;
+      const oy2 = -fieldVelRef.current.y * DEPTH_LAG_TAU[b] * gain;
+      // Softened as a VECTOR, not per axis: capping x and y separately
+      // lets a diagonal throw reach sqrt(2) times the ceiling, which is
+      // the one direction the field would visibly come apart in.
+      const mag = Math.hypot(ox2, oy2);
+      const k = mag > 0.001 ? (ceiling * Math.tanh(mag / ceiling)) / mag : 0;
+      plane.style.setProperty(`--depth-${b}-x`, `${(ox2 * k).toFixed(2)}px`);
+      plane.style.setProperty(`--depth-${b}-y`, `${(oy2 * k).toFixed(2)}px`);
+    }
+
+    // How still the field is, 1 to 0. Published on the surface's own root
+    // so the HUD over it (the hint) can answer to the composition's
+    // movement without a React render per frame. FIELD_CALM_SPEED is the
+    // speed at which it has receded as far as it goes.
+    const root = rootRef.current;
+    if (root) {
+      const speed = Math.hypot(fieldVelRef.current.x, fieldVelRef.current.y);
+      const calm = 1 - 0.78 * Math.min(1, speed / FIELD_CALM_SPEED);
+      root.style.setProperty("--field-calm", calm.toFixed(3));
+    }
   }, [vw, vh, revealing, irisX, irisY]);
 
   // Re-write the plane whenever the return advances or the frame resizes,
@@ -736,11 +933,18 @@ export default function InfiniteCanvas({
   // sitting there, ready to drag.
   const untouchedRef = useRef(true);
   const settleStartRef = useRef<number | null>(null);
+  const settleVelClockRef = useRef<number | null>(null);
   useEffect(() => {
     if (revealing) {
       // Hand the pan over at the value the reveal left it on, so the
       // first drag after the gallery arrives does not snap it to 0,0.
+      // Everything is parked on the same value — a stale velocity here
+      // would put the bands off their marks on the frame the hand-off
+      // happens, and that frame is a match cut.
       panRef.current = { x: irisX, y: irisY };
+      panTargetRef.current = { x: irisX, y: irisY };
+      prevPanRef.current = { x: irisX, y: irisY };
+      fieldVelRef.current = { x: 0, y: 0 };
       untouchedRef.current = true;
       settleStartRef.current = null;
       return;
@@ -757,8 +961,29 @@ export default function InfiniteCanvas({
         x: irisX + (GAP.x - vw / 2 - irisX) * t,
         y: irisY + (GAP.y - vh / 2 - irisY) * t,
       };
+      // The settle drives the rendered pan directly, so the target has to
+      // come with it — otherwise the first frame the drive loop wakes it
+      // would pull the composition straight back to where the settle
+      // started. The bands are left to trail it: the settle is the
+      // gallery's first movement, and them lagging through it is the first
+      // thing that says this is a field with depth rather than a flat
+      // sheet.
+      panTargetRef.current = { ...panRef.current };
+      const vdt = Math.max(1, now - (settleVelClockRef.current || now));
+      settleVelClockRef.current = now;
+      const kv = 1 - Math.exp(-vdt / DEPTH_VEL_TAU);
+      fieldVelRef.current.x +=
+        ((panRef.current.x - prevPanRef.current.x) / vdt - fieldVelRef.current.x) * kv;
+      fieldVelRef.current.y +=
+        ((panRef.current.y - prevPanRef.current.y) / vdt - fieldVelRef.current.y) * kv;
+      prevPanRef.current = { ...panRef.current };
       write();
       if (t < 1) raf = requestAnimationFrame(tick);
+      // The slide is over, but the bands are still displaced by the speed
+      // it ended on. Hand them to the drive loop so that speed decays on
+      // the same curve every other settle on this surface uses, instead of
+      // the parallax simply freezing where the slide dropped it.
+      else driveFnRef.current();
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -777,57 +1002,158 @@ export default function InfiniteCanvas({
   // keeps the pan alive when the pointer leaves the surface mid-throw.
   const capturedRef = useRef(false);
 
-  // ── MOMENTUM ─────────────────────────────────────────────────────────
+  // ── THE DRIVE LOOP ───────────────────────────────────────────────────
   //
-  // The drag itself still tracks the pointer 1:1 (see onPointerMove) —
-  // that stays tight and direct, the way a hand on the composition should.
-  // What was missing is what happens the instant the hand lifts: the pan
-  // used to just stop dead where the pointer left off. `velRef` tracks the
-  // pan's own recent velocity (canvas px/ms, smoothed rather than taken
-  // from a single last sample so one twitchy final event can't fling it),
-  // and `endDrag` hands that off to a friction-decayed rAF loop that keeps
-  // the composition drifting and settling on its own, the way the Liquid
-  // Glass Carousel reference does it — no second competing render loop,
-  // just this same `write()` the drag itself already uses.
+  // ONE loop owns every continuous motion this surface has: the field
+  // following the pointer, the flick that outlives the hand, each depth
+  // band's lag behind the field, and the dolly that opens the composition
+  // around a focused piece. They share a clock and a single `write()`, so
+  // they cannot drift out of step with one another the way separate
+  // animations do — which is the whole point of doing it this way rather
+  // than starting a fresh rAF per effect.
+  //
+  // It runs only while there is something to integrate and parks itself
+  // the frame everything has settled, so an idle gallery costs nothing.
   const velRef = useRef({ x: 0, y: 0 });
   const lastMoveTimeRef = useRef(0);
-  const momentumRafRef = useRef<number | null>(null);
-  const MOMENTUM_MIN_SPEED = 0.025; // canvas px/ms; below this, not worth animating
-  const MOMENTUM_MAX_SPEED = 3.2; // clamps an unrealistically fast flick
-  const MOMENTUM_HALF_LIFE_MS = 220; // time for the coast to lose half its speed
+  const lastMoveEventTsRef = useRef(0);
+  const driveRafRef = useRef<number | null>(null);
+  const driveLastRef = useRef(0);
+  const pointerTypeRef = useRef<"mouse" | "touch">("mouse");
 
-  const stopMomentum = useCallback(() => {
-    if (momentumRafRef.current != null) {
-      cancelAnimationFrame(momentumRafRef.current);
-      momentumRafRef.current = null;
+  const stopDrive = useCallback(() => {
+    if (driveRafRef.current != null) {
+      cancelAnimationFrame(driveRafRef.current);
+      driveRafRef.current = null;
     }
   }, []);
 
-  const startMomentum = useCallback(() => {
-    const speed = Math.hypot(velRef.current.x, velRef.current.y);
-    if (speed < MOMENTUM_MIN_SPEED) return;
-    const clampScale = Math.min(1, MOMENTUM_MAX_SPEED / speed);
-    let vx = velRef.current.x * clampScale;
-    let vy = velRef.current.y * clampScale;
-    let last = performance.now();
-    const decayPerMs = Math.pow(0.5, 1 / MOMENTUM_HALF_LIFE_MS);
+  /** Kill any residual motion and park every follower where it is. */
+  const stopMomentum = useCallback(() => {
+    stopDrive();
+    velRef.current = { x: 0, y: 0 };
+    panTargetRef.current = { ...panRef.current };
+    fieldVelRef.current = { x: 0, y: 0 };
+    prevPanRef.current = { ...panRef.current };
+  }, [stopDrive]);
+
+  const drive = useCallback(() => {
+    if (driveRafRef.current != null) return;
+    driveLastRef.current = performance.now();
+    const flickDecayPerMs = Math.pow(0.5, 1 / FLICK_HALF_LIFE_MS);
     const tick = (now: number) => {
-      const dt = Math.min(48, now - last);
-      last = now;
-      panRef.current.x += vx * dt;
-      panRef.current.y += vy * dt;
+      // Two clocks on purpose. `dt` is clamped, because it drives
+      // INTEGRATION and a tab that stalls for a second must not teleport
+      // the field a second's worth of travel. `trueDt` is not, because it
+      // is only ever used to MEASURE how fast the field is actually
+      // moving on screen — and clamping that would report a speed the
+      // reader never saw.
+      const trueDt = Math.max(1, now - driveLastRef.current);
+      const dt = Math.min(48, trueDt);
+      driveLastRef.current = now;
+      const dragging = draggingRef.current;
+
+      // 1. The flick keeps pushing the TARGET after the hand is off it, so
+      //    a throw is the same gesture continuing rather than a separate
+      //    animation taking over at the release.
+      if (!dragging) {
+        const decay = Math.pow(flickDecayPerMs, dt);
+        panTargetRef.current.x += velRef.current.x * dt;
+        panTargetRef.current.y += velRef.current.y * dt;
+        velRef.current.x *= decay;
+        velRef.current.y *= decay;
+        if (Math.hypot(velRef.current.x, velRef.current.y) < FLICK_MIN_SPEED * 0.35) {
+          velRef.current.x = 0;
+          velRef.current.y = 0;
+        }
+      }
+
+      // 2. The field eases toward it. A finger gets an almost rigid
+      //    follow; a mouse gets weight; once the hand is off, heavier
+      //    still, which is what turns the end of a throw into a glide.
+      const tau = dragging
+        ? pointerTypeRef.current === "touch"
+          ? FOLLOW_TAU_TOUCH
+          : FOLLOW_TAU_MOUSE
+        : FOLLOW_TAU_COAST;
+      const k = 1 - Math.exp(-dt / tau);
+      panRef.current.x += (panTargetRef.current.x - panRef.current.x) * k;
+      panRef.current.y += (panTargetRef.current.y - panRef.current.y) * k;
+
+      // 3. How fast the field is travelling, smoothed. `write()` turns
+      //    this into each band's offset (velocity x that band's trailing
+      //    time), so the near band is the field exactly, and the gap
+      //    between the bands IS the parallax.
+      const instVx = (panRef.current.x - prevPanRef.current.x) / trueDt;
+      const instVy = (panRef.current.y - prevPanRef.current.y) / trueDt;
+      prevPanRef.current = { ...panRef.current };
+      const kv = 1 - Math.exp(-trueDt / DEPTH_VEL_TAU);
+      fieldVelRef.current.x += (instVx - fieldVelRef.current.x) * kv;
+      fieldVelRef.current.y += (instVy - fieldVelRef.current.y) * kv;
+
+      // 4. The focus dolly, on the same clock as everything else.
+      dollyRef.current +=
+        (dollyTargetRef.current - dollyRef.current) * (1 - Math.exp(-dt / FOCUS_DOLLY_TAU));
+      if (Math.abs(dollyTargetRef.current - dollyRef.current) < 0.0008) {
+        dollyRef.current = dollyTargetRef.current;
+      }
+
       write();
-      const decay = Math.pow(decayPerMs, dt);
-      vx *= decay;
-      vy *= decay;
-      if (Math.hypot(vx, vy) < MOMENTUM_MIN_SPEED * 0.4) {
-        momentumRafRef.current = null;
+
+      // Park once nothing is left to integrate. 0.06 canvas px is well
+      // under a rendered pixel at every fit, so stopping here is invisible.
+      const restX = Math.abs(panTargetRef.current.x - panRef.current.x);
+      const restY = Math.abs(panTargetRef.current.y - panRef.current.y);
+      // The parallax has to have decayed too, or the loop would park with
+      // the bands still displaced and freeze the composition mid-shear.
+      const parallaxLeft =
+        Math.hypot(fieldVelRef.current.x, fieldVelRef.current.y) *
+          DEPTH_LAG_TAU[DEPTH_BANDS - 1] >
+        0.06;
+      const moving =
+        dragging ||
+        restX > 0.06 ||
+        restY > 0.06 ||
+        parallaxLeft ||
+        velRef.current.x !== 0 ||
+        velRef.current.y !== 0 ||
+        dollyRef.current !== dollyTargetRef.current;
+      if (!moving) {
+        // Park cleanly: zero the velocity so the last frame written is the
+        // composition at rest, not the composition a hair short of it.
+        fieldVelRef.current = { x: 0, y: 0 };
+        write();
+        driveRafRef.current = null;
         return;
       }
-      momentumRafRef.current = requestAnimationFrame(tick);
+      driveRafRef.current = requestAnimationFrame(tick);
     };
-    momentumRafRef.current = requestAnimationFrame(tick);
+    driveRafRef.current = requestAnimationFrame(tick);
   }, [write]);
+
+  useEffect(() => {
+    driveFnRef.current = drive;
+  }, [drive]);
+
+  // Motion amplitude is a responsive decision, not a leftover of the
+  // desktop one scaled down. A phone shows a third of the pieces at half
+  // the size, so the same parallax displacement there reads as the
+  // composition shearing rather than as depth.
+  useEffect(() => {
+    depthGainRef.current = vw >= 900 ? DEPTH_GAIN_WIDE : DEPTH_GAIN_NARROW;
+  }, [vw]);
+
+  const startMomentum = useCallback(() => {
+    const speed = Math.hypot(velRef.current.x, velRef.current.y);
+    if (speed < FLICK_MIN_SPEED) {
+      velRef.current = { x: 0, y: 0 };
+    } else if (speed > FLICK_MAX_SPEED) {
+      const clampScale = FLICK_MAX_SPEED / speed;
+      velRef.current.x *= clampScale;
+      velRef.current.y *= clampScale;
+    }
+    drive();
+  }, [drive]);
 
   // A drag started elsewhere (revealing/returning/an opened card) never
   // reaches onPointerDown, but a coast in progress should still yield the
@@ -843,10 +1169,16 @@ export default function InfiniteCanvas({
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
     if (!interactive) return;
-    stopMomentum();
+    // Taking hold kills the throw but NOT the followers: the target is
+    // reset to where the field actually is, so the hand picks the picture
+    // up from where it looks, with no jump.
     velRef.current = { x: 0, y: 0 };
+    panTargetRef.current = { ...panRef.current };
+    pointerTypeRef.current = e.pointerType === "mouse" ? "mouse" : "touch";
     lastMoveTimeRef.current = performance.now();
+    lastMoveEventTsRef.current = e.timeStamp;
     draggingRef.current = true;
+    drive();
     capturedRef.current = false;
     movedRef.current = 0;
     lastRef.current = { x: e.clientX, y: e.clientY };
@@ -867,15 +1199,26 @@ export default function InfiniteCanvas({
     // Divided by the fit so the composition tracks the finger 1:1 on
     // screen: at 0.42 a screen pixel is 2.4 canvas px, and without this
     // the plane would crawl behind the pointer on a phone.
-    panRef.current.x -= dx / fit;
-    panRef.current.y -= dy / fit;
-    write();
+    //
+    // The pointer moves the TARGET, never the rendered pan. What the
+    // reader sees is the follower in the drive loop closing on it — which
+    // is where the field's weight comes from, and why letting go is the
+    // same motion continuing rather than one animation handing over to
+    // another.
+    panTargetRef.current.x -= dx / fit;
+    panTargetRef.current.y -= dy / fit;
 
     // Smoothed (not instantaneous) velocity of the PAN itself, in the
-    // same canvas px/ms the momentum loop above consumes directly — an
+    // same canvas px/ms the drive loop above consumes directly — an
     // exponential moving average so the one jittery final pointermove
     // before release can't fling the coast off in a direction the drag
     // wasn't actually travelling.
+    //
+    // The EVENT's own timestamp, not the clock at the moment React gets
+    // round to the handler: those differ by however long the main thread
+    // was busy, and a frame of Three.js work landing between the last move
+    // and the release would otherwise look like a hand that had stopped.
+    lastMoveEventTsRef.current = e.timeStamp;
     const now = performance.now();
     const dt = Math.max(1, now - lastMoveTimeRef.current);
     lastMoveTimeRef.current = now;
@@ -895,7 +1238,14 @@ export default function InfiniteCanvas({
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
     capturedRef.current = false;
+    // Letting go after holding still should stop, not launch: a flick is
+    // only a flick if the pointer was actually travelling at the release.
+    // Measured between the two EVENTS' timestamps — see onPointerMove.
+    if (e.timeStamp - lastMoveEventTsRef.current > 110) {
+      velRef.current = { x: 0, y: 0 };
+    }
     if (movedRef.current > CLICK_SLOP_PX) startMomentum();
+    else drive();
   };
 
   // ── EXPANDING A PIECE ───────────────────────────────────────────────
@@ -936,6 +1286,40 @@ export default function InfiniteCanvas({
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
+  }, [opened]);
+
+  // THE FIELD YIELDING.
+  //
+  // The card growing used to be the only thing that happened: the
+  // composition behind it just blurred and dimmed in place, so the card
+  // read as an overlay that had appeared on top of a still picture rather
+  // than as one of those pictures being drawn out of it.
+  //
+  // Now the plane's transform-origin is parked on the chosen piece and the
+  // drive loop eases a small scale in around it. Because the origin IS
+  // that piece, the piece itself does not move — every other piece opens
+  // outward from it, the space around it widens, and the card travelling
+  // forward is travelling out of a gap the field has made for it. The two
+  // are on the same clock, so they read as one event.
+  //
+  // Driven from the drive loop rather than a CSS transition because the
+  // plane's transform is written by `write()` every frame; a transition on
+  // the same property would fight it exactly the way two scroll smoothers
+  // fight each other.
+  useEffect(() => {
+    const plane = planeRef.current;
+    if (opened && plane) {
+      // The SAME COPY that was clicked, not the piece's position inside a
+      // cell: the plane holds a block of tiled cells and the origin has to
+      // land on the one under the reader's pointer, or the field would
+      // open around a duplicate somewhere off screen.
+      const [row, col] = opened.key.split(":");
+      const ox = Number(col) * CELL_W + opened.piece.x + opened.piece.w / 2;
+      const oy = Number(row) * CELL_H + opened.piece.y + opened.piece.h / 2;
+      plane.style.transformOrigin = `${ox.toFixed(1)}px ${oy.toFixed(1)}px`;
+    }
+    dollyTargetRef.current = opened ? 1 : 0;
+    driveFnRef.current();
   }, [opened]);
 
   const closeOpened = useCallback(() => {
@@ -1186,6 +1570,7 @@ export default function InfiniteCanvas({
 
   return (
     <div
+      ref={rootRef}
       style={{
         position: "absolute",
         inset: 0,
@@ -1288,8 +1673,14 @@ export default function InfiniteCanvas({
               // smoother fights the first. `filter` carries no such
               // conflict, so it is the one property that can animate on
               // its own timing without disturbing anything else.
-              filter: opened ? "blur(3px) saturate(0.88) brightness(0.82)" : "none",
-              transition: "filter 380ms ease",
+              filter: opened ? "blur(4px) saturate(0.86) brightness(0.78)" : "none",
+              // Quicker than the card's own travel, and quicker than it
+              // used to be: the field has to have receded BEFORE the
+              // picture arrives, or the two read as two things happening
+              // rather than one making room for the other.
+              transition: opened
+                ? "filter 300ms cubic-bezier(0.16,1,0.3,1)"
+                : "filter 460ms cubic-bezier(0.16,1,0.3,1) 120ms",
               // A drag gesture is a mousedown-then-move over image/text
               // content, which the browser reads as a selection drag
               // unless told otherwise — the images and captions here would
@@ -1324,7 +1715,36 @@ export default function InfiniteCanvas({
                       height: CELL_H,
                     }}
                   >
-                    {PIECES.map((piece) => {
+                    {DEPTH_RENDER_ORDER.map((band) => (
+                      // ONE element per depth band per cell, carrying that
+                      // band's lag behind the field. The offset comes in
+                      // through a custom property the drive loop writes on
+                      // the plane, so a frame of parallax costs two
+                      // property writes in total rather than one style
+                      // write per band per cell — and every copy of a band
+                      // moves by exactly the same amount, which is what
+                      // keeps the infinite tiling seamless.
+                      <div
+                        key={band}
+                        data-canvas="depth"
+                        data-depth={band}
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          transform:
+                            band === 0
+                              ? undefined
+                              : `translate3d(var(--depth-${band}-x, 0px), var(--depth-${band}-y, 0px), 0)`,
+                          willChange: band === 0 ? undefined : "transform",
+                          // The bands are stacked full-cell boxes, so the
+                          // nearest one would otherwise sit over the other
+                          // two and swallow every click meant for a piece
+                          // behind it. The boxes are pure geometry; only
+                          // the pieces inside them are targets.
+                          pointerEvents: "none",
+                        }}
+                      >
+                    {DEPTH_GROUPS[band].map((piece) => {
                       const key = `${row}:${col}:${piece.id}`;
                       return (
                         <div
@@ -1350,6 +1770,10 @@ export default function InfiniteCanvas({
                             width: piece.w,
                             height: piece.h,
                             cursor: "pointer",
+                            // Restored here: the depth band around this
+                            // piece is inert so that it cannot cover the
+                            // bands behind it (see its comment above).
+                            pointerEvents: "auto",
                             // The expanded card IS this image, so the copy
                             // it grew out of must not sit under it.
                             visibility: opened?.key === key ? "hidden" : "visible",
@@ -1399,6 +1823,8 @@ export default function InfiniteCanvas({
                         </div>
                       );
                     })}
+                      </div>
+                    ))}
                   </div>
                 ))
               )}
@@ -1435,7 +1861,18 @@ export default function InfiniteCanvas({
           backdropFilter: "blur(6px)",
           WebkitBackdropFilter: "blur(6px)",
           boxShadow: "0 6px 24px rgba(0,0,0,0.35)",
-          opacity: hintOpacity,
+          // THE HINT GETS OUT OF THE WAY WHILE THE FIELD IS MOVING.
+          //
+          // It says "drag to explore". Somebody who is dragging does not
+          // need telling, and a caption holding full strength over a
+          // composition in motion is the one element on screen insisting
+          // it is not part of the space. `--field-calm` is written by the
+          // drive loop from the field's own speed — 1 at rest, down to
+          // about a quarter at a brisk pan — so the instruction recedes as
+          // it is being followed and comes back when the reader stops.
+          // One value, driven by the same clock as everything else, and no
+          // extra animation: it IS the pan, read differently.
+          opacity: `calc(${hintOpacity} * var(--field-calm, 1))`,
           transition: "opacity 240ms ease",
           pointerEvents: "none",
           zIndex: 4,
@@ -1480,7 +1917,18 @@ export default function InfiniteCanvas({
                   : `translate3d(${openFrom.dx.toFixed(2)}px, ${openFrom.dy.toFixed(
                       2
                     )}px, 0) scale(${openFrom.s.toFixed(4)})`,
-              transition: "transform 560ms cubic-bezier(0.22,0.7,0.24,1)",
+              // Longer and later than it was, and on a curve with almost
+              // all of its travel at the front. The field is already
+              // opening around this piece by the time the card leaves the
+              // composition (see the dolly effect above, on a 150ms time
+              // constant against this 720ms), so the order the eye reads
+              // is: the space makes room, then the picture comes forward
+              // into it. Departing 70ms behind the field is what puts that
+              // order there instead of both simply starting at once.
+              transition:
+                openT === 1
+                  ? "transform 720ms cubic-bezier(0.16,1,0.3,1) 70ms"
+                  : "transform 520ms cubic-bezier(0.36,0,0.66,1)",
               willChange: "transform",
             }}
           >

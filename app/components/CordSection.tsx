@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 import NarrationLine from "./NarrationLine";
 import BulbModel from "./BulbModel";
-import ArcCarousel, { arcPresence } from "./ArcCarousel";
+import ArcCarousel from "./ArcCarousel";
 import CameraRoll, { lineWidthPx, lineGlow } from "./CameraRoll";
 import { carry, easeInOutSine as baseEaseInOutSine } from "../lib/motion";
 import {
@@ -199,22 +199,39 @@ export default function CordSection({
   // be lit by the bulb and by nine glowing pieces at once, so the light
   // hands over as they arrive and comes back when the last one leaves.
   const arcP = span(p, ARC_START, 1);
-  const presence = arcPresence(arcP);
-  // The BULB'S OWN recovery, on a curve that finishes EARLIER than
-  // `presence` (which fades out exactly as arcP, and so this section's
-  // own `p`, reaches 1). p=1 here is also the exact scroll position
-  // PencilSection's already-fully-lit bulb takes over at — sharing
-  // `presence` left this bulb still visibly mid-recovery at that precise
-  // frame, so the handoff read as a sudden brightening flash rather than
-  // the invisible swap it is built to be. Nothing else reads this curve,
-  // so finishing it a little early only gives the light real margin to
-  // be genuinely back at full strength before the boundary; the cards'
-  // own visible exit timing (`presence` itself, used below) is untouched.
-  const litRecovery = Math.min(
-    easeInOutSine(span(arcP, 0, 0.1)),
-    1 - easeInOutSine(span(arcP, 0.8, 0.94))
+
+  // HOW THE LIGHT LEAVES.
+  //
+  // Every lit thing in this beat — the bulb, the wash it throws, the cord
+  // and its spill — used to follow `presence` exactly, which rises over a
+  // tenth of the arc's window. On a 24,000px track that is under 300px of
+  // scrolling for the single largest change of light on the page, and a
+  // scrub through it reads as a switch being thrown rather than a room
+  // changing hands: the frame-to-frame change there measured eight times
+  // the local median for the whole page.
+  //
+  // The cards' own arrival is untouched — they still come on over that
+  // tenth. What changed is that the light now yields over more than twice
+  // that distance, so the room is still lit as the first pieces establish
+  // and darkens around them rather than ahead of them. The light does not
+  // switch off when the work appears; it gives way to it. Same beat, same
+  // camera, same order of events — the hand-over simply has room to happen.
+  const lightYield = Math.min(
+    easeInOutSine(span(arcP, 0, 0.24)),
+    // Coming back is the same event in reverse and gets the same room:
+    // the light returns as the last pieces leave, not once they are gone.
+    // Over the old 0.78-0.93 it swung from a seventh of full to full in
+    // four steps of a 260-step scrub, which measured 4.4x the local median
+    // — the switch, thrown the other way.
+    //
+    // It still finishes EARLIER than arcP reaches 1, because p=1 here is
+    // the exact scroll position PencilSection's already-fully-lit bulb
+    // takes over at: a light still visibly mid-recovery on that frame made
+    // the hand-off read as a sudden brightening flash rather than the
+    // invisible swap it is built to be.
+    1 - easeInOutSine(span(arcP, 0.64, 0.93))
   );
-  const lit = bulbIn * (1 - 0.86 * litRecovery);
+  const lit = bulbIn * (1 - 0.86 * lightYield);
 
   // Bulb size follows `min(46vh, 42vw)`; the arc is centred on it, so the
   // same expression has to be evaluated here in vh.
@@ -227,7 +244,7 @@ export default function CordSection({
   // The spill on the line's lower stretch — see below — leads the model's
   // own fade-in well ahead: the bulb is already lit, so its light is what
   // should arrive first, with the object following into it.
-  const litGlow = easeInOutSine(span(travel, 0.24, 0.85)) * (1 - 0.86 * presence);
+  const litGlow = easeInOutSine(span(travel, 0.24, 0.85)) * (1 - 0.86 * lightYield);
 
   return (
     <div
@@ -295,7 +312,7 @@ export default function CordSection({
           // dims later with the bulb as the arc arrives — the cord runs
           // down the centre of the frame, which is where the card in focus
           // sits, so it would otherwise cut the work in half.
-          opacity: handoff * (1 - 0.78 * presence),
+          opacity: handoff * (1 - 0.78 * lightYield),
           borderRadius: 2,
           // ABOVE the bulb's canvas. The model's own wire is opaque
           // geometry, so with the bulb on top it painted over the last
@@ -321,7 +338,7 @@ export default function CordSection({
           transform: `translate(-50%, ${(-travel * TRAVEL_VH).toFixed(2)}vh)`,
           boxShadow: lineGlow(0.92),
           borderRadius: 2,
-          opacity: handoff * (1 - 0.78 * presence),
+          opacity: handoff * (1 - 0.78 * lightYield),
           zIndex: 3,
           pointerEvents: "none",
           willChange: "transform, opacity",
@@ -348,7 +365,7 @@ export default function CordSection({
           // either — over black, screen and normal are the same picture,
           // and the blend forced its own compositing pass.
           boxShadow: CORD_SPILL_GLOW,
-          opacity: handoff * litGlow * (1 - 0.78 * presence),
+          opacity: handoff * litGlow * (1 - 0.78 * lightYield),
           borderRadius: 2,
           zIndex: 3,
           pointerEvents: "none",
