@@ -554,8 +554,35 @@ export default function HeroSection() {
     // event on the page, the panel's own included, which would make that
     // overflow unreachable rather than merely offscreen. Only events
     // outside it need blocking, to keep the pane underneath from advancing.
+    //
+    // Stepping aside for the panel has to be conditional on the panel
+    // actually having somewhere to go, not merely on the event landing
+    // inside it. `overscroll-behavior: contain` is the usual guard against
+    // the leftover scroll chaining out to the page, but it only applies to
+    // elements that ARE scroll containers: with DETAILS closed the panel is
+    // exactly one viewport tall, scrollHeight === clientHeight, so it is not
+    // a scroll container at all and the browser hands the event straight to
+    // the page — which here is the whole sequence's playhead. So the check
+    // is "can this panel consume this scroll, in this direction, right now":
+    // if it can, it keeps the event; if it can't, the event is blocked here
+    // rather than chaining.
+    const roomFor = (panel: Element, deltaY: number) => {
+      const scrollable = panel.scrollHeight - panel.clientHeight;
+      if (scrollable <= 1) return false;
+      // No delta to read (touchmove): the panel having any scroll of its
+      // own is enough — overscroll-behavior handles the boundary once it
+      // genuinely is a scroll container.
+      if (deltaY === 0) return true;
+      return deltaY > 0
+        ? panel.scrollTop < scrollable - 1
+        : panel.scrollTop > 1;
+    };
     const block = (e: Event) => {
-      if (e.target instanceof Element && e.target.closest("[data-reel-modal-scroll]")) {
+      const panel =
+        e.target instanceof Element
+          ? e.target.closest("[data-reel-modal-scroll]")
+          : null;
+      if (panel && roomFor(panel, e instanceof WheelEvent ? e.deltaY : 0)) {
         return;
       }
       e.preventDefault();
@@ -1311,6 +1338,15 @@ export default function HeroSection() {
         style={{
           // Pinned by ScrollTrigger, not by `position: sticky` — see
           // usePinnedPane. Layout is otherwise identical.
+          //
+          // DELIBERATELY `vh`, not `dvh`, unlike the video viewer's own
+          // stage. ScrollTrigger measures this pin once and the whole
+          // track's beat boundaries are computed against it; `dvh` changes
+          // the moment a phone's address bar collapses, which would resize
+          // the pinned pane mid-scroll and shift every beat under the
+          // reader. A stable height that is occasionally a little taller
+          // than the visible viewport is the cheaper of the two errors: the
+          // composition inside it is fitted, not filled.
           position: "relative",
           height: "100vh",
           overflow: "hidden",

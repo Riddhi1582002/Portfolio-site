@@ -68,7 +68,7 @@ import HoverCard from "./HoverCard";
 // (see GAP) — the clear space the return transition flies through — and
 // no piece is placed inside it.
 const CELL_W = 2360;
-const CELL_H = 4550;
+const CELL_H = 4880.14;
 
 /**
  * One artwork in the composition.
@@ -104,68 +104,67 @@ type Piece = {
 // reserved and empty (see GAP), the clear space the return transition
 // flies through.
 const PIECES: Piece[] = [
-  { id: "graphite-or-charcoal-polish-20250804-080226299", x: 1307.91, y: 3259.29, w: 245.8, h: 353.01, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20250804-080226299.jpg" },
-  { id: "acrylics-polish-20231227-171248659", x: 822.71, y: 1446.19, w: 222.64, h: 334.48, medium: "Acrylics", src: "/art/acrylics/polish-20231227-171248659.jpg" },
-  { id: "graphite-or-charcoal-img-20260913-222910", x: 312.16, y: 46.26, w: 278.55, h: 228.93, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/img-20260913-222910.jpg" },
-  { id: "pen-art-img-20260913-223239", x: 828.26, y: 2962.82, w: 202.2, h: 359.46, medium: "Pen art", src: "/art/pen-art/img-20260913-223239.jpg" },
-  { id: "graphite-or-charcoal-white-charcoal-on-black-paper-01", x: 2060.45, y: 1425.37, w: 202.75, h: 306.19, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/white-charcoal-on-black-paper-01.jpg" },
-  { id: "acrylics-img-20260913-222957", x: 1916.2, y: 4205.69, w: 310.02, h: 310.02, medium: "Acrylics", src: "/art/acrylics/img-20260913-222957.jpg" },
-  { id: "graphite-or-charcoal-polish-20230319-190520609", x: 103.58, y: 2030.89, w: 191.02, h: 275.27, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230319-190520609.jpg" },
-  { id: "pen-art-img20251002222430", x: 2025.96, y: 99.88, w: 149.85, h: 266.4, medium: "Pen art", src: "/art/pen-art/img20251002222430.jpg" },
-  { id: "graphite-or-charcoal-polish-20221223-133936965", x: 66.3, y: 4242.38, w: 186.33, h: 242.6, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20221223-133936965.png" },
-  { id: "acrylics-img-20230722-wa0022", x: 351.03, y: 3438.45, w: 287.64, h: 215.73, medium: "Acrylics", src: "/art/acrylics/img-20230722-wa0022.jpg" },
-  { id: "graphite-or-charcoal-polish-20210628-221612042", x: 1422.47, y: 208.67, w: 338.47, h: 347.82, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20210628-221612042.jpg" },
-  { id: "pen-art-img-20260515-080123", x: 153.0, y: 1005.9, w: 159.59, h: 283.72, medium: "Pen art", src: "/art/pen-art/img-20260515-080123.jpg" },
-  { id: "graphite-or-charcoal-a-study-of-eyes-03", x: 183.25, y: 3151.13, w: 261.66, h: 261.66, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/a-study-of-eyes-03.jpg" },
-  { id: "acrylics-img-20260913-222931", x: 2008.38, y: 2593.48, w: 315.91, h: 323.39, medium: "Acrylics", src: "/art/acrylics/img-20260913-222931.jpg" },
-  { id: "graphite-or-charcoal-polish-20220306-185610949", x: 344.53, y: 1025.14, w: 227.7, h: 296.14, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20220306-185610949.jpg" },
-  { id: "pen-art-img20260521224939", x: 2005.3, y: 1799.48, w: 131.87, h: 234.43, medium: "Pen art", src: "/art/pen-art/img20260521224939.jpg" },
-  { id: "graphite-or-charcoal-polish-20240229-171648866", x: 1623.48, y: 2413.71, w: 352.35, h: 351.88, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20240229-171648866.jpg" },
-  { id: "acrylics-polish-20240223-203111938", x: 2049.4, y: 441.97, w: 196.75, h: 318.41, medium: "Acrylics", src: "/art/acrylics/polish-20240223-203111938.jpg" },
-  { id: "graphite-or-charcoal-polish-20220930-104029798", x: 2130.01, y: 3720.59, w: 199.92, h: 294.88, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20220930-104029798.jpg" },
-  { id: "pen-art-img20260426194737", x: 1573.92, y: 4177.07, w: 171.08, h: 304.14, medium: "Pen art", src: "/art/pen-art/img20260426194737.jpg" },
-  { id: "graphite-or-charcoal-img-20200423-wa0029", x: 1042.2, y: 4158.2, w: 337.05, h: 340.07, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/img-20200423-wa0029.jpg" },
-  { id: "acrylics-img-20230930-175316648", x: 33.22, y: 209.23, w: 237.78, h: 317.04, medium: "Acrylics", src: "/art/acrylics/img-20230930-175316648.jpg" },
-  { id: "graphite-or-charcoal-polish-20230525-170545329", x: 1110.4, y: 1690.17, w: 306.35, h: 240.45, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230525-170545329.jpg" },
-  { id: "digital-art-img-20241201-wa0012", x: 381.72, y: 1566.78, w: 256.75, h: 256.75, medium: "Digital art", src: "/art/digital-art/img-20241201-wa0012.jpg" },
-  { id: "graphite-or-charcoal-img-20260531-221408", x: 1437.84, y: 998.09, w: 223.86, h: 243.35, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/img-20260531-221408.jpg" },
-  { id: "oils-polish-20210710-135759049", x: 264.26, y: 3816.8, w: 201.25, h: 293.28, medium: "Oils", src: "/art/oils/polish-20210710-135759049.jpg" },
-  { id: "graphite-or-charcoal-polish-20220910-185630205", x: 922.53, y: 2606.79, w: 219.13, h: 292.28, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20220910-185630205.jpg" },
-  { id: "pen-art-img-20260509-212939", x: 322.68, y: 4272.31, w: 130.27, h: 231.59, medium: "Pen art", src: "/art/pen-art/img-20260509-212939.jpg" },
-  { id: "graphite-or-charcoal-polish-20240630-193813326", x: 816.29, y: 553.38, w: 270.45, h: 257.78, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20240630-193813326.jpg" },
-  { id: "acrylics-img-20260913-223908", x: 46.99, y: 2425.18, w: 333.9, h: 333.9, medium: "Acrylics", src: "/art/acrylics/img-20260913-223908.jpg" },
-  { id: "graphite-or-charcoal-polish-20221218-221302894", x: 759.8, y: 3590.07, w: 288.59, h: 339.74, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20221218-221302894.png" },
-  { id: "digital-art-polish-20250917-004912519", x: 1751.48, y: 3906.05, w: 189.62, h: 252.82, medium: "Digital art", src: "/art/digital-art/polish-20250917-004912519.jpg" },
-  { id: "graphite-or-charcoal-polish-20250208-133015864", x: 2060.57, y: 3108.42, w: 212.35, h: 283.03, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20250208-133015864.jpg" },
-  { id: "oils-taylor-swift", x: 885.81, y: 71.31, w: 236.13, h: 278.98, medium: "Oils", src: "/art/oils/taylor-swift.jpg" },
-  { id: "graphite-or-charcoal-polish-20240405-150241593", x: 704.48, y: 2066.15, w: 210.09, h: 315.53, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20240405-150241593.jpg" },
-  { id: "pen-art-img-20260913-223103", x: 1209.19, y: 1009.16, w: 207.82, h: 324.95, medium: "Pen art", src: "/art/pen-art/img-20260913-223103.jpg" },
-  { id: "graphite-or-charcoal-polish-20260626-171824274", x: 2018.95, y: 856.91, w: 198.12, h: 247.65, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20260626-171824274.jpg" },
-  { id: "acrylics-img-20260913-223809", x: 1681.58, y: 1442.06, w: 346.37, h: 131.43, medium: "Acrylics", src: "/art/acrylics/img-20260913-223809.jpg" },
-  { id: "graphite-or-charcoal-polish-20230129-170653977", x: 962.27, y: 1088.08, w: 225.75, h: 301.0, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230129-170653977.jpg" },
-  { id: "digital-art-ice-heart", x: 473.62, y: 3076.46, w: 264.87, h: 331.08, medium: "Digital art", src: "/art/digital-art/ice-heart.jpg" },
-  { id: "graphite-or-charcoal-trs-9968", x: 1437.11, y: 3765.96, w: 252.08, h: 351.67, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/trs-9968.jpg" },
-  { id: "oils-polish-20210626-213830980", x: 2108.26, y: 2202.73, w: 196.27, h: 277.34, medium: "Oils", src: "/art/oils/polish-20210626-213830980.jpg" },
-  { id: "pen-art-img20260512233009", x: 393.22, y: 2074.92, w: 139.2, h: 247.47, medium: "Pen art", src: "/art/pen-art/img20260512233009.jpg" },
-  { id: "soft-pastels-polish-20210327-172832632", x: 1717.74, y: 849.37, w: 206.54, h: 296.04, medium: "Soft pastels", src: "/art/soft-pastels/polish-20210327-172832632.jpg" },
-  { id: "acrylics-triplets", x: 1184.02, y: 2590.99, w: 344.57, h: 193.82, medium: "Acrylics", src: "/art/acrylics/triplets.jpg" },
-  { id: "digital-art-img-20241207-wa0078", x: 1631.53, y: 2015.84, w: 321.26, h: 321.26, medium: "Digital art", src: "/art/digital-art/img-20241207-wa0078.jpg" },
-  // THE piece the iris sits on -- see IRIS_PIECE_ID.
-  { id: "graphite-or-charcoal-trs-8286", x: 529.44, y: 4204.01, w: 332.3, h: 221.1, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/trs-8286.jpg" },
-  { id: "oils-polish-20240709-124250793", x: 39.1, y: 1390.24, w: 244.92, h: 350.19, medium: "Oils", src: "/art/oils/polish-20240709-124250793.jpg" },
-  { id: "pen-art-img-20260913-223141", x: 1843.44, y: 3255.49, w: 190.92, h: 339.37, medium: "Pen art", src: "/art/pen-art/img-20260913-223141.jpg" },
-  { id: "soft-pastels-polish-20210216-004049971", x: 505.89, y: 3802.46, w: 210.36, h: 340.3, medium: "Soft pastels", src: "/art/soft-pastels/polish-20210216-004049971.jpg" },
-  { id: "acrylics-tulips", x: 1189.99, y: 458.87, w: 171.14, h: 304.25, medium: "Acrylics", src: "/art/acrylics/tulips.jpg" },
-  { id: "digital-art-img-20241220-wa0016", x: 1801.34, y: 91.36, w: 119.3, h: 238.6, medium: "Digital art", src: "/art/digital-art/img-20241220-wa0016.jpg" },
-  { id: "graphite-or-charcoal-polish-20230917-202038401-1", x: 432.44, y: 2591.48, w: 347.28, h: 356.77, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230917-202038401-1.jpg" },
-  { id: "oils-img-20260913-223823", x: 1113.5, y: 3010.33, w: 243.78, h: 99.18, medium: "Oils", src: "/art/oils/img-20260913-223823.jpg" },
-  { id: "pen-art-img-20260913-223204", x: 654.58, y: 354.95, w: 130.46, h: 231.84, medium: "Pen art", src: "/art/pen-art/img-20260913-223204.jpg" },
-  { id: "soft-pastels-polish-20210409-110947181", x: 422.29, y: 440.86, w: 204.68, h: 281.12, medium: "Soft pastels", src: "/art/soft-pastels/polish-20210409-110947181.jpg" },
+  { id: "graphite-or-charcoal-polish-20250804-080226299", x: 566.05, y: 4336.9, w: 286.84, h: 411.94, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20250804-080226299.jpg" },
+  { id: "acrylics-polish-20231227-171248659", x: 355.35, y: 2174.36, w: 257.46, h: 386.8, medium: "Acrylics", src: "/art/acrylics/polish-20231227-171248659.jpg" },
+  { id: "graphite-or-charcoal-img-20260913-222910", x: 1913.19, y: 62.05, w: 310.89, h: 255.51, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/img-20260913-222910.jpg" },
+  { id: "pen-art-img-20260913-223239", x: 1997.02, y: 4246.21, w: 236.64, h: 420.69, medium: "Pen art", src: "/art/pen-art/img-20260913-223239.jpg" },
+  { id: "graphite-or-charcoal-white-charcoal-on-black-paper-01", x: 41.86, y: 1751.31, w: 230.7, h: 348.41, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/white-charcoal-on-black-paper-01.jpg" },
+  { id: "acrylics-img-20260913-222957", x: 1563.1, y: 4469.8, w: 353.6, h: 353.6, medium: "Acrylics", src: "/art/acrylics/img-20260913-222957.jpg" },
+  { id: "graphite-or-charcoal-polish-20230319-190520609", x: 2066.22, y: 2668.8, w: 212.64, h: 306.44, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230319-190520609.jpg" },
+  { id: "pen-art-img20251002222430", x: 64.63, y: 46.87, w: 165.6, h: 294.4, medium: "Pen art", src: "/art/pen-art/img20251002222430.jpg" },
+  { id: "graphite-or-charcoal-polish-20221223-133936965", x: 311.18, y: 75.38, w: 201.3, h: 262.1, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20221223-133936965.png" },
+  { id: "acrylics-img-20230722-wa0022", x: 1908.87, y: 388.19, w: 323.23, h: 242.42, medium: "Acrylics", src: "/art/acrylics/img-20230722-wa0022.jpg" },
+  { id: "graphite-or-charcoal-polish-20210628-221612042", x: 1351.95, y: 1320.6, w: 394.02, h: 404.9, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20210628-221612042.jpg" },
+  { id: "pen-art-img-20260515-080123", x: 2096.36, y: 1575.95, w: 178.82, h: 317.9, medium: "Pen art", src: "/art/pen-art/img-20260515-080123.jpg" },
+  { id: "graphite-or-charcoal-a-study-of-eyes-03", x: 723.76, y: 3053.49, w: 287.96, h: 287.96, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/a-study-of-eyes-03.jpg" },
+  { id: "acrylics-img-20260913-222931", x: 202.47, y: 396.8, w: 363.15, h: 371.74, medium: "Acrylics", src: "/art/acrylics/img-20260913-222931.jpg" },
+  { id: "graphite-or-charcoal-polish-20220306-185610949", x: 1910.75, y: 3872.17, w: 257.4, h: 334.76, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20220306-185610949.jpg" },
+  { id: "pen-art-img20260521224939", x: 40.97, y: 2963.33, w: 141.2, h: 251.01, medium: "Pen art", src: "/art/pen-art/img20260521224939.jpg" },
+  { id: "graphite-or-charcoal-polish-20240229-171648866", x: 1058.39, y: 434.07, w: 411.05, h: 410.5, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20240229-171648866.jpg" },
+  { id: "acrylics-polish-20240223-203111938", x: 2091.9, y: 2167.31, w: 225.53, h: 364.99, medium: "Acrylics", src: "/art/acrylics/polish-20240223-203111938.jpg" },
+  { id: "graphite-or-charcoal-polish-20220930-104029798", x: 403.3, y: 925.51, w: 225.8, h: 333.05, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20220930-104029798.jpg" },
+  { id: "pen-art-img20260426194737", x: 152.42, y: 4471.96, w: 194.41, h: 345.61, medium: "Pen art", src: "/art/pen-art/img20260426194737.jpg" },
+  { id: "graphite-or-charcoal-img-20200423-wa0029", x: 1038.27, y: 3754.69, w: 390.88, h: 394.38, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/img-20200423-wa0029.jpg" },
+  { id: "acrylics-img-20230930-175316648", x: 39.23, y: 3843.59, w: 272.35, h: 363.13, medium: "Acrylics", src: "/art/acrylics/img-20230930-175316648.jpg" },
+  { id: "graphite-or-charcoal-polish-20230525-170545329", x: 1873.84, y: 812.05, w: 348.62, h: 273.63, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230525-170545329.jpg" },
+  { id: "digital-art-img-20241201-wa0012", x: 1213.26, y: 54.73, w: 281.3, h: 281.3, medium: "Digital art", src: "/art/digital-art/img-20241201-wa0012.jpg" },
+  { id: "graphite-or-charcoal-img-20260531-221408", x: 834.45, y: 1833.23, w: 242.04, h: 263.12, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/img-20260531-221408.jpg" },
+  { id: "oils-polish-20210710-135759049", x: 625.85, y: 1408.48, w: 227.05, h: 330.88, medium: "Oils", src: "/art/oils/polish-20210710-135759049.jpg" },
+  { id: "graphite-or-charcoal-polish-20220910-185630205", x: 108.8, y: 3445.97, w: 247.06, h: 329.52, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20220910-185630205.jpg" },
+  { id: "pen-art-img-20260509-212939", x: 1663.35, y: 92.2, w: 139.03, h: 247.16, medium: "Pen art", src: "/art/pen-art/img-20260509-212939.jpg" },
+  { id: "graphite-or-charcoal-polish-20240630-193813326", x: 1454.05, y: 2184.82, w: 299.9, h: 285.85, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20240630-193813326.jpg" },
+  { id: "acrylics-img-20260913-223908", x: 1161.61, y: 3180.31, w: 386.01, h: 386.01, medium: "Acrylics", src: "/art/acrylics/img-20260913-223908.jpg" },
+  { id: "graphite-or-charcoal-polish-20221218-221302894", x: 1607.46, y: 3219.13, w: 334.62, h: 393.93, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20221218-221302894.png" },
+  { id: "digital-art-polish-20250917-004912519", x: 1123.35, y: 4570.65, w: 206.98, h: 275.97, medium: "Digital art", src: "/art/digital-art/polish-20250917-004912519.jpg" },
+  { id: "graphite-or-charcoal-polish-20250208-133015864", x: 219.02, y: 2637.68, w: 237.81, h: 316.97, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20250208-133015864.jpg" },
+  { id: "oils-taylor-swift", x: 1528.06, y: 4077.97, w: 263.64, h: 311.48, medium: "Oils", src: "/art/oils/taylor-swift.jpg" },
+  { id: "graphite-or-charcoal-polish-20240405-150241593", x: 1248.24, y: 2726.16, w: 240.42, h: 361.08, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20240405-150241593.jpg" },
+  { id: "pen-art-img-20260913-223103", x: 315.68, y: 1552.83, w: 239.1, h: 373.86, medium: "Pen art", src: "/art/pen-art/img-20260913-223103.jpg" },
+  { id: "graphite-or-charcoal-polish-20260626-171824274", x: 553.83, y: 3869.93, w: 215.16, h: 268.95, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20260626-171824274.jpg" },
+  { id: "acrylics-img-20260913-223809", x: 966.01, y: 1126.29, w: 402.93, h: 152.89, medium: "Acrylics", src: "/art/acrylics/img-20260913-223809.jpg" },
+  { id: "graphite-or-charcoal-polish-20230129-170653977", x: 639.87, y: 383.97, w: 256.01, h: 341.35, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230129-170653977.jpg" },
+  { id: "digital-art-ice-heart", x: 519.77, y: 2608.94, w: 305.75, h: 382.19, medium: "Digital art", src: "/art/digital-art/ice-heart.jpg" },
+  { id: "graphite-or-charcoal-trs-9968", x: 894.97, y: 1329.1, w: 293.97, h: 410.12, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/trs-9968.jpg" },
+  { id: "oils-polish-20210626-213830980", x: 248.02, y: 3052.09, w: 218.85, h: 309.24, medium: "Oils", src: "/art/oils/polish-20210626-213830980.jpg" },
+  { id: "pen-art-img20260512233009", x: 1542.98, y: 2872.13, w: 151.15, h: 268.71, medium: "Pen art", src: "/art/pen-art/img20260512233009.jpg" },
+  { id: "soft-pastels-polish-20210327-172832632", x: 668.9, y: 784.8, w: 233.46, h: 334.62, medium: "Soft pastels", src: "/art/soft-pastels/polish-20210327-172832632.jpg" },
+  { id: "acrylics-triplets", x: 1220.18, y: 1891.02, w: 400.48, h: 225.27, medium: "Acrylics", src: "/art/acrylics/triplets.jpg" },
+  { id: "digital-art-img-20241207-wa0078", x: 1956.81, y: 1142.9, w: 368.85, h: 368.85, medium: "Digital art", src: "/art/digital-art/img-20241207-wa0078.jpg" },
+  { id: "graphite-or-charcoal-trs-8286", x: 1098.27, y: 4255.24, w: 383.84, h: 255.39, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/trs-8286.jpg" },
+  { id: "oils-polish-20240709-124250793", x: 1745.25, y: 2767.44, w: 285.43, h: 408.12, medium: "Oils", src: "/art/oils/polish-20240709-124250793.jpg" },
+  { id: "pen-art-img-20260913-223141", x: 1527.03, y: 833.33, w: 221.33, h: 393.43, medium: "Pen art", src: "/art/pen-art/img-20260913-223141.jpg" },
+  { id: "soft-pastels-polish-20210216-004049971", x: 2045.86, y: 3371.48, w: 243.98, h: 394.69, medium: "Soft pastels", src: "/art/soft-pastels/polish-20210216-004049971.jpg" },
+  { id: "acrylics-tulips", x: 58.48, y: 1237.39, w: 194.49, h: 345.77, medium: "Acrylics", src: "/art/acrylics/tulips.jpg" },
+  { id: "digital-art-img-20241220-wa0016", x: 2079.48, y: 3075.04, w: 128.34, h: 256.68, medium: "Digital art", src: "/art/digital-art/img-20241220-wa0016.jpg" },
+  { id: "graphite-or-charcoal-polish-20230917-202038401-1", x: 465.43, y: 3400.81, w: 405.96, h: 417.05, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230917-202038401-1.jpg" },
+  { id: "oils-img-20260913-223823", x: 623.95, y: 31.24, w: 263.7, h: 107.28, medium: "Oils", src: "/art/oils/img-20260913-223823.jpg" },
+  { id: "pen-art-img-20260913-223204", x: 1464.85, y: 3787.47, w: 139.27, h: 247.5, medium: "Pen art", src: "/art/pen-art/img-20260913-223204.jpg" },
+  { id: "soft-pastels-polish-20210409-110947181", x: 75.23, y: 2283.04, w: 228.89, h: 314.37, medium: "Soft pastels", src: "/art/soft-pastels/polish-20210409-110947181.jpg" },
 ];
 
 // The centre of the reserved rectangle no piece was placed inside — the
 // space the return transition flies through.
-const GAP = { x: 1180, y: 2275 };
+const GAP = { x: 1180.0, y: 2440.07 };
 
 // THE piece the iris sits on: the white circle the previous beat leaves the
 // frame on is the pupil painted on this card, and the zoom out starts
@@ -253,7 +252,14 @@ const CLICK_SLOP_PX = 5;
 // viewport instead of reflowing it, so the arrangement is identical
 // everywhere and only its size changes.
 const FIT_REFERENCE_VW = 1440;
-const FIT_MIN = 0.42;
+// The floor is a MOBILE composition decision, not just a safety rail. A
+// phone is not a small desktop: scaled strictly by width, a 340px piece
+// lands at about a third of a 390px screen and the composition reads as a
+// lot of small stamps, which is the "microscopic" version of this beat
+// rather than a recomposed one. Held at half size instead, a phone shows
+// fewer pieces and each of them is actually a picture — the same
+// arrangement, framed closer in.
+const FIT_MIN = 0.5;
 
 /** The viewport fit the composition always carries. */
 export function galleryFit(vw: number) {
@@ -292,9 +298,15 @@ export function irisFrame(vw: number, vh: number) {
     cardW: cardW * scale,
     cardH: cardH * scale,
     iris,
-    irisPlane: piece.h * IRIS_RATIO,
     irisOffsetX,
     irisOffsetY,
+    /**
+     * The same offset in SCREEN px at this frame's scale — what
+     * PencilSection needs to put the drawn iris (not the card's middle)
+     * exactly under the bulb's own circle while it transforms into it.
+     */
+    irisOffsetScreenX: irisOffsetX * fit * scale,
+    irisOffsetScreenY: irisOffsetY * fit * scale,
   };
 }
 
@@ -533,8 +545,6 @@ export default function InfiniteCanvas({
   }, []);
 
   const fit = galleryFit(vw);
-  const fitRef = useRef(fit);
-  fitRef.current = fit;
 
   // THE ZOOM OUT (unchanged in kind: this is the existing entry transition).
   //
@@ -551,10 +561,6 @@ export default function InfiniteCanvas({
   // which is what a real dolly looks like.
   const revealScale = Math.exp(Math.log(frame.scale) * (1 - revealT));
   const revealing = revealT < 0.999;
-  // The iris fades out as the camera gets back: once its card is one of
-  // several on screen it should read as a piece of work, not as the
-  // thing we came through.
-  const irisFade = span(revealScale, 1.0, 1.85);
 
   // ── THE RETURN TRANSITION ───────────────────────────────────────────
   // A dedicated state, not reverse scrolling. `returnTargetRef` is what
@@ -650,8 +656,17 @@ export default function InfiniteCanvas({
   // while the dolly is still shallow — so the move reads as the camera
   // lining up on the clear space and then travelling through it.
   const panHomeT = easeOutCubic(span(returnT, 0, 0.32));
+  // Held in a ref, and written from an effect rather than during render.
+  // `write` below reads it instead of taking it as a dependency, because
+  // `write` is also called from rAF loops (the settle, the momentum coast)
+  // that must not be torn down and rebuilt on every frame of the return.
+  // The effect is declared HERE, above the effect that calls `write()`, so
+  // the ordering React guarantees between them is the one this needs: the
+  // value lands before anything reads it.
   const homeRef = useRef(panHomeT);
-  homeRef.current = panHomeT;
+  useEffect(() => {
+    homeRef.current = panHomeT;
+  }, [panHomeT]);
 
   // The plane offset the pull-back is centred on: the iris card's middle
   // at the middle of the frame.
@@ -852,8 +867,8 @@ export default function InfiniteCanvas({
     // Divided by the fit so the composition tracks the finger 1:1 on
     // screen: at 0.42 a screen pixel is 2.4 canvas px, and without this
     // the plane would crawl behind the pointer on a phone.
-    panRef.current.x -= dx / fitRef.current;
-    panRef.current.y -= dy / fitRef.current;
+    panRef.current.x -= dx / fit;
+    panRef.current.y -= dy / fit;
     write();
 
     // Smoothed (not instantaneous) velocity of the PAN itself, in the
@@ -864,8 +879,8 @@ export default function InfiniteCanvas({
     const now = performance.now();
     const dt = Math.max(1, now - lastMoveTimeRef.current);
     lastMoveTimeRef.current = now;
-    const instVx = -(dx / fitRef.current) / dt;
-    const instVy = -(dy / fitRef.current) / dt;
+    const instVx = -(dx / fit) / dt;
+    const instVy = -(dy / fit) / dt;
     velRef.current = {
       x: velRef.current.x * 0.72 + instVx * 0.28,
       y: velRef.current.y * 0.72 + instVy * 0.28,
@@ -1370,47 +1385,17 @@ export default function InfiniteCanvas({
                               infoVisible={hovered === key && canHover}
                             />
                           </HoverCard>
-                          {piece.id === IRIS_PIECE_ID && irisFade > 0.001 && (
-                            // The ring the camera came out through: a
-                            // circular frame ON the card, sized and placed
-                            // to trace the DRAWN iris itself (see
-                            // IRIS_RATIO/IRIS_CENTER_*_FRAC — measured off
-                            // the source file, not assumed to be the card's
-                            // own centre), so pulling back shrinks it
-                            // exactly as it shrinks everything else and the
-                            // ring never reads as floating over the wrong
-                            // part of the picture. NOT a filled disc — the
-                            // previous beat hands off to this artwork
-                            // directly, so the iris artwork itself is the
-                            // visual from the first frame; this is only the
-                            // rim, same as PencilSection draws around its
-                            // own circle, giving the handoff a frame to
-                            // land in without ever covering the picture it
-                            // is landing on.
-                            <div
-                              aria-hidden
-                              data-canvas="iris"
-                              style={{
-                                position: "absolute",
-                                left: `calc(50% + ${frame.irisOffsetX.toFixed(2)}px)`,
-                                top: `calc(50% + ${frame.irisOffsetY.toFixed(2)}px)`,
-                                width: frame.irisPlane,
-                                height: frame.irisPlane,
-                                marginLeft: -frame.irisPlane / 2,
-                                marginTop: -frame.irisPlane / 2,
-                                borderRadius: "50%",
-                                boxShadow: `0 0 0 ${(1.2 / revealScale).toFixed(
-                                  3
-                                )}px rgba(255,255,255,${(0.42 * irisFade).toFixed(
-                                  3
-                                )}), 0 0 ${(18 / revealScale).toFixed(
-                                  2
-                                )}px rgba(255,255,255,${(0.2 * irisFade).toFixed(3)})`,
-                                opacity: irisFade,
-                                pointerEvents: "none",
-                              }}
-                            />
-                          )}
+                          {/* No ring on the iris card. There used to be a
+                              hairline circle traced around the drawn iris
+                              here, to give the hand-off from the previous
+                              beat "a frame to land in". The previous beat
+                              now arrives as one continuously transforming
+                              surface — the bulb's glass burning off the
+                              artwork and its circular crop dilating open
+                              (see PencilSection) — and lands on the plain
+                              picture. A rim drawn on top of that would be
+                              exactly the white outlined circle the beat is
+                              built to never show. */}
                         </div>
                       );
                     })}
@@ -1499,23 +1484,14 @@ export default function InfiniteCanvas({
               willChange: "transform",
             }}
           >
-            {/* No flip, no back face, no separate information panel: the
-                focused card is the same ArtCard the grid uses, just larger
-                and with its info always on (infoVisible — there is no
-                "hover" state for a card already at the centre of the
-                screen, on a touch device least of all, so this is what
-                satisfies "show medium/details when focused" on mobile
-                too). `infoScale` sizes the gradient's type off the actual
-                on-screen card, not the viewport, so a narrow portrait
-                focused card doesn't inherit a landscape card's type size. */}
-            <ArtCard
-              src={opened.piece.src}
-              medium={opened.piece.medium}
-              details={opened.piece.details}
-              radius={16}
-              infoVisible
-              infoScale={Math.max(1, Math.min(openTarget.w, openTarget.h) / 220)}
-            />
+            {/* No flip, no back face, no information panel — and no
+                medium/details either. A focused piece is the picture and
+                nothing else: the gradient and its caption belong to the
+                grid card's hover, where they answer "what am I looking
+                at?" while the reader is scanning. Once they have chosen
+                this one and it is filling the frame, anything printed over
+                it is just something between them and the work. */}
+            <ArtCard src={opened.piece.src} radius={16} />
           </div>
         </>
       )}

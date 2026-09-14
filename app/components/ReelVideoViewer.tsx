@@ -132,6 +132,43 @@ function loadYouTubeApi(): Promise<YTNamespace> {
   return ytApiPromise;
 }
 
+/**
+ * KEEPING YOUTUBE'S OWN UI OUT OF THE FRAME — STRUCTURALLY.
+ *
+ * `controls: 0` turns off the scrubber, and `modestbranding`/`rel`/
+ * `iv_load_policy` take care of what they take care of, but YouTube still
+ * reserves the right to draw its title bar — video title, channel avatar,
+ * channel name, "Watch on YouTube" — across the top of the player, and
+ * there is no parameter that reliably disables it. Covering it for a few
+ * seconds only hides it for a few seconds.
+ *
+ * So it is cropped out of existence instead, and this costs no picture at
+ * all. The player box is already the video's own aspect ratio. Make the
+ * IFRAME taller than that box by `crop` at the top and bottom and YouTube,
+ * which always fits the video inside the iframe preserving aspect, now has
+ * a frame that is TALLER than the video is — so it fits to width and
+ * letterboxes the difference. Width-fitted, the video is exactly the box's
+ * height again, centred in the iframe: `crop` down from the iframe's top,
+ * which is `crop` above the box. The picture therefore lands back at
+ * exactly 0, full size, and the only thing sitting in the cropped bands is
+ * YouTube's own letterbox — with its title bar, anchored to the top of the
+ * player, inside it.
+ *
+ * The iframe is also made non-interactive: every control here is the
+ * viewer's own, so the player never needs the pointer, and YouTube's
+ * hover-summoned chrome can never be summoned in the first place.
+ */
+const YT_CHROME_CROP = "max(88px, 12%)";
+function containYouTubeChrome(iframe: HTMLIFrameElement) {
+  iframe.style.position = "absolute";
+  iframe.style.left = "0";
+  iframe.style.width = "100%";
+  iframe.style.top = `calc(0px - ${YT_CHROME_CROP})`;
+  iframe.style.height = `calc(100% + 2 * ${YT_CHROME_CROP})`;
+  iframe.style.border = "0";
+  iframe.style.pointerEvents = "none";
+}
+
 export default function ReelVideoViewer({
   reels,
   reelIndex,
@@ -253,24 +290,31 @@ export default function ReelVideoViewer({
       setCurrentTime(0);
       setErrorMsg(videoId ? null : "This video couldn't be loaded.");
       setMaskVisible(true);
+      // DETAILS describes the PROJECT, but it is opened against whatever
+      // video is on screen, and leaving it open across a Prev/Next left
+      // the panel expanded — and the panel scrolled to — while the thing
+      // above it changed underneath. Closing it here puts every video
+      // change back on the same footing as a fresh open.
+      setDetailsOpen(false);
     }
   }
 
-  // The loading mask stays up a little past actual playback starting, not
-  // just past `ready`: YouTube's own cued/playing-state chrome (title
-  // card, channel avatar, "watch on YouTube") sits on the iframe for a few
-  // seconds after the player begins playing, and that chrome — the
-  // channel identity this viewer is meant to keep out of sight — is
-  // exactly what a short mask keyed to `ready` alone was letting through,
-  // since `ready` fires before the browser has actually painted a frame.
-  // Gated on `playing` rather than `ready`: if autoplay is slow to
-  // actually start (buffering, a blocked first attempt), the mask stays up
-  // through that too instead of dropping early onto a paused, chrome-on
-  // frame. A fixed extra beat covers YouTube's own chip animation without
-  // an ongoing overlay sitting over live playback indefinitely.
+  // THE LOADING STATE — and only that.
+  //
+  // This used to be the thing keeping YouTube's branding out of sight: a
+  // three-second opaque cover, timed to outlast the title bar. That is no
+  // longer its job. `containYouTubeChrome` crops that chrome out of the
+  // visible box structurally (see its own comment), so this is free to be
+  // what it should have been all along — the piece's own thumbnail,
+  // standing in for the picture only until there is a picture.
+  //
+  // Still keyed to `playing` rather than `ready`, because `ready` fires
+  // before the browser has painted a frame and dropping the cover then
+  // flashes black; the grace afterwards is now just long enough to cover
+  // that first paint rather than long enough to outlast an animation.
   useEffect(() => {
     if (!playing) return;
-    const t = window.setTimeout(() => setMaskVisible(false), 3000);
+    const t = window.setTimeout(() => setMaskVisible(false), 350);
     return () => window.clearTimeout(t);
   }, [playing, videoKey]);
 
@@ -299,7 +343,19 @@ export default function ReelVideoViewer({
     if (shown) setMaskVisible(true);
   }
   useEffect(() => {
-    if (shown) playerRef.current?.playVideo();
+    if (!shown) return;
+    const player = playerRef.current;
+    if (!player) return;
+    player.playVideo();
+    // Reopening is the fourth and last point captions can come back (load,
+    // video change, state change, reopen), and the crop goes with them for
+    // the same reason — see containYouTubeChrome.
+    try {
+      player.unloadModule?.("captions");
+      containYouTubeChrome(player.getIframe());
+    } catch {
+      // Non-essential.
+    }
   }, [shown]);
 
   // Create the player ONCE EVER per page session, then swap videos in
@@ -317,9 +373,12 @@ export default function ReelVideoViewer({
       playerRef.current.loadVideoById(videoId);
       // Captions can turn back on with a newly loaded video even though
       // this same player had them stripped for the last one — see
-      // unloadModule's own comment on the type above.
+      // unloadModule's own comment on the type above. The crop is
+      // reasserted alongside them for the same reason: this is a new video
+      // in an existing iframe, and nothing about that is ours to trust.
       try {
         playerRef.current.unloadModule?.("captions");
+        containYouTubeChrome(playerRef.current.getIframe());
       } catch {
         // Non-essential.
       }
@@ -351,6 +410,10 @@ export default function ReelVideoViewer({
             iv_load_policy: 3,
             cc_load_policy: 0,
             fs: 0,
+            // Nothing here is keyboard-driven through YouTube — the
+            // viewer's own controls own every gesture — and leaving it on
+            // is one more way its UI can be summoned into frame.
+            disablekb: 1,
           },
           events: {
             onReady: (e) => {
@@ -361,11 +424,7 @@ export default function ReelVideoViewer({
                   "allow",
                   "autoplay; encrypted-media; picture-in-picture"
                 );
-                iframe.style.position = "absolute";
-                iframe.style.inset = "0";
-                iframe.style.width = "100%";
-                iframe.style.height = "100%";
-                iframe.style.border = "0";
+                containYouTubeChrome(iframe);
               } catch {
                 // Non-essential; playback still works without it.
               }
@@ -458,16 +517,27 @@ export default function ReelVideoViewer({
   }, [activity]);
   const controlsVisible = !playing || detailsOpen || recentlyActive;
 
-  // DETAILS lives below the fold on most screens (see the render below),
-  // so opening it needs to actually bring it into view rather than leave
-  // the reader to notice the dialog grew and scroll down themselves.
-  // Closing scrolls back to the top, landing back on the player rather
-  // than wherever the reader happened to be scrolled to.
+  // DETAILS lives below the fold (see the render below), so opening it has
+  // to bring itself into view rather than leave the reader to notice the
+  // dialog got taller. Closing returns to the player.
+  //
+  // Driven off THIS PANEL's own scrollTop, never `scrollIntoView`.
+  // scrollIntoView walks up and scrolls every scrollable ancestor it needs
+  // to, the document included — which, on a page whose scroll position IS
+  // the whole sequence's playhead, means opening DETAILS could quietly
+  // move the beat underneath the viewer and leave somewhere else showing
+  // on close. Scrolling the panel element directly cannot reach past it.
+  // The section's own offsetTop is exactly the stage's height (the dialog
+  // is `position: fixed`, so it is the offset parent), so this needs no
+  // measurement of its own.
   useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
     if (detailsOpen) {
-      detailsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const top = detailsSectionRef.current?.offsetTop ?? 0;
+      panel.scrollTo({ top, behavior: "smooth" });
     } else {
-      panelRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      panel.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, [detailsOpen]);
 
@@ -565,8 +635,15 @@ export default function ReelVideoViewer({
           // EXACTLY one viewport height (not min-height) so opening
           // DETAILS below it can never resize or reflow the player itself
           // — only the dialog around it grows and becomes scrollable.
+          //
+          // `dvh`, not `vh`: on a phone `100vh` is the viewport with the
+          // browser's own chrome COLLAPSED, so a stage sized in vh runs
+          // taller than what is actually on screen and pushes the bottom
+          // control bar underneath the address bar — the transport is
+          // there, and cannot be reached.  `dvh` tracks the viewport that
+          // actually exists right now.
           position: "relative",
-          height: "100vh",
+          height: "100dvh",
           display: "flex",
           flexDirection: "column",
           padding: "clamp(16px, 3vw, 40px)",
@@ -887,7 +964,7 @@ export default function ReelVideoViewer({
       {/* DETAILS: the project's own data, nothing invented. Appended BELOW
           the player/control bar as ordinary page content — not an overlay
           drawn on top of the video — so opening it never covers playback;
-          the stage above is pinned to a fixed 100vh (see its own comment)
+          the stage above is pinned to a fixed 100dvh (see its own comment)
           so this section only ever extends the dialog, never resizes or
           reflows the player. Scrolled into view on open (see the effect
           above) since it starts below the fold on most screens. Closing it

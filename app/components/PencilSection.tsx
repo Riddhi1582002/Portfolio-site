@@ -79,16 +79,29 @@ const LINE = [0.46, 0.72] as const;
 // beat to InfiniteCanvas — so the circle is already sitting still, at the
 // gallery's own size and position, for a moment before the cut, not
 // caught mid-glide by it.
-const SETTLE = [0.74, 0.92] as const;
+const SETTLE = [0.74, 0.9] as const;
+// THE IRIS EMERGING IN THE GLASS. Not a cross-fade between two layers: one
+// circular surface, with the artwork already behind it, and the bulb's own
+// white glass burning off it from the centre outward. Deliberately opened
+// while SETTLE is still gliding, so the detail is already coming up as the
+// circle arrives rather than starting once it has stopped.
+const EMERGE = [0.78, 0.92] as const;
+// THE APERTURE. Once the iris is established the circle dilates — the same
+// surface, its circular crop opening out — until the whole eye artwork is
+// uncovered at exactly the size and position InfiniteCanvas's pull-back
+// opens on. Thematically the right move for this beat: the thing the
+// reader is looking at is an iris, and an iris is an aperture.
+const APERTURE = [0.92, 0.985] as const;
 /**
  * Where this section hands off to InfiniteCanvas (as a share of THIS
  * section's own progress) — exported so HeroSection can make InfiniteCanvas
- * visible at exactly this point rather than only at progress 1. A hard cut,
- * not a cross-fade: the two are drawn from the same `irisFrame` geometry
- * (see the file-level comment), so at this exact frame they are pixel
- * identical and swapping which one is on screen changes nothing visible.
+ * visible at exactly this point rather than only at progress 1. By here the
+ * veil has fully burned off and the aperture is wide open, so both
+ * components are drawing the SAME artwork at the SAME size in the SAME
+ * place (both from `irisFrame`) and swapping which one is on screen
+ * changes nothing visible.
  */
-export const IRIS_HANDOFF_AT = 0.94;
+export const IRIS_HANDOFF_AT = 0.985;
 
 // Where the circle settles: a little above the middle, with room under it
 // for the narration.
@@ -182,11 +195,58 @@ export default function PencilSection({
     bulbPx * (CIRCLE_START_RATIO + (BULB_GLASS_RATIO - CIRCLE_START_RATIO) * circleShrinkT);
 
   // THE GLIDE to the gallery's own centred position — see SETTLE's own
-  // comment. The circle's colour and size are untouched by this; only
-  // where it sits moves, so that by IRIS_HANDOFF_AT it is dead centre,
-  // exactly where InfiniteCanvas's own reveal is centred too.
+  // comment. The circle's size is untouched by this; only where it sits
+  // moves, so that by IRIS_HANDOFF_AT it is dead centre, exactly where
+  // InfiniteCanvas's own reveal is centred too.
   const settle = easeInOutSine(span(p, SETTLE[0], SETTLE[1]));
   const discCentreY = circleY + (vh / 2 - circleY) * settle;
+
+  // ── THE ONE SURFACE ──────────────────────────────────────────────────
+  //
+  // `emerge` burns the bulb's white glass off the artwork that is already
+  // behind it, from the centre outward; `aperture` then dilates the
+  // circular crop until the whole card is uncovered. Neither is a
+  // cross-fade between two separate things: there is one circular element
+  // here, and these two values describe what is happening ON it.
+  const emerge = easeInOutSine(span(p, EMERGE[0], EMERGE[1]));
+  const aperture = easeInOutSine(span(p, APERTURE[0], APERTURE[1]));
+
+  // Where the drawn iris sits inside its own card, in screen px at this
+  // beat's scale — the card is hung off this so the PAINTED iris, not the
+  // card's geometric middle, is what lands inside the bulb's circle.
+  const cardW = frame.cardW;
+  const cardH = frame.cardH;
+  const irisCx = cardW / 2 + frame.irisOffsetScreenX;
+  const irisCy = cardH / 2 + frame.irisOffsetScreenY;
+  // Closed, the crop is exactly the bulb's own circle. Open, it clears the
+  // card's far corner — so the last thing the dilation uncovers is the
+  // card's own edge, and there is never a crop edge left visible on it.
+  const apertureR =
+    circleDia / 2 + (Math.hypot(cardW, cardH) / 2 + 2 - circleDia / 2) * aperture;
+  // The white veil's hole, growing with `emerge`, soft-edged so the glass
+  // burns off rather than wiping off.
+  //
+  // Sized against the CURRENT aperture, not against the bulb's original
+  // circle. While the crop is still closed the two are the same thing, so
+  // the burn-off reads exactly as intended; but once the aperture starts
+  // dilating, a hole measured off the old circle would leave the newly
+  // uncovered ring still painted white — a white field spreading out
+  // around the eye, which is the full-screen white wash this beat must
+  // never produce. Tied to the aperture it is always cleared ahead of it.
+  // The 1.6 overshoot is what takes the last of the white off the rim,
+  // rather than leaving it as a ring around the iris.
+  const veilHoleR = apertureR * (0.04 + 1.35 * emerge);
+  const veilFeather = Math.max(8, (circleDia / 2) * 0.5);
+  const veilStop = (veilHoleR / (veilHoleR + veilFeather)) * 100;
+  const veilMask = `radial-gradient(circle ${(veilHoleR + veilFeather).toFixed(
+    1
+  )}px at ${irisCx.toFixed(1)}px ${irisCy.toFixed(1)}px, rgba(0,0,0,0) 0%, rgba(0,0,0,0) ${veilStop.toFixed(
+    1
+  )}%, rgba(0,0,0,1) 100%)`;
+  // The artwork arrives light-drenched and settles to its own exposure, so
+  // the detail reads as coming UP OUT of the light rather than as a second
+  // picture fading in underneath it.
+  const irisExposure = 1 + 0.85 * (1 - emerge);
 
   const lineFocus = span(p, LINE[0], LINE[1] - 0.1);
   const lineOpacity = Math.min(
@@ -364,13 +424,19 @@ export default function PencilSection({
             (circleDia * 3.6) /
             BASE
           ).toFixed(4)})`,
-          opacity: fallT,
+          // Gone by the time the aperture is open: past that point this is
+          // the gallery's own artwork on black, and a warm wash still
+          // sitting around it would be light with no source left in frame.
+          opacity: fallT * (1 - aperture),
           willChange: "transform, opacity",
           pointerEvents: "none",
         }}
       />
 
-      {/* The bloom around the light, while it is still a light. */}
+      {/* The bloom around the light. It survives the iris emerging — the
+          glass is burning off the picture, not the light going out, so
+          the glow around the circle has to stay while that happens — and
+          only leaves as the aperture dilates past it. */}
       <div
         aria-hidden
         data-pencil="bloom"
@@ -389,40 +455,82 @@ export default function PencilSection({
             (circleDia * 1.7) /
             BASE
           ).toFixed(4)})`,
-          opacity: bloom,
+          opacity: bloom * (1 - aperture),
           zIndex: 2,
           willChange: "transform, opacity",
           pointerEvents: "none",
         }}
       />
 
-      {/* THE CIRCLE. The bulb's own glass, at the bulb's own size, for the
-          rest of the beat — lit white throughout. Its size never changes,
-          and neither does its colour: it hands off to InfiniteCanvas's
-          real artwork (IRIS_HANDOFF_AT, see HeroSection) while still this
-          same white, rather than darkening into a placeholder first. */}
-      <div
-        aria-hidden
-        data-pencil="iris"
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: 0,
-          width: BASE,
-          height: BASE,
-          marginLeft: -BASE / 2,
-          marginTop: -BASE / 2,
-          borderRadius: "50%",
-          background: "rgb(255, 250, 240)",
-          transform: `translateY(${discCentreY.toFixed(1)}px) scale(${(
-            circleDia / BASE
-          ).toFixed(4)})`,
-          opacity: bloom,
-          zIndex: 3,
-          willChange: "transform, opacity",
-          pointerEvents: "none",
-        }}
-      />
+      {/* THE CIRCLE — AND THE IRIS IT TURNS INTO. ONE SURFACE.
+
+          This is the bulb's underside, and it is also the eye. The artwork
+          is already behind the glass from the moment the circle exists;
+          what changes across the beat is only how much of the glass is
+          left (`emerge` burns it off from the middle outward) and how wide
+          the circular crop is cut (`aperture` dilates it). Nothing is ever
+          swapped for anything else, so there is no frame on which the
+          reader could catch a placeholder, an empty rim, a hard cut or two
+          layers cross-fading past each other.
+
+          The box IS the card, hung so the PAINTED iris — not the card's
+          geometric middle — sits under the bulb's own circle; the crop is
+          then taken about that same painted centre. Both come from
+          `irisFrame`, which is also what InfiniteCanvas opens its pull-back
+          on, so when this hands over at IRIS_HANDOFF_AT the two are the
+          same pixels. */}
+      {bloom > 0.001 && (
+        <div
+          aria-hidden
+          data-pencil="iris"
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 0,
+            width: cardW,
+            height: cardH,
+            marginLeft: -irisCx,
+            transform: `translateY(${(discCentreY - irisCy).toFixed(1)}px)`,
+            clipPath: `circle(${apertureR.toFixed(1)}px at ${irisCx.toFixed(
+              1
+            )}px ${irisCy.toFixed(1)}px)`,
+            opacity: bloom,
+            zIndex: 3,
+            willChange: "transform, clip-path",
+            pointerEvents: "none",
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={frame.piece.src}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              filter: `brightness(${irisExposure.toFixed(3)})`,
+              willChange: "filter",
+            }}
+          />
+          {/* THE GLASS. Not an overlay that fades out as a whole — a veil
+              with a hole in it that grows, so the picture is uncovered
+              from the middle of the iris outward and the white leaves the
+              rim last. */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgb(255, 250, 240)",
+              WebkitMaskImage: veilMask,
+              maskImage: veilMask,
+              willChange: "mask-image",
+            }}
+          />
+        </div>
+      )}
 
       {/* The narration, under the circle. */}
       <div

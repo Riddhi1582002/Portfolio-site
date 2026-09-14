@@ -25,6 +25,27 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* THE SCROLLBAR.
+   This page's scroll position is a playhead, not a document position — a
+   sequence is scrubbed by it — and the track is many viewport-heights
+   long, so the native bar sits on screen for the whole experience showing
+   a thumb the size of a grain of rice against a full-bleed cinematic
+   frame. It is hidden, not disabled: scrolling, wheel, touch, keyboard and
+   the smoother all behave exactly as before, and every internal scroll
+   container (the project index, the viewer's own details panel) keeps
+   working — they simply stop drawing a bar over the picture. */
+html {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* Shared glow-edge frame treatment, extracted from the hero's ART glow
    (see glowShadow() in HeroSection.tsx) so cards elsewhere in the site
    can reuse the same white-glow language instead of inventing a new one. */
