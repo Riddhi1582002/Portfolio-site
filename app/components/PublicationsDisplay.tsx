@@ -365,6 +365,35 @@ function processRoot(
     const mesh = o as import("three").Mesh;
     if (!mesh.isMesh) return;
     separateCoincidentFaces(THREE, mesh.geometry);
+    // Sneh Sagar v2's Front_Cover_Edge / Back_Cover_Edge parts (the thin
+    // dark-brown board-edge trim) are exported reaching exactly as far in Z
+    // as the cover plate they sit against — an EXACT depth tie, not merely
+    // a close one, so which of the two surfaces wins is purely draw-order
+    // luck rather than anything camera or precision related. Caught by
+    // rendering the same book much larger on the Publications index page:
+    // there the edge consistently drew after (so won over) the front
+    // cover, blanking the illustrated artwork out behind a flat trim
+    // colour. Nudging the edge mesh a fraction further from its cover
+    // — the same "push the duplicate back along its own normal" fix
+    // `separateCoincidentFaces` already does within a single mesh, just
+    // reaching across two separate meshes here — breaks the tie once,
+    // permanently, in the cached geometry, before either view ever
+    // renders it.
+    if (mesh.name === "Front_Cover_Edge" || mesh.name === "Back_Cover_Edge") {
+      const geo = mesh.geometry;
+      geo.computeBoundingBox();
+      const size = geo.boundingBox!.getSize(new THREE.Vector3());
+      const nudge = Math.max(size.x, size.y, size.z) * 0.01;
+      const dir = mesh.name === "Front_Cover_Edge" ? -1 : 1;
+      const posAttr = geo.getAttribute("position");
+      for (let i = 0; i < posAttr.count; i++) {
+        posAttr.setZ(i, posAttr.getZ(i) + dir * nudge);
+      }
+      posAttr.needsUpdate = true;
+      geo.computeVertexNormals();
+      geo.computeBoundingBox();
+      geo.computeBoundingSphere();
+    }
     mesh.castShadow = true;
     // Legacy exports receive nothing — see the big comment on
     // `mesh.receiveShadow` below the loop that used to live here: a legacy
