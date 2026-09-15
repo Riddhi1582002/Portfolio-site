@@ -27,8 +27,18 @@
 // is.
 
 import HoverCard from "./HoverCard";
+import PublicationsDisplay from "./PublicationsDisplay";
 
 export const ARC_CARD_COUNT = 9;
+/**
+ * THE PUBLICATIONS CARD.
+ *
+ * The first piece on the arc is the publications work, and it is the only
+ * one that carries a real 3D display rather than a placeholder: five books
+ * and booklets standing inside the card (see PublicationsDisplay). Every
+ * other slot on the ring is untouched and still shows the neutral plate.
+ */
+const PUBLICATIONS_INDEX = 0;
 // Angle between neighbouring cards on the ring. 9 x 30 = 270 degrees
 // occupied, so 90 degrees of the ring stays empty: the gap that stops it
 // reading as a loop.
@@ -155,10 +165,39 @@ export default function ArcCarousel({
         // Distance from the front, in cards — drives the glow.
         const dist = absDeg / ARC_STEP_DEG;
 
+        const isPublications = i === PUBLICATIONS_INDEX;
+        // The publications card's own light, before hover: it rides the same
+        // `dist` the glow below already uses, so a piece turned away from the
+        // reader is dimmer. The hover part is added inside the display, off
+        // the same `--pub-hover` everything else here reads.
+        const pubLuminance = Math.max(0.55, 1 - dist * 0.17);
+
         return (
           <div
             key={i}
             data-arc-card={i}
+            // HOVER IS A CUSTOM PROPERTY, NOT REACT STATE.
+            //
+            // Keeping it in state re-rendered this component on every enter
+            // and leave, and a re-render rewrites `className` on the card
+            // below — which silently wiped the `active` class HoverCard adds
+            // imperatively, so the site's own pointer tilt stopped working on
+            // this one card the moment a pointer touched it. Written straight
+            // onto the element instead, exactly the way HoverCard writes its
+            // own `--pointer-from-*`, nothing re-renders and nothing is
+            // clobbered: the label and the glow below read it through
+            // `var()`, and the 3D display reads it in its render loop.
+            {...(isPublications
+              ? {
+                  onPointerEnter: (e: React.PointerEvent<HTMLDivElement>) => {
+                    if (e.pointerType !== "mouse") return;
+                    e.currentTarget.style.setProperty("--pub-hover", "1");
+                  },
+                  onPointerLeave: (e: React.PointerEvent<HTMLDivElement>) => {
+                    e.currentTarget.style.setProperty("--pub-hover", "0");
+                  },
+                }
+              : null)}
             style={{
               position: "absolute",
               left: "50%",
@@ -185,25 +224,95 @@ export default function ArcCarousel({
                   position: "absolute",
                   inset: 0,
                   borderRadius: 14,
-                  boxShadow:
-                    "0 0 64px rgba(255,255,255,0.3), 0 22px 60px rgba(0,0,0,0.72)",
-                  opacity: Math.max(0.2, 1 - dist * 0.24),
+                  // The publications card is a lit display, so its own
+                  // glow carries a little more spread and a trace of the
+                  // warm the covers are lit with — the card looking like
+                  // the source of the light falling on the objects inside
+                  // it. Every other slot keeps the arc's neutral glow
+                  // exactly as it was.
+                  boxShadow: isPublications
+                    ? "0 0 72px rgba(255,246,232,0.34), 0 0 26px rgba(255,238,214,0.16), 0 22px 60px rgba(0,0,0,0.72)"
+                    : "0 0 64px rgba(255,255,255,0.3), 0 22px 60px rgba(0,0,0,0.72)",
+                  opacity: isPublications
+                    ? `calc(${Math.max(0.2, 1 - dist * 0.24).toFixed(3)} * (1 + 0.28 * var(--pub-hover, 0)))`
+                    : Math.max(0.2, 1 - dist * 0.24),
                   willChange: "opacity",
                   pointerEvents: "none",
+                  transition: isPublications
+                    ? "opacity 420ms cubic-bezier(0.16,1,0.3,1)"
+                    : undefined,
                 }}
               />
               <HoverCard aspect={1} radius={14}>
-                {/* Neutral placeholder. Real work replaces the child. */}
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    background:
-                      "linear-gradient(150deg, #212328 0%, #16171c 55%, #0d0e11 100%)",
-                    border: "1px solid rgba(255,255,255,0.13)",
-                  }}
-                />
+                {isPublications ? (
+                  /* THE PUBLICATIONS DISPLAY. The five real publications,
+                     inside the card. It reads HoverCard's own pointer state
+                     rather than installing a second one — see the note at
+                     the top of PublicationsDisplay. The plate behind it is
+                     the same one every other slot shows, so the objects
+                     stand against the arc's own surface rather than a
+                     hole. */
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      position: "relative",
+                      background:
+                        "linear-gradient(150deg, #212328 0%, #16171c 55%, #0d0e11 100%)",
+                      border: "1px solid rgba(255,255,255,0.13)",
+                    }}
+                  >
+                    <PublicationsDisplay luminance={pubLuminance} />
+                  </div>
+                ) : (
+                  /* Neutral placeholder. Real work replaces the child. */
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      background:
+                        "linear-gradient(150deg, #212328 0%, #16171c 55%, #0d0e11 100%)",
+                      border: "1px solid rgba(255,255,255,0.13)",
+                    }}
+                  />
+                )}
               </HoverCard>
+
+              {isPublications && (
+                /* THE LABEL. Above the card, in the same reveal language the
+                   video cards use for their project names — anchored to this
+                   card's own top edge, growing upward into clear space, an
+                   8px rise and a 240ms fade, hidden entirely until hovered.
+                   Set as a category rather than a title, so it is smaller
+                   than a project name and tracked out; nothing else is said.
+                   Never in the layout, so it cannot move the card. */
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    bottom: "100%",
+                    marginBottom: 18,
+                    transform:
+                      "translate(-50%, calc((1 - var(--pub-hover, 0)) * 8px))",
+                    whiteSpace: "nowrap",
+                    textAlign: "center",
+                    pointerEvents: "none",
+                    opacity: "var(--pub-hover, 0)",
+                    transition: "opacity 240ms ease, transform 240ms ease",
+                    zIndex: 3,
+                    fontWeight: 600,
+                    fontSize: "clamp(11px, 0.85vw, 14px)",
+                    letterSpacing: "0.22em",
+                    textTransform: "uppercase",
+                    color: "#fff",
+                    textShadow:
+                      "0 0 1px rgba(255,255,255,0.5), 0 0 20px rgba(255,255,255,0.24), 0 2px 22px rgba(0,0,0,0.55)",
+                  }}
+                >
+                  Publications
+                </div>
+              )}
             </div>
           </div>
         );
