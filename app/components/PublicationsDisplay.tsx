@@ -50,7 +50,7 @@ const BASE = "/model/publications";
  * on hover, as a delta — so rest is the base and hover is a lerp away from
  * it, which is what makes the return exact rather than approximately exact.
  */
-type Publication = {
+export type Publication = {
   id: string;
   file: string;
   scale: number;
@@ -105,7 +105,14 @@ const D = Math.PI / 180;
 // front and a back instead of five objects sharing a plane. The overlaps are
 // chosen so every cover keeps a readable strip of its own — the further back
 // a piece is, the more of its outer edge stays clear of the one in front.
-const PUBLICATIONS: Publication[] = [
+/**
+ * Exported so the Publications index page can read the loading-relevant
+ * identity of each file (`id`, `file`, `legacyExport`, `upright`) without
+ * duplicating it — that page has its own, much larger composition, but the
+ * five publications it loads are these same five files, and matching `id`s
+ * is what makes them share this card's already-warm cache.
+ */
+export const PUBLICATIONS: Publication[] = [
   {
     // 1. SNEH SAGAR — the hero. The v2 rebuild is a real multi-part book
     // (front cover, spine, back cover, page block, cover edges) rather than
@@ -132,11 +139,15 @@ const PUBLICATIONS: Publication[] = [
   {
     // 2. EXCELEDGE — the second voice, front row right, turned the other
     // way. The hero laps its left edge; the rest of its cover is clear.
+    // Raised and enlarged a little from the first pass — at the old
+    // position it read as mostly hidden behind the hero rather than as a
+    // standing second voice next to it, the "cramped central pile" a
+    // reference-image review flagged.
     id: "excledge",
     upright: false,
     file: "excledge-newsletter.glb",
-    scale: 0.86,
-    pos: [0.8, -0.22, 0.28],
+    scale: 0.98,
+    pos: [0.95, 0.02, 0.35],
     rot: [-2 * D, -16 * D, 2.5 * D],
     lift: [0.36, 0.12, 0.44],
     turn: [1 * D, 4 * D, -1 * D],
@@ -144,12 +155,13 @@ const PUBLICATIONS: Publication[] = [
   },
   {
     // 3. MINING — back row left, standing higher than the front pair so its
-    // top band clears the hero and its outer edge shows past it.
+    // top band clears the hero and its outer edge shows past it. Enlarged
+    // and pulled a little forward for the same reason as ExcelEDGE above.
     id: "mining",
     upright: false,
     file: "mining-booklet.glb",
-    scale: 0.72,
-    pos: [-1.85, 0.42, -0.45],
+    scale: 0.85,
+    pos: [-1.85, 0.55, -0.3],
     rot: [-4 * D, 20 * D, -5 * D],
     lift: [-0.24, 0.13, 0.24],
     turn: [0.5 * D, -3 * D, 2 * D],
@@ -157,12 +169,14 @@ const PUBLICATIONS: Publication[] = [
   },
   {
     // 4. EMPLOYEE HANDBOOK — back row right, and deliberately quieter than
-    // ExcelEDGE: smaller, further back, and further off square.
+    // ExcelEDGE: smaller, further back, and further off square. Enlarged
+    // and raised in step with the other supporting pieces, keeping the
+    // same ~0.78x ratio to ExcelEDGE's scale the hierarchy check verifies.
     id: "handbook",
     upright: false,
     file: "employee-handbook.glb",
-    scale: 0.64,
-    pos: [1.62, 0.2, -0.75],
+    scale: 0.76,
+    pos: [1.75, 0.42, -0.6],
     rot: [-4 * D, -23 * D, 4 * D],
     lift: [0.22, 0.09, 0.18],
     turn: [0.5 * D, 3 * D, -1.5 * D],
@@ -174,7 +188,7 @@ const PUBLICATIONS: Publication[] = [
     id: "policy",
     upright: false,
     file: "policy-document.glb",
-    scale: 0.53,
+    scale: 0.6,
     pos: [0.42, 1.16, -1.05],
     rot: [-5 * D, 7 * D, -2.5 * D],
     // Pulled harder toward the reader on hover than its rest position alone
@@ -430,7 +444,7 @@ let loaderPromise: Promise<{
   >;
 }> | null = null;
 
-function getLoader() {
+export function getLoader() {
   loaderPromise ??= (async () => {
     const THREE = await import("three");
     const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
@@ -441,7 +455,13 @@ function getLoader() {
 
 const rootCache = new Map<string, Promise<import("three").Object3D>>();
 
-function loadRoot(spec: Publication): Promise<import("three").Object3D> {
+/**
+ * Exported so other views of the same five publications (the Publications
+ * index page, currently) can load and cache from the SAME map by using the
+ * SAME `id`s — a second visit through a different composition still hits
+ * this cache instead of re-fetching/re-decoding the GLBs.
+ */
+export function loadRoot(spec: Publication): Promise<import("three").Object3D> {
   let cached = rootCache.get(spec.id);
   if (cached) return cached;
   cached = getLoader().then(
@@ -534,9 +554,13 @@ export default function PublicationsDisplay({
       // THE LIGHT IN THE CASE. Three sources, and the card is the brightest
       // of them: a key from above and slightly in front, which is where the
       // light would come from in a lit display; a cool fill opposite so the
-      // backs of the pieces are not black; and a low warm bounce standing in
-      // for the card's own surface throwing light back up at the covers.
-      const key = new THREE.DirectionalLight(0xfff4e2, 2.1);
+      // backs of the pieces are not black; and a low bounce standing in for
+      // the card's own surface throwing light back up at the covers. Kept
+      // deliberately close to neutral/white throughout — the bulb behind the
+      // card is what carries the warm/yellow cast in this beat, and if the
+      // publications themselves picked up the same warmth their own cover
+      // artwork would read off-colour.
+      const key = new THREE.DirectionalLight(0xfaf8f5, 2.1);
       key.position.set(2.4, 4.6, 5.2);
       key.castShadow = true;
       key.shadow.mapSize.set(1024, 1024);
@@ -562,7 +586,7 @@ export default function PublicationsDisplay({
       fill.position.set(-4.2, 1.4, 2.6);
       scene.add(fill);
 
-      const bounce = new THREE.DirectionalLight(0xffd9a8, 0.28);
+      const bounce = new THREE.DirectionalLight(0xf3e8d8, 0.2);
       bounce.position.set(-0.6, -3.4, 2.2);
       scene.add(bounce);
 

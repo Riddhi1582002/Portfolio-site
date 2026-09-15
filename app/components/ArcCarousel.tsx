@@ -272,31 +272,44 @@ export default function ArcCarousel({
                      so the case looks lit from inside rather than merely
                      outlined by the glow around it. No blur, no
                      backdrop-filter: translucent is not the same thing as
-                     frosted glass. */
+                     frosted glass.
+                     THE EDGE is a visibly traced line rather than a faint
+                     hairline — an inset highlight on top of the border, so
+                     the rounded rectangle itself reads as lit, matching a
+                     display case's own edge lighting rather than a generic
+                     card outline.
+                     COLOUR SPLIT: this case-light stays close to neutral —
+                     the WARM/yellow cast in this beat belongs to the bulb
+                     glow behind the card (the boxShadow above, untouched),
+                     not to the light falling on the publications
+                     themselves; keeping the two separate is what lets the
+                     bulb read as a dim warm pendant while the cover artwork
+                     still reads in its own true colour. */
                   <div
                     style={{
                       width: "100%",
                       height: "100%",
                       position: "relative",
                       background:
-                        "linear-gradient(165deg, rgba(46,41,36,0.94) 0%, rgba(26,23,21,0.95) 55%, rgba(15,13,12,0.97) 100%)",
-                      border: "1px solid rgba(255,238,214,0.16)",
+                        "linear-gradient(165deg, rgba(44,40,36,0.94) 0%, rgba(25,23,21,0.95) 55%, rgba(14,13,12,0.97) 100%)",
+                      border: "1px solid rgba(255,250,240,0.22)",
+                      boxShadow: "inset 0 0 0 1px rgba(255,250,240,0.07), inset 0 0 20px rgba(255,248,238,0.05)",
                       overflow: "hidden",
                     }}
                   >
                     {/* The case's own inner light — brightest where the
-                        publications stand, warming a little further on
-                        hover (the same "the card is lighting what it
-                        holds up" idea PublicationsDisplay's own key light
-                        follows), never bright enough to wash the artwork
-                        out. */}
+                        publications stand, brightening a touch further on
+                        hover, never bright enough to wash the artwork out.
+                        Near-neutral (a hint of warmth, not the bulb's
+                        yellow) so it lights the case without tinting the
+                        covers. */}
                     <div
                       aria-hidden
                       style={{
                         position: "absolute",
                         inset: 0,
                         background:
-                          "radial-gradient(120% 95% at 50% 42%, rgba(255,238,214,0.16) 0%, rgba(255,228,196,0.07) 34%, rgba(255,220,180,0) 66%)",
+                          "radial-gradient(120% 95% at 50% 42%, rgba(250,248,244,0.14) 0%, rgba(244,240,234,0.06) 34%, rgba(240,236,228,0) 66%)",
                         opacity: "calc(0.7 + 0.3 * var(--pub-hover, 0))",
                         transition: "opacity 420ms cubic-bezier(0.16,1,0.3,1)",
                         pointerEvents: "none",
