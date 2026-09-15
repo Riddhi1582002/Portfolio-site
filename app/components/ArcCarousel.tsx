@@ -26,8 +26,9 @@
 // wash on the wall and the cards can never disagree about how lit the room
 // is.
 
+import { useEffect } from "react";
 import HoverCard from "./HoverCard";
-import PublicationsDisplay from "./PublicationsDisplay";
+import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
 
 export const ARC_CARD_COUNT = 9;
 /**
@@ -108,6 +109,16 @@ export default function ArcCarousel({
   vh: number;
 }) {
   const p = clamp01(progress);
+
+  // EARLY PRELOAD. Fires as soon as this component mounts — which, since
+  // CordSection renders it unconditionally, is the same early moment
+  // CordSection's own BulbModel starts warming its WebGL/GLTF — well before
+  // the reader has scrolled anywhere near this beat's own visible window.
+  // Idempotent (see the module cache in PublicationsDisplay), so this is
+  // simply "as early as possible," not "the only place it's requested."
+  useEffect(() => {
+    preloadPublications();
+  }, []);
 
   const card = Math.min(
     CARD_MAX_PX,
@@ -248,20 +259,49 @@ export default function ArcCarousel({
                   /* THE PUBLICATIONS DISPLAY. The five real publications,
                      inside the card. It reads HoverCard's own pointer state
                      rather than installing a second one — see the note at
-                     the top of PublicationsDisplay. The plate behind it is
-                     the same one every other slot shows, so the objects
-                     stand against the arc's own surface rather than a
-                     hole. */
+                     the top of PublicationsDisplay.
+                     THE SURFACE ITSELF is deliberately NOT the arc's flat
+                     "#16171c" plate every other slot uses: a solid near-
+                     black panel behind lit 3D objects reads as a UI panel
+                     with things placed on it, not as a lit display case
+                     holding them. Two layers instead of one flat colour —
+                     a translucent dark base (rgba, not opaque, so it never
+                     reads as a hard slab) and a soft warm radial sitting
+                     ABOVE it, brightest at the centre where the objects
+                     stand and fading to the same dark toward the corners —
+                     so the case looks lit from inside rather than merely
+                     outlined by the glow around it. No blur, no
+                     backdrop-filter: translucent is not the same thing as
+                     frosted glass. */
                   <div
                     style={{
                       width: "100%",
                       height: "100%",
                       position: "relative",
                       background:
-                        "linear-gradient(150deg, #212328 0%, #16171c 55%, #0d0e11 100%)",
-                      border: "1px solid rgba(255,255,255,0.13)",
+                        "linear-gradient(165deg, rgba(46,41,36,0.94) 0%, rgba(26,23,21,0.95) 55%, rgba(15,13,12,0.97) 100%)",
+                      border: "1px solid rgba(255,238,214,0.16)",
+                      overflow: "hidden",
                     }}
                   >
+                    {/* The case's own inner light — brightest where the
+                        publications stand, warming a little further on
+                        hover (the same "the card is lighting what it
+                        holds up" idea PublicationsDisplay's own key light
+                        follows), never bright enough to wash the artwork
+                        out. */}
+                    <div
+                      aria-hidden
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        background:
+                          "radial-gradient(120% 95% at 50% 42%, rgba(255,238,214,0.16) 0%, rgba(255,228,196,0.07) 34%, rgba(255,220,180,0) 66%)",
+                        opacity: "calc(0.7 + 0.3 * var(--pub-hover, 0))",
+                        transition: "opacity 420ms cubic-bezier(0.16,1,0.3,1)",
+                        pointerEvents: "none",
+                      }}
+                    />
                     <PublicationsDisplay luminance={pubLuminance} />
                   </div>
                 ) : (
@@ -279,20 +319,27 @@ export default function ArcCarousel({
               </HoverCard>
 
               {isPublications && (
-                /* THE LABEL. Above the card, in the same reveal language the
-                   video cards use for their project names — anchored to this
-                   card's own top edge, growing upward into clear space, an
-                   8px rise and a 240ms fade, hidden entirely until hovered.
-                   Set as a category rather than a title, so it is smaller
-                   than a project name and tracked out; nothing else is said.
-                   Never in the layout, so it cannot move the card. */
+                /* THE LABEL. ReelStrip's own project-name block (see its
+                   "THE HOVER INFO BLOCK" comment) is the source of truth
+                   here, matched rather than approximated: identical
+                   fontWeight, fontSize clamp, colour and textShadow;
+                   identical position (bottom:100%, marginBottom 20),
+                   identical 8px-rise-and-fade reveal, identical 240ms
+                   easing on both opacity and transform. It reads as a
+                   category tag rather than a title — PUBLICATIONS, not a
+                   project name — so it keeps uppercase and a little
+                   letter-spacing rather than copying the title's own
+                   tight tracking verbatim; everything that actually sets
+                   its PROMINENCE (size, weight, glow, timing, placement)
+                   is the video cards' own numbers. Never in the layout,
+                   so it cannot move the card. */
                 <div
                   aria-hidden
                   style={{
                     position: "absolute",
                     left: "50%",
                     bottom: "100%",
-                    marginBottom: 18,
+                    marginBottom: 20,
                     transform:
                       "translate(-50%, calc((1 - var(--pub-hover, 0)) * 8px))",
                     whiteSpace: "nowrap",
@@ -302,8 +349,8 @@ export default function ArcCarousel({
                     transition: "opacity 240ms ease, transform 240ms ease",
                     zIndex: 3,
                     fontWeight: 600,
-                    fontSize: "clamp(11px, 0.85vw, 14px)",
-                    letterSpacing: "0.22em",
+                    fontSize: "clamp(19px, 1.7vw, 28px)",
+                    letterSpacing: "0.06em",
                     textTransform: "uppercase",
                     color: "#fff",
                     textShadow:

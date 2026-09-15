@@ -22,6 +22,17 @@
 // the card itself. The render loop below reads those two, so the
 // publications answer the SAME gesture the card does, on the same frame,
 // with no second listener and no second physics to fight the first.
+//
+// LOADING IS CACHED AT MODULE SCOPE, not tied to this component's mount.
+// The five GLBs are parsed and their materials fixed up ONCE, the first time
+// any of them is asked for — by whichever happens first: the arc's own early
+// warm-up call (see `preloadPublications`, invoked as soon as ArcCarousel
+// mounts, well before the reader scrolls anywhere near this beat) or this
+// component's own mount. Every later mount — a scroll pass back over the
+// card, the whole CordSection unmounting and remounting as the reader
+// scrolls away and returns — reads the SAME cached, already-processed
+// scene graph and just clones it into a fresh instance. Nothing is
+// re-fetched, re-decoded or re-built.
 
 import { useEffect, useRef } from "react";
 
@@ -31,11 +42,9 @@ const BASE = "/model/publications";
  * The composition, in the order the reader should read it.
  *
  * `scale` is the art direction — the hierarchy the card is meant to have —
- * and it is UNIFORM per object, never per axis: the supplied geometry
- * already carries each publication's real proportions (they share a height
- * of 2.842 units and differ in width and thickness, so Sneh Sagar is
- * genuinely the thickest and Policy genuinely the thinnest), and squashing
- * one to fit would throw that away.
+ * and it is UNIFORM per object, never per axis: real geometry (not a
+ * squashed placeholder) is what makes a publication read as a physical
+ * object rather than a sticker.
  *
  * `pos` is in the same units as the models. `lift` is where the object goes
  * on hover, as a delta — so rest is the base and hover is a lerp away from
@@ -57,7 +66,8 @@ type Publication = {
    * Whether this file's cover comes out the right way up, or needs standing
    * up. Measured, not guessed: rendered one at a time, square on and
    * unrotated, four of the five arrive with their covers flipped top to
-   * bottom — Sneh Sagar is the only one the right way up.
+   * bottom — Sneh Sagar's v1 was the only one the right way up, and the v2
+   * replacement below is built correctly from the start (no flag needed).
    *
    * Corrected by mirroring the OBJECT in Y, not by touching the texture. A
    * flip of the texture coordinates would move which part of the atlas the
@@ -68,6 +78,20 @@ type Publication = {
    * placing five separately exported models in one composition means.
    */
   upright?: boolean;
+  /**
+   * False for the Sneh Sagar v2 rebuild, true (the default) for the other
+   * four, which are still the original single-quad exports. A legacy export
+   * is ONE mesh whose material carries a flattened 0.4 grey base colour and
+   * the glTF-default metalness of 1 — rendered as supplied it reads as dull
+   * grey metal, so those two values get put back to white/0 here. The v2
+   * rebuild is a proper multi-part model (front cover, back cover, spine,
+   * page block, cover edges) with its OWN correct, varied material values
+   * already authored per part — the page block is a warm cream, the cover
+   * edges a dark brown — and overwriting those to a flat white would erase
+   * exactly the physical detail (page thickness, edge colour) this pass
+   * exists to add.
+   */
+  legacyExport?: boolean;
 };
 
 const D = Math.PI / 180;
@@ -83,14 +107,25 @@ const D = Math.PI / 180;
 // a piece is, the more of its outer edge stays clear of the one in front.
 const PUBLICATIONS: Publication[] = [
   {
-    // 1. SNEH SAGAR — the hero, front row left. Largest, most forward,
-    // closest to square on, so its cover reads first and reads whole.
+    // 1. SNEH SAGAR — the hero. The v2 rebuild is a real multi-part book
+    // (front cover, spine, back cover, page block, cover edges) rather than
+    // a flat plane, so — unlike the other four — rotating it actually
+    // reveals genuine thickness: the page block's edge and a sliver of the
+    // spine both come into view at this yaw, catching the key light the
+    // way a real book's fore-edge does.
     id: "sneh-sagar",
-    file: "sneh-sagar-book.glb",
-    scale: 1,
-    pos: [-0.62, -0.3, 0.75],
-    rot: [-3 * D, 13 * D, -2 * D],
-    lift: [0.14, 0.14, 0.62],
+    file: "sneh-sagar-book-v2.glb",
+    legacyExport: false,
+    // The rebuild's own units are far smaller than the old flat export's
+    // (a book roughly 1 x 1.22 x 0.12, against the old ~2.4 x 2.8 x 0.3) —
+    // this scale is what makes it fill the same role as hero again: at 2.7
+    // its world size (2.7 x 3.29 x 0.31) lands almost exactly on the old
+    // model's footprint, thickness included, while still being read off
+    // the NEW geometry rather than forcing a squashed axis.
+    scale: 2.7,
+    pos: [-0.6, -0.22, 0.8],
+    rot: [-3 * D, 16 * D, -2 * D],
+    lift: [0.16, 0.15, 0.7],
     turn: [1.5 * D, -4 * D, 1 * D],
     parallax: 1,
   },
@@ -100,10 +135,10 @@ const PUBLICATIONS: Publication[] = [
     id: "excledge",
     upright: false,
     file: "excledge-newsletter.glb",
-    scale: 0.84,
-    pos: [0.78, -0.22, 0.28],
+    scale: 0.86,
+    pos: [0.8, -0.22, 0.28],
     rot: [-2 * D, -16 * D, 2.5 * D],
-    lift: [0.34, 0.11, 0.4],
+    lift: [0.36, 0.12, 0.44],
     turn: [1 * D, 4 * D, -1 * D],
     parallax: 0.78,
   },
@@ -113,10 +148,10 @@ const PUBLICATIONS: Publication[] = [
     id: "mining",
     upright: false,
     file: "mining-booklet.glb",
-    scale: 0.7,
-    pos: [-1.82, 0.42, -0.45],
+    scale: 0.72,
+    pos: [-1.85, 0.42, -0.45],
     rot: [-4 * D, 20 * D, -5 * D],
-    lift: [-0.22, 0.12, 0.22],
+    lift: [-0.24, 0.13, 0.24],
     turn: [0.5 * D, -3 * D, 2 * D],
     parallax: 0.6,
   },
@@ -126,10 +161,10 @@ const PUBLICATIONS: Publication[] = [
     id: "handbook",
     upright: false,
     file: "employee-handbook.glb",
-    scale: 0.62,
-    pos: [1.6, 0.2, -0.75],
+    scale: 0.64,
+    pos: [1.62, 0.2, -0.75],
     rot: [-4 * D, -23 * D, 4 * D],
-    lift: [0.2, 0.08, 0.16],
+    lift: [0.22, 0.09, 0.18],
     turn: [0.5 * D, 3 * D, -1.5 * D],
     parallax: 0.48,
   },
@@ -139,10 +174,14 @@ const PUBLICATIONS: Publication[] = [
     id: "policy",
     upright: false,
     file: "policy-document.glb",
-    scale: 0.52,
-    pos: [0.5, 1.1, -1.05],
+    scale: 0.53,
+    pos: [0.42, 1.16, -1.05],
     rot: [-5 * D, 7 * D, -2.5 * D],
-    lift: [0.08, 0.06, 0.1],
+    // Pulled harder toward the reader on hover than its rest position alone
+    // would suggest — the front pair (Sneh Sagar, ExcelEDGE) also grow as
+    // they lift, and without a stronger push of its own Policy was ending
+    // up MORE hidden mid-hover than it is at rest, not less.
+    lift: [0.16, 0.12, 0.3],
     turn: [0.5 * D, -2 * D, 1 * D],
     parallax: 0.36,
   },
@@ -156,12 +195,16 @@ const CAM_Z = 12.6;
 const CAM_Y = 0.22;
 
 // How far the whole group lifts toward the reader on hover, on top of each
-// object's own delta. Small on purpose — the brief is publications being
-// picked up off a display, not thrown off it.
-const GROUP_LIFT_Z = 0.5;
+// object's own delta. Raised a little over the first pass — the brief this
+// time is a Z move meaningful enough to actually perceive, not just a
+// tilt — while staying well short of anything that reads as a fan-out: the
+// picked-up-off-a-display feeling, not thrown off it.
+const GROUP_LIFT_Z = 0.62;
 // The pointer's own contribution, in radians of group yaw/pitch. This rides
 // the SAME pointer position HoverCard is already tilting the card with, so
-// the two read as one gesture rather than two responses to one pointer.
+// the two read as one gesture rather than two responses to one pointer —
+// and it is deliberately the SMALLER contributor: the physical lift above
+// is the main event, this is only the finishing parallax on top of it.
 const PARALLAX_YAW = 5 * D;
 const PARALLAX_PITCH = 4.5 * D;
 
@@ -173,25 +216,27 @@ const HOVER_OUT_TAU = 120;
 // The pointer parallax follows on its own, slower constant so a fast flick
 // of the cursor across the card does not snap the group about.
 const POINTER_TAU = 260;
-// How long a publication takes to fade in once its GLB has finished loading.
-const ARRIVE_MS = 420;
+// How long the WHOLE composition takes to fade/settle in once every
+// publication has finished loading — one shared clock, not five. See the
+// module-scope cache below for why this only actually runs once per page
+// visit in practice.
+const COMPOSITION_ARRIVE_MS = 420;
 
 /**
  * Pull apart faces that were exported on top of one another.
  *
- * Sneh Sagar's file carries BOTH its front and its back cover on the same
- * physical face: four triangles at the same z, in two quads that share no
- * vertices, one mapped to the cover artwork and one to the back. Two
- * coincident surfaces at the same depth is the definition of z-fighting, and
- * it rendered as a stippled lattice crawling across the hero's cover — the
- * one publication in the composition that most has to be clean.
+ * The old (legacy) single-quad exports carry BOTH a cover and its opposite
+ * face on the same physical plane: two quads sharing no vertices, one
+ * mapped to the cover artwork and one to a black texel. Two coincident
+ * surfaces at the same depth is the definition of z-fighting, and it
+ * rendered as a stippled lattice crawling across the cover.
  *
  * The repair is geometric and tiny: within each coplanar group, the copy
- * whose texture coordinates lie inside the atlas (the front cover — the
- * other copy's run past 1 and wrap) stays where it is, and every other copy
- * is pushed a fraction of a millimetre behind it along the face normal. No
- * texel moves; the artwork is exactly the artwork. It simply stops being
- * drawn twice in the same place.
+ * whose texture coordinates lie inside the atlas stays where it is, and
+ * every other copy is pushed a fraction of a millimetre behind it along the
+ * face normal. No texel moves. Harmless — a no-op — on the v2 rebuild,
+ * whose six parts are genuinely separate meshes with no duplicated planes,
+ * so it stays a single shared code path rather than a legacy-only branch.
  */
 function separateCoincidentFaces(
   THREE: typeof import("three"),
@@ -285,6 +330,152 @@ function separateCoincidentFaces(
   geometry.computeBoundingSphere();
 }
 
+/**
+ * Turn a freshly loaded gltf.scene into the shared, cache-ready form: centred
+ * on its own box, stood upright if its file needs it, and with every
+ * material put right — ONCE. Everything after this is a clone.
+ */
+function processRoot(
+  THREE: typeof import("three"),
+  root: import("three").Object3D,
+  spec: Publication
+): import("three").Object3D {
+  const box = new THREE.Box3().setFromObject(root);
+  const centre = box.getCenter(new THREE.Vector3());
+  root.position.sub(centre);
+  if (spec.upright === false) root.scale.y = -1;
+
+  const legacy = spec.legacyExport !== false;
+
+  root.traverse((o) => {
+    const mesh = o as import("three").Mesh;
+    if (!mesh.isMesh) return;
+    separateCoincidentFaces(THREE, mesh.geometry);
+    mesh.castShadow = true;
+    // Legacy exports receive nothing — see the big comment on
+    // `mesh.receiveShadow` below the loop that used to live here: a legacy
+    // publication is a couple of millimetres thick at this scale, thin
+    // enough that receiving its OWN cast shadow reads as stippled acne
+    // rather than a real contact shadow. The v2 rebuild's parts are
+    // genuinely separated in depth (cover, page block and opposite cover
+    // sit tens of millimetres apart once scaled), so letting them receive
+    // each other's shadows is what makes the page block visibly recede
+    // behind the front cover as the two lift apart on hover — the "contact
+    // shadows change as the objects lift" the brief asks for.
+    mesh.receiveShadow = !legacy;
+    const mat = mesh.material as import("three").MeshStandardMaterial;
+    if (!mat) return;
+    if (legacy) {
+      // The exporter (trimesh) writes a baseColorFactor of 0.4 grey and
+      // leaves metalness at the glTF default of 1. Rendered as supplied,
+      // every cover comes out at two fifths of its own value and shaded
+      // like dull metal. Paper is not metal and the artwork is not grey:
+      // putting the factor back to white and the metalness to zero is what
+      // shows the supplied artwork AS supplied, rather than through the
+      // exporter's defaults. (The v2 rebuild needs none of this — its
+      // materials already carry the correct, VARIED values per part: a
+      // warm cream page block, a dark brown edge, white cover plates —
+      // overwriting them here would erase exactly that variation.)
+      mat.color = new THREE.Color(0xffffff);
+      mat.metalness = 0;
+      mat.roughness = 0.82;
+      // Shadows from the BACK faces only, for the reason above: a legacy
+      // publication cast-shadowing from its own front face onto its own
+      // back face (the only two surfaces it has) is what produced the
+      // acne in the first place.
+      mat.shadowSide = THREE.BackSide;
+    }
+    // RENDER BOTH SIDES, always. The legacy files declare doubleSided:false
+    // but their cover faces are wound the other way round, so with
+    // back-face culling on on, the one face carrying the artwork is the one
+    // that gets thrown away. The v2 rebuild already declares doubleSided
+    // itself; setting it again here is a harmless no-op for it and the one
+    // fix that matters for the other four.
+    mat.side = THREE.DoubleSide;
+    if (mat.map) {
+      mat.map.colorSpace = THREE.SRGBColorSpace;
+      // The covers are the only detail in frame and they are seen at a
+      // glancing angle, which is exactly where bilinear filtering turns
+      // type into mush. Fixed rather than queried off a renderer — this
+      // runs once, at cache-build time, before any renderer necessarily
+      // exists yet, and 8x is supported by effectively every GPU this
+      // would ever run on.
+      mat.map.anisotropy = 8;
+      mat.map.generateMipmaps = true;
+      mat.map.minFilter = THREE.LinearMipmapLinearFilter;
+      mat.map.needsUpdate = true;
+    }
+    mat.needsUpdate = true;
+  });
+  return root;
+}
+
+// ── THE CACHE ────────────────────────────────────────────────────────────
+//
+// Module scope, not component state: it has to outlive any one mount of
+// PublicationsDisplay, because CordSection — and this card with it —
+// unmounts and remounts as the reader scrolls away from this beat and back,
+// the same as every other section on the page. Without this, "scroll past
+// and come back" would refetch and re-decode all five GLBs every time.
+//
+// Two layers. `loaderPromise` is the shared THREE + GLTFLoader instance
+// (dynamic-imported once). `rootCache` is one entry per publication id,
+// each holding the fully processed — centred, uprighted, material-fixed —
+// root Object3D, keyed so a second request for the same id returns the
+// SAME in-flight or resolved promise rather than starting a second load.
+let loaderPromise: Promise<{
+  THREE: typeof import("three");
+  loader: InstanceType<
+    typeof import("three/examples/jsm/loaders/GLTFLoader.js").GLTFLoader
+  >;
+}> | null = null;
+
+function getLoader() {
+  loaderPromise ??= (async () => {
+    const THREE = await import("three");
+    const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+    return { THREE, loader: new GLTFLoader() };
+  })();
+  return loaderPromise;
+}
+
+const rootCache = new Map<string, Promise<import("three").Object3D>>();
+
+function loadRoot(spec: Publication): Promise<import("three").Object3D> {
+  let cached = rootCache.get(spec.id);
+  if (cached) return cached;
+  cached = getLoader().then(
+    ({ THREE, loader }) =>
+      new Promise<import("three").Object3D>((resolve) => {
+        loader.load(
+          `${BASE}/${spec.file}`,
+          (gltf) => resolve(processRoot(THREE, gltf.scene, spec)),
+          undefined,
+          // A publication that fails to load resolves to an empty group
+          // rather than rejecting, so Promise.all below still settles and
+          // the other four still appear — one missing GLB should not blank
+          // the whole display.
+          () => resolve(new THREE.Group())
+        );
+      })
+  );
+  rootCache.set(spec.id, cached);
+  return cached;
+}
+
+/**
+ * Start loading every publication now. Safe to call more than once — the
+ * cache above means only the first call anywhere in the app actually does
+ * anything — and safe to call long before anything is mounted to look at
+ * the result: ArcCarousel calls this from its own mount effect, which fires
+ * as soon as CordSection mounts (the same early-warm-up moment its own
+ * BulbModel/GLTF gets), well before the reader has scrolled anywhere near
+ * this card's own visible beat.
+ */
+export function preloadPublications() {
+  for (const spec of PUBLICATIONS) void loadRoot(spec);
+}
+
 export default function PublicationsDisplay({
   /**
    * Scales the in-scene key light. The card owns how lit its own display
@@ -312,8 +503,7 @@ export default function PublicationsDisplay({
     let cleanup: (() => void) | null = null;
 
     (async () => {
-      const THREE = await import("three");
-      const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+      const { THREE } = await getLoader();
       if (disposed) return;
 
       const renderer = new THREE.WebGLRenderer({
@@ -356,12 +546,14 @@ export default function PublicationsDisplay({
       key.shadow.camera.right = 4;
       key.shadow.camera.top = 4;
       key.shadow.camera.bottom = -4;
-      // A publication is a few millimetres thick at this scale, so the depth
-      // range between its own front and back faces is tiny and the default
-      // biases put a cover inside its own shadow — every one came back
-      // stippled with acne. The normal bias does the work (it pushes the
-      // sample along the surface normal, which is exactly the direction the
-      // error is in on a flat cover); the depth bias only cleans up the rest.
+      // A legacy publication is a couple of millimetres thick at this
+      // scale, so the depth range between its own front and back faces is
+      // tiny and the default biases put a cover inside its own shadow —
+      // every one came back stippled with acne. The normal bias does the
+      // work (it pushes the sample along the surface normal, which is
+      // exactly the direction the error is in on a flat cover); the depth
+      // bias only cleans up the rest. Reused for the v2 rebuild too since
+      // it costs nothing extra and holds up fine on real depth.
       key.shadow.bias = -0.0008;
       key.shadow.normalBias = 0.12;
       scene.add(key);
@@ -395,129 +587,46 @@ export default function PublicationsDisplay({
       floor.receiveShadow = true;
       group.add(floor);
 
-      type Loaded = {
-        spec: Publication;
-        node: import("three").Object3D;
-        /** When it arrived, so it can be faded in rather than cut in. */
-        since: number;
-      };
+      type Loaded = { spec: Publication; node: import("three").Object3D };
       const loaded: Loaded[] = [];
       const textures: import("three").Texture[] = [];
+      // Set once, the instant every publication has been cloned into the
+      // scene together — never per-object, which is what used to let the
+      // reader see them pop in one at a time. Everything below this timer
+      // reads it as ONE shared clock for the whole group's fade/settle.
+      let compositionReadyAt: number | null = null;
 
-      const loader = new GLTFLoader();
-      const load = (spec: Publication) =>
-        new Promise<void>((resolve) => {
-          loader.load(
-            `${BASE}/${spec.file}`,
-            (gltf) => {
-              if (disposed) return resolve();
-              const root = gltf.scene;
-              // Centre the model on its own box so `pos` positions the
-              // publication, not whatever origin the exporter happened to
-              // leave it on.
-              const box = new THREE.Box3().setFromObject(root);
-              const centre = box.getCenter(new THREE.Vector3());
-              root.position.sub(centre);
-              if (spec.upright === false) root.scale.y = -1;
-              // THE COVER IS ON THE +Z FACE — decoded off the supplied files
-              // rather than assumed: in all five, the only side carrying real
-              // UV area is +Z (0.35 to 0.57 of the texture), and the other
-              // five sides collapse to a single texel, which is what gives
-              // the page edges their flat dark colour. The camera sits on +Z,
-              // so the covers already face the reader and nothing here should
-              // turn them.
-
-              root.traverse((o) => {
-                const mesh = o as import("three").Mesh;
-                if (!mesh.isMesh) return;
-                separateCoincidentFaces(THREE, mesh.geometry);
-                mesh.castShadow = true;
-                // They cast onto the surface they stand on, and nowhere
-                // else. Letting them receive each other's shadows means each
-                // cover is also inside its own shadow map: a publication is
-                // a couple of millimetres thick at this scale, the depth
-                // range across it is smaller than the map can resolve, and
-                // every cover came back stippled with self-shadow acne. The
-                // grounding shadow is what sells them as objects in a space;
-                // shadows falling between five overlapping covers at this
-                // size are worth nothing and cost that.
-                mesh.receiveShadow = false;
-                const mat = mesh.material as import("three").MeshStandardMaterial;
-                if (!mat) return;
-                // The exporter (trimesh) writes a baseColorFactor of 0.4 grey
-                // and leaves metalness at the glTF default of 1. Rendered as
-                // supplied, every cover comes out at two fifths of its own
-                // value and shaded like dull metal. Paper is not metal and
-                // the artwork is not grey: putting the factor back to white
-                // and the metalness to zero is what shows the supplied
-                // artwork AS supplied, rather than through the exporter's
-                // defaults.
-                mat.color = new THREE.Color(0xffffff);
-                mat.metalness = 0;
-                mat.roughness = 0.82;
-                // AND RENDER BOTH SIDES. The files declare doubleSided:false,
-                // but their cover faces are wound the other way round, so
-                // with back-face culling on, the one face that carries the
-                // artwork is the one that gets thrown away: each publication
-                // rendered as a bare sliver of its own page edges, with a
-                // full-width shadow underneath it giving the game away. These
-                // are closed solids, so drawing both sides costs nothing that
-                // can ever be seen — and it shows the supplied artwork
-                // instead of culling it.
-                mat.side = THREE.DoubleSide;
-                // Shadows from the BACK faces only. Drawing both sides into
-                // the shadow map means every lit cover is also shadow-casting
-                // at its own surface, and the covers came back stippled with
-                // self-shadow acne. Casting off the back faces puts the whole
-                // depth of the object between a cover and its own shadow.
-                mat.shadowSide = THREE.BackSide;
-                if (mat.map) {
-                  mat.map.colorSpace = THREE.SRGBColorSpace;
-                  // The covers are the only detail in frame and they are seen
-                  // at a glancing angle, which is exactly where bilinear
-                  // filtering turns type into mush.
-                  mat.map.anisotropy = Math.min(
-                    8,
-                    renderer.capabilities.getMaxAnisotropy()
-                  );
-                  mat.map.generateMipmaps = true;
-                  mat.map.minFilter = THREE.LinearMipmapLinearFilter;
-                  mat.map.needsUpdate = true;
-                  textures.push(mat.map);
-                }
-                mat.needsUpdate = true;
-              });
-
-              const holder = new THREE.Group();
-              holder.add(root);
-              holder.scale.setScalar(spec.scale);
-              holder.position.set(...spec.pos);
-              holder.rotation.set(...spec.rot);
-              group.add(holder);
-              loaded.push({ spec, node: holder, since: performance.now() });
-              resolve();
-            },
-            undefined,
-            () => resolve()
-          );
-        });
-
-      // Sequential rather than parallel: five cover textures decoding at once
-      // on the frame the arc is also swinging in is a visible hitch, and this
-      // order is the order the reader looks at them in anyway — so the hero
-      // is the first one standing there and the smallest is the last.
-      //
-      // NOT awaited before the loop below starts. Eleven megabytes of cover
-      // artwork takes real time to arrive, and a renderer that has not been
-      // sized or started until the last of it lands leaves the card showing
-      // an empty plate for the whole of it. Rendering from the first frame
-      // instead, each publication simply appears as it arrives.
-      void (async () => {
-        for (const spec of PUBLICATIONS) {
+      // THE LOAD. All five requested in parallel (Promise.all, not a
+      // sequential await chain), and — critically — nothing is added to
+      // `group` until every one of them has resolved. A reader watching
+      // this card therefore only ever sees two states: nothing yet (the
+      // card's own lit surface, no spinner), or all five together, arriving
+      // as one composition on the same shared timer below. In the ordinary
+      // case (ArcCarousel's early preload already had seconds of lead time
+      // before this card scrolled into view) that "nothing yet" state is
+      // never actually seen at all — the cache is already warm.
+      Promise.all(PUBLICATIONS.map((spec) => loadRoot(spec).then((root) => ({ spec, root })))).then(
+        (results) => {
           if (disposed) return;
-          await load(spec);
+          for (const { spec, root } of results) {
+            const instance = root.clone(true);
+            instance.traverse((o) => {
+              const mesh = o as import("three").Mesh;
+              if (!mesh.isMesh) return;
+              const mat = mesh.material as import("three").MeshStandardMaterial;
+              if (mat?.map) textures.push(mat.map);
+            });
+            const holder = new THREE.Group();
+            holder.add(instance);
+            holder.scale.setScalar(spec.scale);
+            holder.position.set(...spec.pos);
+            holder.rotation.set(...spec.rot);
+            group.add(holder);
+            loaded.push({ spec, node: holder });
+          }
+          compositionReadyAt = performance.now();
         }
-      })();
+      );
 
       const resize = () => {
         const w = host.clientWidth || 1;
@@ -603,25 +712,37 @@ export default function PublicationsDisplay({
         // the follower gives the motion its weight, this gives it its shape.
         const h = reduced ? 0 : hover * hover * (3 - 2 * hover);
 
-        for (const { spec, node, since } of loaded) {
-          // Arrival: a short fade and a small settle down onto the mark, so a
-          // publication that has just finished decoding joins the group
-          // instead of appearing in it.
-          const inT = Math.min(1, (now - since) / ARRIVE_MS);
-          const arrive = inT * inT * (3 - 2 * inT);
-          node.traverse((o) => {
-            const mesh = o as import("three").Mesh;
-            if (!mesh.isMesh) return;
-            const mat = mesh.material as import("three").MeshStandardMaterial;
-            if (!mat) return;
-            if (arrive < 1) {
+        // ONE shared arrival value for the whole composition — see
+        // `compositionReadyAt` above. Every publication fades/settles on
+        // this same clock, together, instead of each running its own timer
+        // from whenever IT personally finished decoding.
+        const arriveT =
+          compositionReadyAt == null
+            ? 0
+            : Math.min(1, (now - compositionReadyAt) / COMPOSITION_ARRIVE_MS);
+        const arrive = arriveT * arriveT * (3 - 2 * arriveT);
+
+        for (const { spec, node } of loaded) {
+          if (arrive < 1) {
+            node.traverse((o) => {
+              const mesh = o as import("three").Mesh;
+              if (!mesh.isMesh) return;
+              const mat = mesh.material as import("three").MeshStandardMaterial;
+              if (!mat) return;
               mat.transparent = true;
               mat.opacity = arrive;
-            } else if (mat.transparent) {
-              mat.transparent = false;
-              mat.opacity = 1;
-            }
-          });
+            });
+          } else {
+            node.traverse((o) => {
+              const mesh = o as import("three").Mesh;
+              if (!mesh.isMesh) return;
+              const mat = mesh.material as import("three").MeshStandardMaterial;
+              if (mat?.transparent) {
+                mat.transparent = false;
+                mat.opacity = 1;
+              }
+            });
+          }
           node.position.set(
             spec.pos[0] + spec.lift[0] * h,
             spec.pos[1] + spec.lift[1] * h + (1 - arrive) * 0.22,
@@ -657,6 +778,11 @@ export default function PublicationsDisplay({
         cancelAnimationFrame(raf);
         io.disconnect();
         window.removeEventListener("resize", resize);
+        // Disposing here frees THIS renderer's GPU-side copies only — the
+        // cached geometries/materials/textures in rootCache are JS objects
+        // that survive (their decoded pixel data is untouched by dispose());
+        // a future mount clones them again and just re-uploads, which is
+        // fast, with no re-fetch and no re-decode.
         for (const t of textures) t.dispose();
         scene.traverse((o) => {
           const mesh = o as import("three").Mesh;
