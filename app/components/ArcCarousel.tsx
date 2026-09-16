@@ -26,7 +26,7 @@
 // wash on the wall and the cards can never disagree about how lit the room
 // is.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import HoverCard from "./HoverCard";
 import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
 
@@ -120,6 +120,73 @@ export default function ArcCarousel({
     preloadPublications();
   }, []);
 
+  // THE PUBLICATIONS CARD'S HOVER AND CLICK, MEASURED IN PLAIN 2D — NOT
+  // NATIVE HIT-TESTING THROUGH THE ELEMENT ITSELF.
+  //
+  // `data-arc-card` carries a real 3D transform (translate3d + rotateY) as
+  // a direct child of the ring's own `preserve-3d` context, and HoverCard
+  // nests a SECOND, independent `perspective` + `transform` immediately
+  // inside it (`.hc-wrapper` in hover-card.css). That combination made the
+  // element's own native pointer hit-testing unreliable — measured
+  // directly (`document.elementFromPoint` across a grid), roughly the
+  // right half of the card's own reported bounding box didn't hit-test as
+  // part of the card at all, so `onPointerEnter`/`onPointerLeave` attached
+  // to the card itself only fired reliably over a fraction of it. Rather
+  // than chase the exact Chromium compositing quirk through two nested 3D
+  // contexts, this sidesteps native hit-testing for the card entirely:
+  // one `pointermove` listener on the window compares the cursor's plain
+  // `clientX`/`clientY` against the card's own `getBoundingClientRect()`
+  // (a reliable, ordinary 2D rectangle — confirmed directly) and writes
+  // `--pub-hover` from that, and a `click` listener does the same for
+  // navigation. Neither depends on which element the browser thinks is
+  // "on top" at a given pixel.
+  //
+  // NAVIGATION is a plain `window.location.assign`, not `next/navigation`'s
+  // `router.push`: `router.push` fired without throwing (confirmed via a
+  // click that correctly resolved `inCard()` true) but never actually
+  // changed the URL on this page — plausibly something in the scroll
+  // machinery here (GSAP ScrollTrigger owns a lot of history/scroll state)
+  // fights the App Router's client transition. A real navigation sidesteps
+  // whatever that interaction is; the target is still an ordinary Next.js
+  // route (`app/publications/page.tsx`), so this is still "the existing
+  // routing system," just reached with a full navigation instead of a
+  // client-side one.
+  const pubCardRef = useRef<HTMLDivElement | null>(null);
+  const pubActiveRef = useRef(false);
+  const pubActive = p > 0.02 && p < 0.98;
+  useEffect(() => {
+    pubActiveRef.current = pubActive;
+  }, [pubActive]);
+
+  useEffect(() => {
+    const setHover = (on: boolean) => {
+      pubCardRef.current?.style.setProperty("--pub-hover", on ? "1" : "0");
+    };
+    const inCard = (x: number, y: number) => {
+      const el = pubCardRef.current;
+      if (!el || !pubActiveRef.current) return false;
+      const r = el.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse") return;
+      setHover(inCard(e.clientX, e.clientY));
+    };
+    const onDocLeave = () => setHover(false);
+    const onClick = (e: MouseEvent) => {
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- deliberate: see the comment above this effect. useRouter().push() from this same handler reliably fired without throwing but never changed the URL.
+      if (inCard(e.clientX, e.clientY)) window.location.assign("/publications");
+    };
+    window.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerleave", onDocLeave);
+    window.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerleave", onDocLeave);
+      window.removeEventListener("click", onClick);
+    };
+  }, []);
+
   const card = Math.min(
     CARD_MAX_PX,
     Math.max(CARD_MIN_PX, CARD_SHARE * Math.min(vw, vh))
@@ -187,28 +254,15 @@ export default function ArcCarousel({
           <div
             key={i}
             data-arc-card={i}
-            // HOVER IS A CUSTOM PROPERTY, NOT REACT STATE.
-            //
-            // Keeping it in state re-rendered this component on every enter
-            // and leave, and a re-render rewrites `className` on the card
-            // below — which silently wiped the `active` class HoverCard adds
-            // imperatively, so the site's own pointer tilt stopped working on
-            // this one card the moment a pointer touched it. Written straight
-            // onto the element instead, exactly the way HoverCard writes its
-            // own `--pointer-from-*`, nothing re-renders and nothing is
-            // clobbered: the label and the glow below read it through
-            // `var()`, and the 3D display reads it in its render loop.
-            {...(isPublications
-              ? {
-                  onPointerEnter: (e: React.PointerEvent<HTMLDivElement>) => {
-                    if (e.pointerType !== "mouse") return;
-                    e.currentTarget.style.setProperty("--pub-hover", "1");
-                  },
-                  onPointerLeave: (e: React.PointerEvent<HTMLDivElement>) => {
-                    e.currentTarget.style.setProperty("--pub-hover", "0");
-                  },
-                }
-              : null)}
+            ref={isPublications ? pubCardRef : undefined}
+            // HOVER IS A CUSTOM PROPERTY, NOT REACT STATE — same reasoning
+            // as before (a re-render here would wipe HoverCard's own
+            // imperative `active` class), but no longer written from this
+            // element's own pointerenter/leave: see the geometry-based
+            // window listener above, which sets `--pub-hover` on this ref
+            // directly. Native hit-testing on THIS element, nested two
+            // `perspective` contexts deep, was unreliable over roughly half
+            // its own box.
             style={{
               position: "absolute",
               left: "50%",

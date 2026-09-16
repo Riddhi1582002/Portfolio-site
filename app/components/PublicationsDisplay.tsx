@@ -138,30 +138,30 @@ export const PUBLICATIONS: Publication[] = [
   },
   {
     // 2. EXCELEDGE — the second voice, front row right, turned the other
-    // way. The hero laps its left edge; the rest of its cover is clear.
-    // Raised and enlarged a little from the first pass — at the old
-    // position it read as mostly hidden behind the hero rather than as a
-    // standing second voice next to it, the "cramped central pile" a
-    // reference-image review flagged.
+    // way. Raised well above the hero's own shoulder this pass — at either
+    // previous position it read as mostly hidden behind the hero rather
+    // than as a standing second voice beside it, the "cramped central
+    // pile" a reference-image review flagged twice running.
     id: "excledge",
     upright: false,
     file: "excledge-newsletter.glb",
-    scale: 0.98,
-    pos: [0.95, 0.02, 0.35],
+    scale: 1.1,
+    pos: [1.05, 0.62, 0.4],
     rot: [-2 * D, -16 * D, 2.5 * D],
     lift: [0.36, 0.12, 0.44],
     turn: [1 * D, 4 * D, -1 * D],
     parallax: 0.78,
   },
   {
-    // 3. MINING — back row left, standing higher than the front pair so its
-    // top band clears the hero and its outer edge shows past it. Enlarged
-    // and pulled a little forward for the same reason as ExcelEDGE above.
+    // 3. MINING — back row left, standing well above the hero's shoulder
+    // so its own title band clears the top of the cover in front of it,
+    // pulled in from the card's own edge so it stays inside a square
+    // frame rather than the wider one this position was first tuned for.
     id: "mining",
     upright: false,
     file: "mining-booklet.glb",
-    scale: 0.85,
-    pos: [-1.85, 0.55, -0.3],
+    scale: 0.98,
+    pos: [-1.45, 0.9, -0.2],
     rot: [-4 * D, 20 * D, -5 * D],
     lift: [-0.24, 0.13, 0.24],
     turn: [0.5 * D, -3 * D, 2 * D],
@@ -169,14 +169,15 @@ export const PUBLICATIONS: Publication[] = [
   },
   {
     // 4. EMPLOYEE HANDBOOK — back row right, and deliberately quieter than
-    // ExcelEDGE: smaller, further back, and further off square. Enlarged
-    // and raised in step with the other supporting pieces, keeping the
-    // same ~0.78x ratio to ExcelEDGE's scale the hierarchy check verifies.
+    // ExcelEDGE: smaller, further back, and further off square, but raised
+    // in step with the other supporting pieces so it still stands clear of
+    // the hero rather than vanishing behind it. Keeps the same ~0.77x
+    // ratio to ExcelEDGE's scale the hierarchy check verifies.
     id: "handbook",
     upright: false,
     file: "employee-handbook.glb",
-    scale: 0.76,
-    pos: [1.75, 0.42, -0.6],
+    scale: 0.85,
+    pos: [2.15, 1.05, -0.7],
     rot: [-4 * D, -23 * D, 4 * D],
     lift: [0.22, 0.09, 0.18],
     turn: [0.5 * D, 3 * D, -1.5 * D],
@@ -188,8 +189,8 @@ export const PUBLICATIONS: Publication[] = [
     id: "policy",
     upright: false,
     file: "policy-document.glb",
-    scale: 0.6,
-    pos: [0.42, 1.16, -1.05],
+    scale: 0.68,
+    pos: [1.55, 1.9, -1.05],
     rot: [-5 * D, 7 * D, -2.5 * D],
     // Pulled harder toward the reader on hover than its rest position alone
     // would suggest — the front pair (Sneh Sagar, ExcelEDGE) also grow as
@@ -639,6 +640,45 @@ export default function PublicationsDisplay({
       floor.position.y = -1.72;
       floor.receiveShadow = true;
       group.add(floor);
+
+      // TWO SMALL STONES at the base, echoing the reference's physical
+      // still-life without a new asset pipeline: an icosahedron (already
+      // faceted at detail 0) with each vertex nudged a little so it reads
+      // as an irregular stone rather than a gem. Cheap enough to rebuild
+      // on every mount, the same as the floor above — no caching needed.
+      // Secondary to the publications: dark, matte, low down, and behind
+      // rather than competing with any cover.
+      const rockMaterial = new THREE.MeshStandardMaterial({
+        color: 0x171513,
+        roughness: 0.97,
+        metalness: 0,
+      });
+      const makeRock = (radius: number, seed: number) => {
+        const geo = new THREE.IcosahedronGeometry(radius, 0);
+        const pos = geo.getAttribute("position");
+        const v = new THREE.Vector3();
+        for (let i = 0; i < pos.count; i++) {
+          v.fromBufferAttribute(pos, i);
+          const n = Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453;
+          const jitter = 1 + (n - Math.floor(n) - 0.5) * 0.34;
+          v.multiplyScalar(jitter);
+          pos.setXYZ(i, v.x, v.y, v.z);
+        }
+        pos.needsUpdate = true;
+        geo.computeVertexNormals();
+        const mesh = new THREE.Mesh(geo, rockMaterial);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        return mesh;
+      };
+      const rockA = makeRock(0.24, 1);
+      rockA.position.set(-1.55, -1.58, 0.35);
+      rockA.rotation.set(0.4, 0.8, 0.2);
+      group.add(rockA);
+      const rockB = makeRock(0.17, 2);
+      rockB.position.set(1.15, -1.62, -0.55);
+      rockB.rotation.set(-0.3, 1.4, 0.5);
+      group.add(rockB);
 
       type Loaded = { spec: Publication; node: import("three").Object3D };
       const loaded: Loaded[] = [];
