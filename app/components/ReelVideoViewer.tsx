@@ -133,38 +133,29 @@ function loadYouTubeApi(): Promise<YTNamespace> {
 }
 
 /**
- * KEEPING YOUTUBE'S OWN UI OUT OF THE FRAME — STRUCTURALLY.
+ * KEEPING THE IFRAME HONEST — no crop, no oversize, no negative offset.
  *
  * `controls: 0` turns off the scrubber, and `modestbranding`/`rel`/
  * `iv_load_policy` take care of what they take care of, but YouTube still
- * reserves the right to draw its title bar — video title, channel avatar,
- * channel name, "Watch on YouTube" — across the top of the player, and
- * there is no parameter that reliably disables it. Covering it for a few
- * seconds only hides it for a few seconds.
- *
- * So it is cropped out of existence instead, and this costs no picture at
- * all. The player box is already the video's own aspect ratio. Make the
- * IFRAME taller than that box by `crop` at the top and bottom and YouTube,
- * which always fits the video inside the iframe preserving aspect, now has
- * a frame that is TALLER than the video is — so it fits to width and
- * letterboxes the difference. Width-fitted, the video is exactly the box's
- * height again, centred in the iframe: `crop` down from the iframe's top,
- * which is `crop` above the box. The picture therefore lands back at
- * exactly 0, full size, and the only thing sitting in the cropped bands is
- * YouTube's own letterbox — with its title bar, anchored to the top of the
- * player, inside it.
+ * reserves the right to draw its title/channel card at the top-left and a
+ * small logo watermark at the bottom-right, and there is no parameter that
+ * reliably disables either. This used to be handled by making the iframe
+ * taller than its box and shifting it up so that band of chrome fell
+ * outside the visible area — correct in that it never touched the actual
+ * picture, but it is exactly the "enlarged iframe, negative positioning"
+ * this pass asks to remove. The iframe is now sized to its box exactly,
+ * 1:1, nothing more. See the two small corner masks in the render below
+ * for how the chrome itself is kept out of sight instead.
  *
  * The iframe is also made non-interactive: every control here is the
  * viewer's own, so the player never needs the pointer, and YouTube's
  * hover-summoned chrome can never be summoned in the first place.
  */
-const YT_CHROME_CROP = "max(88px, 12%)";
 function containYouTubeChrome(iframe: HTMLIFrameElement) {
   iframe.style.position = "absolute";
-  iframe.style.left = "0";
+  iframe.style.inset = "0";
   iframe.style.width = "100%";
-  iframe.style.top = `calc(0px - ${YT_CHROME_CROP})`;
-  iframe.style.height = `calc(100% + 2 * ${YT_CHROME_CROP})`;
+  iframe.style.height = "100%";
   iframe.style.border = "0";
   iframe.style.pointerEvents = "none";
 }
@@ -800,6 +791,47 @@ export default function ReelVideoViewer({
             }}
           >
             <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />
+            {/* THE TWO UNWANTED YOUTUBE OVERLAYS, not the picture itself.
+                The iframe above is sized exactly to this box — no crop, no
+                oversize, no shift — so every edge of the actual footage
+                stays on screen. What these cover is YouTube's OWN chrome,
+                which it draws on top of the video regardless: a title/
+                channel card top-left, and a small logo watermark
+                bottom-right. Small, corner-anchored, and gradient-edged
+                rather than a hard rectangle, so they read as a soft vignette
+                consistent with the frame's own glow rather than a visible
+                patch — and non-interactive, so they never sit between the
+                reader and the viewer's own controls. */}
+            {!errorMsg && (
+              <>
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "clamp(150px, 34%, 320px)",
+                    height: "clamp(42px, 13%, 78px)",
+                    background:
+                      "linear-gradient(135deg, rgba(5,5,5,0.95) 0%, rgba(5,5,5,0.72) 45%, rgba(5,5,5,0) 100%)",
+                    pointerEvents: "none",
+                  }}
+                />
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    bottom: 0,
+                    right: 0,
+                    width: "clamp(40px, 11%, 72px)",
+                    height: "clamp(40px, 11%, 72px)",
+                    background:
+                      "radial-gradient(circle at 100% 100%, rgba(5,5,5,0.95) 0%, rgba(5,5,5,0.6) 55%, rgba(5,5,5,0) 100%)",
+                    pointerEvents: "none",
+                  }}
+                />
+              </>
+            )}
             {/* An OPAQUE mask, not just a label: YouTube's own cued-state
                 chrome (its title card, thumbnail and logo) sits on the
                 iframe the instant it is created, well before `onReady`, and
