@@ -891,7 +891,14 @@ export default function ReelVideoViewer({
             justifyContent: "space-between",
             opacity: controlsVisible ? 1 : 0,
             transition: "opacity 300ms ease",
-            pointerEvents: controlsVisible ? "auto" : "none",
+            // `shown` too, not just `controlsVisible`: CSS pointer-events
+            // is not purely inherited — a child set to `auto` overrides an
+            // ancestor's `none`, so without this the dialog's own
+            // `pointerEvents: shown ? "auto" : "none"` did nothing to stop
+            // THIS bar (controlsVisible is almost always true regardless
+            // of `shown`) from still catching clicks meant for whatever
+            // sits underneath a closed viewer.
+            pointerEvents: shown && controlsVisible ? "auto" : "none",
           }}
         >
           <button
@@ -948,7 +955,8 @@ export default function ReelVideoViewer({
             zIndex: 2,
             opacity: controlsVisible ? 1 : 0,
             transition: "opacity 300ms ease",
-            pointerEvents: controlsVisible ? "auto" : "none",
+            // See the matching comment on the TOP bar above.
+            pointerEvents: shown && controlsVisible ? "auto" : "none",
           }}
         >
           <div
