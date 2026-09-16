@@ -35,6 +35,7 @@
 // re-fetched, re-decoded or re-built.
 
 import { useEffect, useRef } from "react";
+import { mountSpatialCard } from "./SpatialCardEngine";
 
 const BASE = "/model/publications";
 
@@ -184,13 +185,16 @@ export const PUBLICATIONS: Publication[] = [
     parallax: 0.48,
   },
   {
-    // 5. POLICY — the smallest, tucked at the back between the two front
-    // pieces with its upper third showing over their shoulders.
+    // 5. POLICY — the smallest, tucked in low at the front-right rather
+    // than stacked behind the taller four: buried at the back (its
+    // original placement) put it entirely behind ExcelEDGE and the
+    // Handbook from this camera angle, so it never actually read as a
+    // fifth object — smallest still, but visible, is the point.
     id: "policy",
     upright: false,
     file: "policy-document.glb",
     scale: 0.68,
-    pos: [1.55, 1.9, -1.05],
+    pos: [1.55, -0.85, 0.55],
     rot: [-5 * D, 7 * D, -2.5 * D],
     // Pulled harder toward the reader on hover than its rest position alone
     // would suggest — the front pair (Sneh Sagar, ExcelEDGE) also grow as
@@ -549,345 +553,24 @@ export default function PublicationsDisplay({
     if (!host) return;
 
     let disposed = false;
-    let raf = 0;
     let cleanup: (() => void) | null = null;
 
     (async () => {
       const { THREE } = await getLoader();
       if (disposed) return;
-
-      const renderer = new THREE.WebGLRenderer({
-        alpha: true,
-        antialias: true,
-        premultipliedAlpha: false,
-        powerPreference: "high-performance",
+      cleanup = mountSpatialCard(host, THREE, PUBLICATIONS, loadRoot, lumRef, reduced, {
+        fov: FOV,
+        camZ: CAM_Z,
+        camY: CAM_Y,
+        groupLiftZ: GROUP_LIFT_Z,
+        parallaxYaw: PARALLAX_YAW,
+        parallaxPitch: PARALLAX_PITCH,
+        hoverInTau: HOVER_IN_TAU,
+        hoverOutTau: HOVER_OUT_TAU,
+        pointerTau: POINTER_TAU,
+        compositionArriveMs: COMPOSITION_ARRIVE_MS,
+        rocks: true,
       });
-      renderer.setClearColor(0x000000, 0);
-      renderer.setPixelRatio(Math.min(1.75, window.devicePixelRatio || 1));
-      // Filmic, like the bulb next door, so a lit paper edge rolls off
-      // instead of clipping — and so the two WebGL surfaces on this beat
-      // agree about what "bright" looks like.
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.16;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      host.appendChild(renderer.domElement);
-      renderer.domElement.style.width = "100%";
-      renderer.domElement.style.height = "100%";
-      renderer.domElement.style.display = "block";
-
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 60);
-      camera.position.set(0, CAM_Y, CAM_Z);
-      camera.lookAt(0, 0, 0);
-
-      // THE LIGHT IN THE CASE. Three sources, and the card is the brightest
-      // of them: a key from above and slightly in front, which is where the
-      // light would come from in a lit display; a cool fill opposite so the
-      // backs of the pieces are not black; and a low bounce standing in for
-      // the card's own surface throwing light back up at the covers. Kept
-      // deliberately close to neutral/white throughout — the bulb behind the
-      // card is what carries the warm/yellow cast in this beat, and if the
-      // publications themselves picked up the same warmth their own cover
-      // artwork would read off-colour.
-      const key = new THREE.DirectionalLight(0xfaf8f5, 2.1);
-      key.position.set(2.4, 4.6, 5.2);
-      key.castShadow = true;
-      key.shadow.mapSize.set(1024, 1024);
-      key.shadow.camera.near = 1;
-      key.shadow.camera.far = 22;
-      key.shadow.camera.left = -4;
-      key.shadow.camera.right = 4;
-      key.shadow.camera.top = 4;
-      key.shadow.camera.bottom = -4;
-      // A legacy publication is a couple of millimetres thick at this
-      // scale, so the depth range between its own front and back faces is
-      // tiny and the default biases put a cover inside its own shadow —
-      // every one came back stippled with acne. The normal bias does the
-      // work (it pushes the sample along the surface normal, which is
-      // exactly the direction the error is in on a flat cover); the depth
-      // bias only cleans up the rest. Reused for the v2 rebuild too since
-      // it costs nothing extra and holds up fine on real depth.
-      key.shadow.bias = -0.0008;
-      key.shadow.normalBias = 0.12;
-      scene.add(key);
-
-      const fill = new THREE.DirectionalLight(0xbdd2ff, 0.5);
-      fill.position.set(-4.2, 1.4, 2.6);
-      scene.add(fill);
-
-      const bounce = new THREE.DirectionalLight(0xf3e8d8, 0.2);
-      bounce.position.set(-0.6, -3.4, 2.2);
-      scene.add(bounce);
-
-      const ambient = new THREE.AmbientLight(0x9fb0cc, 0.42);
-      scene.add(ambient);
-
-      // The group the whole composition hangs off, so the hover lift and the
-      // pointer parallax are ONE transform on ONE object rather than five
-      // objects each doing their own version of the same move.
-      const group = new THREE.Group();
-      scene.add(group);
-
-      // The surface the publications stand on. Invisible, but it takes their
-      // shadows — which is most of what makes them read as objects sitting
-      // somewhere rather than as pictures floating in a box.
-      const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(14, 14),
-        new THREE.ShadowMaterial({ opacity: 0.42 })
-      );
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = -1.72;
-      floor.receiveShadow = true;
-      group.add(floor);
-
-      // TWO SMALL STONES at the base, echoing the reference's physical
-      // still-life without a new asset pipeline: an icosahedron (already
-      // faceted at detail 0) with each vertex nudged a little so it reads
-      // as an irregular stone rather than a gem. Cheap enough to rebuild
-      // on every mount, the same as the floor above — no caching needed.
-      // Secondary to the publications: dark, matte, low down, and behind
-      // rather than competing with any cover.
-      const rockMaterial = new THREE.MeshStandardMaterial({
-        color: 0x171513,
-        roughness: 0.97,
-        metalness: 0,
-      });
-      const makeRock = (radius: number, seed: number) => {
-        const geo = new THREE.IcosahedronGeometry(radius, 0);
-        const pos = geo.getAttribute("position");
-        const v = new THREE.Vector3();
-        for (let i = 0; i < pos.count; i++) {
-          v.fromBufferAttribute(pos, i);
-          const n = Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453;
-          const jitter = 1 + (n - Math.floor(n) - 0.5) * 0.34;
-          v.multiplyScalar(jitter);
-          pos.setXYZ(i, v.x, v.y, v.z);
-        }
-        pos.needsUpdate = true;
-        geo.computeVertexNormals();
-        const mesh = new THREE.Mesh(geo, rockMaterial);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        return mesh;
-      };
-      const rockA = makeRock(0.24, 1);
-      rockA.position.set(-1.55, -1.58, 0.35);
-      rockA.rotation.set(0.4, 0.8, 0.2);
-      group.add(rockA);
-      const rockB = makeRock(0.17, 2);
-      rockB.position.set(1.15, -1.62, -0.55);
-      rockB.rotation.set(-0.3, 1.4, 0.5);
-      group.add(rockB);
-
-      type Loaded = { spec: Publication; node: import("three").Object3D };
-      const loaded: Loaded[] = [];
-      const textures: import("three").Texture[] = [];
-      // Set once, the instant every publication has been cloned into the
-      // scene together — never per-object, which is what used to let the
-      // reader see them pop in one at a time. Everything below this timer
-      // reads it as ONE shared clock for the whole group's fade/settle.
-      let compositionReadyAt: number | null = null;
-
-      // THE LOAD. All five requested in parallel (Promise.all, not a
-      // sequential await chain), and — critically — nothing is added to
-      // `group` until every one of them has resolved. A reader watching
-      // this card therefore only ever sees two states: nothing yet (the
-      // card's own lit surface, no spinner), or all five together, arriving
-      // as one composition on the same shared timer below. In the ordinary
-      // case (ArcCarousel's early preload already had seconds of lead time
-      // before this card scrolled into view) that "nothing yet" state is
-      // never actually seen at all — the cache is already warm.
-      Promise.all(PUBLICATIONS.map((spec) => loadRoot(spec).then((root) => ({ spec, root })))).then(
-        (results) => {
-          if (disposed) return;
-          for (const { spec, root } of results) {
-            const instance = root.clone(true);
-            instance.traverse((o) => {
-              const mesh = o as import("three").Mesh;
-              if (!mesh.isMesh) return;
-              const mat = mesh.material as import("three").MeshStandardMaterial;
-              if (mat?.map) textures.push(mat.map);
-            });
-            const holder = new THREE.Group();
-            holder.add(instance);
-            holder.scale.setScalar(spec.scale);
-            holder.position.set(...spec.pos);
-            holder.rotation.set(...spec.rot);
-            group.add(holder);
-            loaded.push({ spec, node: holder });
-          }
-          compositionReadyAt = performance.now();
-        }
-      );
-
-      const resize = () => {
-        const w = host.clientWidth || 1;
-        const h = host.clientHeight || 1;
-        renderer.setSize(w, h, false);
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
-      };
-      resize();
-      window.addEventListener("resize", resize);
-
-      let visible = true;
-      const io = new IntersectionObserver(
-        ([entry]) => {
-          visible = entry.isIntersecting;
-        },
-        { rootMargin: "20%" }
-      );
-      io.observe(host);
-
-      // THE POINTER, READ NOT LISTENED FOR.
-      //
-      // `--pub-hover` is written on the arc card by the carousel's own
-      // enter/leave (0 or 1), and `--pointer-from-left` / `--pointer-from-top`
-      // are the normalised pointer position HoverCard is ALREADY tilting this
-      // card with. Reading both here means the publications answer the same
-      // gesture the card does, on the same frame, with no second listener,
-      // no second physics, and nothing for a React render to clobber.
-      const arcCard = host.closest("[data-arc-card]") as HTMLElement | null;
-      const wrapper = host.closest(".hc-wrapper") as HTMLElement | null;
-      const coarse = window.matchMedia("(hover: none)").matches;
-
-      let hover = 0; // eased 0..1
-      let px = 0.5; // eased pointer, 0..1
-      let py = 0.5;
-      let last = performance.now();
-
-      // A read-only handle for the verification harness: the composition has
-      // to be measurable (sizes, overlap, containment) rather than merely
-      // looked at. Nothing in the component reads it.
-      (host as HTMLElement & { __pub?: unknown }).__pub = {
-        camera,
-        scene,
-        group,
-        loaded,
-        three: THREE,
-        renderer,
-      };
-
-      const tick = () => {
-        raf = requestAnimationFrame(tick);
-        if (!visible) return;
-        const now = performance.now();
-        // Clamped generously rather than tightly. Nothing here INTEGRATES —
-        // the hover and the pointer are both followers easing toward a
-        // target — so a long frame should simply get further along the ease,
-        // not be held back. Clamped to a frame's worth the way an integrator
-        // would be, a display on a machine dropping frames never quite
-        // reaches its resting transform after the pointer leaves.
-        const dt = Math.min(250, Math.max(1, now - last));
-        last = now;
-
-        const wanted =
-          !coarse && arcCard
-            ? parseFloat(getComputedStyle(arcCard).getPropertyValue("--pub-hover")) || 0
-            : 0;
-        const tau = wanted > hover ? HOVER_IN_TAU : HOVER_OUT_TAU;
-        hover += (wanted - hover) * (1 - Math.exp(-dt / tau));
-        // Snapped once it is closer than a rendered pixel's worth of the
-        // largest lift, so "returned to rest" is exact rather than asymptotic.
-        if (Math.abs(wanted - hover) < 0.004) hover = wanted;
-
-        if (wrapper) {
-          const cs = getComputedStyle(wrapper);
-          const tx = parseFloat(cs.getPropertyValue("--pointer-from-left")) || 0.5;
-          const ty = parseFloat(cs.getPropertyValue("--pointer-from-top")) || 0.5;
-          const kp = 1 - Math.exp(-dt / POINTER_TAU);
-          px += (tx - px) * kp;
-          py += (ty - py) * kp;
-        }
-
-        // Ease the hover with a curve rather than using the raw follower:
-        // the follower gives the motion its weight, this gives it its shape.
-        const h = reduced ? 0 : hover * hover * (3 - 2 * hover);
-
-        // ONE shared arrival value for the whole composition — see
-        // `compositionReadyAt` above. Every publication fades/settles on
-        // this same clock, together, instead of each running its own timer
-        // from whenever IT personally finished decoding.
-        const arriveT =
-          compositionReadyAt == null
-            ? 0
-            : Math.min(1, (now - compositionReadyAt) / COMPOSITION_ARRIVE_MS);
-        const arrive = arriveT * arriveT * (3 - 2 * arriveT);
-
-        for (const { spec, node } of loaded) {
-          if (arrive < 1) {
-            node.traverse((o) => {
-              const mesh = o as import("three").Mesh;
-              if (!mesh.isMesh) return;
-              const mat = mesh.material as import("three").MeshStandardMaterial;
-              if (!mat) return;
-              mat.transparent = true;
-              mat.opacity = arrive;
-            });
-          } else {
-            node.traverse((o) => {
-              const mesh = o as import("three").Mesh;
-              if (!mesh.isMesh) return;
-              const mat = mesh.material as import("three").MeshStandardMaterial;
-              if (mat?.transparent) {
-                mat.transparent = false;
-                mat.opacity = 1;
-              }
-            });
-          }
-          node.position.set(
-            spec.pos[0] + spec.lift[0] * h,
-            spec.pos[1] + spec.lift[1] * h + (1 - arrive) * 0.22,
-            spec.pos[2] + (spec.lift[2] + GROUP_LIFT_Z * spec.parallax) * h
-          );
-          node.rotation.set(
-            spec.rot[0] + spec.turn[0] * h,
-            spec.rot[1] + spec.turn[1] * h,
-            spec.rot[2] + spec.turn[2] * h
-          );
-        }
-
-        // The group answers the pointer only while it is being hovered, and
-        // only as much as `h` allows — so at rest the composition is exactly
-        // the resting one, whatever the pointer last did.
-        group.rotation.y = (px - 0.5) * 2 * PARALLAX_YAW * h;
-        group.rotation.x = -(py - 0.5) * 2 * PARALLAX_PITCH * h;
-
-        // The display brightens a little as the publications come forward —
-        // the card lighting what it is holding up, not a bloom.
-        const lum = lumRef.current * (1 + 0.14 * h);
-        key.intensity = (2.1 + 0.55 * h) * lum;
-        fill.intensity = (0.5 + 0.1 * h) * lum;
-        bounce.intensity = (0.28 + 0.14 * h) * lum;
-        ambient.intensity = (0.42 + 0.08 * h) * lum;
-        renderer.toneMappingExposure = 1.16 + 0.07 * h;
-
-        renderer.render(scene, camera);
-      };
-      raf = requestAnimationFrame(tick);
-
-      cleanup = () => {
-        cancelAnimationFrame(raf);
-        io.disconnect();
-        window.removeEventListener("resize", resize);
-        // Disposing here frees THIS renderer's GPU-side copies only — the
-        // cached geometries/materials/textures in rootCache are JS objects
-        // that survive (their decoded pixel data is untouched by dispose());
-        // a future mount clones them again and just re-uploads, which is
-        // fast, with no re-fetch and no re-decode.
-        for (const t of textures) t.dispose();
-        scene.traverse((o) => {
-          const mesh = o as import("three").Mesh;
-          if (!mesh.isMesh) return;
-          mesh.geometry?.dispose();
-          const mat = mesh.material;
-          if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-          else mat?.dispose();
-        });
-        renderer.dispose();
-        renderer.domElement.remove();
-      };
     })().catch((err) => {
       // The card is decoration on a scroll beat, not content — but a silent
       // failure reads on screen as an empty black square, so it is reported.
