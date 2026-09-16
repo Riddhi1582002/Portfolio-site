@@ -63,36 +63,6 @@ export type Publication = {
   turn: [number, number, number];
   /** How much of the pointer parallax this object takes, 0..1. */
   parallax: number;
-  /**
-   * Whether this file's cover comes out the right way up, or needs standing
-   * up. Measured, not guessed: rendered one at a time, square on and
-   * unrotated, four of the five arrive with their covers flipped top to
-   * bottom — Sneh Sagar's v1 was the only one the right way up, and the v2
-   * replacement below is built correctly from the start (no flag needed).
-   *
-   * Corrected by mirroring the OBJECT in Y, not by touching the texture. A
-   * flip of the texture coordinates would move which part of the atlas the
-   * cover samples (the artwork sits in one half of each of these images and
-   * the other half is black), so it would trade an upside-down cover for a
-   * blank one. Mirroring the object leaves every texel exactly where it was
-   * and simply stands the publication the right way up — which is what
-   * placing five separately exported models in one composition means.
-   */
-  upright?: boolean;
-  /**
-   * False for the Sneh Sagar v2 rebuild, true (the default) for the other
-   * four, which are still the original single-quad exports. A legacy export
-   * is ONE mesh whose material carries a flattened 0.4 grey base colour and
-   * the glTF-default metalness of 1 — rendered as supplied it reads as dull
-   * grey metal, so those two values get put back to white/0 here. The v2
-   * rebuild is a proper multi-part model (front cover, back cover, spine,
-   * page block, cover edges) with its OWN correct, varied material values
-   * already authored per part — the page block is a warm cream, the cover
-   * edges a dark brown — and overwriting those to a flat white would erase
-   * exactly the physical detail (page thickness, edge colour) this pass
-   * exists to add.
-   */
-  legacyExport?: boolean;
 };
 
 const D = Math.PI / 180;
@@ -108,29 +78,23 @@ const D = Math.PI / 180;
 // a piece is, the more of its outer edge stays clear of the one in front.
 /**
  * Exported so the Publications index page can read the loading-relevant
- * identity of each file (`id`, `file`, `legacyExport`, `upright`) without
- * duplicating it — that page has its own, much larger composition, but the
- * five publications it loads are these same five files, and matching `id`s
- * is what makes them share this card's already-warm cache.
+ * identity of each file (`id`, `file`) without duplicating it — that page
+ * has its own, much larger composition, but the five publications it loads
+ * are these same five files, and matching `id`s is what makes them share
+ * this card's already-warm cache.
+ *
+ * All five files in this pack (asset pack v2) share one structure — four
+ * meshes per book (`_pages`, `_front`, `_back`, `_spine`), each a proper
+ * box with real thickness, built correctly-oriented from the start — so
+ * unlike the old mixed legacy/rebuild set, none of these need a per-file
+ * orientation flag or material override; see `processRoot` below.
  */
 export const PUBLICATIONS: Publication[] = [
   {
-    // 1. SNEH SAGAR — the hero. The v2 rebuild is a real multi-part book
-    // (front cover, spine, back cover, page block, cover edges) rather than
-    // a flat plane, so — unlike the other four — rotating it actually
-    // reveals genuine thickness: the page block's edge and a sliver of the
-    // spine both come into view at this yaw, catching the key light the
-    // way a real book's fore-edge does.
+    // 1. SNEH SAGAR — the hero, dominant and most forward.
     id: "sneh-sagar",
-    file: "sneh-sagar-book-v2.glb",
-    legacyExport: false,
-    // The rebuild's own units are far smaller than the old flat export's
-    // (a book roughly 1 x 1.22 x 0.12, against the old ~2.4 x 2.8 x 0.3) —
-    // this scale is what makes it fill the same role as hero again: at 2.7
-    // its world size (2.7 x 3.29 x 0.31) lands almost exactly on the old
-    // model's footprint, thickness included, while still being read off
-    // the NEW geometry rather than forcing a squashed axis.
-    scale: 2.7,
+    file: "sneh-sagar.glb",
+    scale: 1.55,
     pos: [-0.6, -0.22, 0.8],
     rot: [-3 * D, 16 * D, -2 * D],
     lift: [0.16, 0.15, 0.7],
@@ -139,14 +103,11 @@ export const PUBLICATIONS: Publication[] = [
   },
   {
     // 2. EXCELEDGE — the second voice, front row right, turned the other
-    // way. Raised well above the hero's own shoulder this pass — at either
-    // previous position it read as mostly hidden behind the hero rather
-    // than as a standing second voice beside it, the "cramped central
-    // pile" a reference-image review flagged twice running.
+    // way, raised above the hero's own shoulder so it stands as a second
+    // voice beside it rather than mostly hidden behind it.
     id: "excledge",
-    upright: false,
-    file: "excledge-newsletter.glb",
-    scale: 1.1,
+    file: "excel-edge-newsletter.glb",
+    scale: 0.98,
     pos: [1.05, 0.62, 0.4],
     rot: [-2 * D, -16 * D, 2.5 * D],
     lift: [0.36, 0.12, 0.44],
@@ -155,14 +116,11 @@ export const PUBLICATIONS: Publication[] = [
   },
   {
     // 3. MINING — back row left, standing well above the hero's shoulder
-    // so its own title band clears the top of the cover in front of it,
-    // pulled in from the card's own edge so it stays inside a square
-    // frame rather than the wider one this position was first tuned for.
+    // so its own title band clears the top of the cover in front of it.
     id: "mining",
-    upright: false,
-    file: "mining-booklet.glb",
-    scale: 0.98,
-    pos: [-1.45, 0.9, -0.2],
+    file: "mining-brochure.glb",
+    scale: 0.86,
+    pos: [-1.95, 1.3, -0.1],
     rot: [-4 * D, 20 * D, -5 * D],
     lift: [-0.24, 0.13, 0.24],
     turn: [0.5 * D, -3 * D, 2 * D],
@@ -172,12 +130,10 @@ export const PUBLICATIONS: Publication[] = [
     // 4. EMPLOYEE HANDBOOK — back row right, and deliberately quieter than
     // ExcelEDGE: smaller, further back, and further off square, but raised
     // in step with the other supporting pieces so it still stands clear of
-    // the hero rather than vanishing behind it. Keeps the same ~0.77x
-    // ratio to ExcelEDGE's scale the hierarchy check verifies.
+    // the hero rather than vanishing behind it.
     id: "handbook",
-    upright: false,
     file: "employee-handbook.glb",
-    scale: 0.85,
+    scale: 0.74,
     pos: [2.15, 1.05, -0.7],
     rot: [-4 * D, -23 * D, 4 * D],
     lift: [0.22, 0.09, 0.18],
@@ -186,14 +142,13 @@ export const PUBLICATIONS: Publication[] = [
   },
   {
     // 5. POLICY — the smallest, tucked in low at the front-right rather
-    // than stacked behind the taller four: buried at the back (its
-    // original placement) put it entirely behind ExcelEDGE and the
-    // Handbook from this camera angle, so it never actually read as a
-    // fifth object — smallest still, but visible, is the point.
+    // than stacked behind the taller four: buried at the back put it
+    // entirely behind ExcelEDGE and the Handbook from this camera angle,
+    // so it never actually read as a fifth object — smallest still, but
+    // visible, is the point.
     id: "policy",
-    upright: false,
     file: "policy-document.glb",
-    scale: 0.68,
+    scale: 0.62,
     pos: [1.55, -0.85, 0.55],
     rot: [-5 * D, 7 * D, -2.5 * D],
     // Pulled harder toward the reader on hover than its rest position alone
@@ -242,204 +197,78 @@ const POINTER_TAU = 260;
 const COMPOSITION_ARRIVE_MS = 420;
 
 /**
- * Pull apart faces that were exported on top of one another.
- *
- * The old (legacy) single-quad exports carry BOTH a cover and its opposite
- * face on the same physical plane: two quads sharing no vertices, one
- * mapped to the cover artwork and one to a black texel. Two coincident
- * surfaces at the same depth is the definition of z-fighting, and it
- * rendered as a stippled lattice crawling across the cover.
- *
- * The repair is geometric and tiny: within each coplanar group, the copy
- * whose texture coordinates lie inside the atlas stays where it is, and
- * every other copy is pushed a fraction of a millimetre behind it along the
- * face normal. No texel moves. Harmless — a no-op — on the v2 rebuild,
- * whose six parts are genuinely separate meshes with no duplicated planes,
- * so it stays a single shared code path rather than a legacy-only branch.
+ * Asset pack v2's meshes carry POSITION only — no UV, no NORMAL. The
+ * textures (a real cover image per book) ARE embedded in the files; there
+ * is simply nothing to map them onto, so a mesh with a texture renders as
+ * a flat, textureless colour without this. Each of the four parts (pages,
+ * front, back, spine) is a thin box, so a planar projection along its own
+ * thinnest axis — the two long axes normalised 0..1, the thin one ignored
+ * — is exactly the "wrap a flat image onto a flat cover" mapping a real
+ * bindery would use, with no distortion on the faces that matter (front
+ * and back) and only the thin, unmapped edge faces stretched, which is
+ * imperceptible at this scale. Skipped entirely if a mesh already has UVs
+ * (defensive — this pack never does — rather than assuming it forever).
  */
-function separateCoincidentFaces(
-  THREE: typeof import("three"),
-  geometry: import("three").BufferGeometry
-) {
-  const index = geometry.getIndex();
+function addPlanarUV(THREE: typeof import("three"), geometry: import("three").BufferGeometry) {
+  if (geometry.getAttribute("uv")) return;
   const pos = geometry.getAttribute("position");
-  const uv = geometry.getAttribute("uv");
-  if (!index || !pos || !uv) return;
-
+  if (!pos) return;
   geometry.computeBoundingBox();
-  const size = geometry.boundingBox!.getSize(new THREE.Vector3());
-  const nudge = Math.max(size.x, size.y, size.z) * 0.002;
-
-  // Group triangles by the plane they lie in.
-  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
-  const n = new THREE.Vector3(), ab = new THREE.Vector3(), ac = new THREE.Vector3();
-  const planes = new Map<string, { n: [number, number, number]; tris: number[][] }>();
-  for (let t = 0; t < index.count; t += 3) {
-    const vs = [index.getX(t), index.getX(t + 1), index.getX(t + 2)];
-    a.fromBufferAttribute(pos, vs[0]);
-    b.fromBufferAttribute(pos, vs[1]);
-    c.fromBufferAttribute(pos, vs[2]);
-    ab.subVectors(b, a); ac.subVectors(c, a);
-    n.crossVectors(ab, ac);
-    if (n.lengthSq() < 1e-12) continue;
-    n.normalize();
-    // Canonical sign, so the two copies of a face land in the SAME group even
-    // when one of them is wound the other way round — which is exactly how
-    // this duplicate is stored, and why keying on the raw normal missed it.
-    const sign =
-      Math.abs(n.x) > 1e-6 ? Math.sign(n.x)
-        : Math.abs(n.y) > 1e-6 ? Math.sign(n.y)
-          : Math.sign(n.z) || 1;
-    n.multiplyScalar(sign);
-    const d = n.dot(a);
-    const key = `${n.x.toFixed(2)},${n.y.toFixed(2)},${n.z.toFixed(2)}|${d.toFixed(3)}`;
-    const g = planes.get(key) ?? { n: [n.x, n.y, n.z] as [number, number, number], tris: [] };
-    g.tris.push(vs);
-    planes.set(key, g);
+  const box = geometry.boundingBox!;
+  const size = box.getSize(new THREE.Vector3());
+  const axes = ["x", "y", "z"] as const;
+  const thin = axes.reduce((a, b) => (size[b] < size[a] ? b : a));
+  const [uAxis, vAxis] = axes.filter((a) => a !== thin);
+  const uMin = box.min[uAxis], uSpan = box.max[uAxis] - uMin || 1;
+  const vMin = box.min[vAxis], vSpan = box.max[vAxis] - vMin || 1;
+  const getters = {
+    x: (i: number) => pos.getX(i),
+    y: (i: number) => pos.getY(i),
+    z: (i: number) => pos.getZ(i),
+  } as const;
+  const getU = getters[uAxis];
+  const getV = getters[vAxis];
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    uv[i * 2] = (getU(i) - uMin) / uSpan;
+    // Flipped so the image's own top edge lands at the mesh's +v (up),
+    // matching how the source cover jpgs are oriented.
+    uv[i * 2 + 1] = 1 - (getV(i) - vMin) / vSpan;
   }
-
-  for (const group of planes.values()) {
-    // Connected components by shared vertex — one component per real face.
-    const comps: { tris: number[][]; verts: Set<number> }[] = [];
-    for (const tri of group.tris) {
-      const hit = comps.filter((k) => tri.some((v) => k.verts.has(v)));
-      if (!hit.length) {
-        comps.push({ tris: [tri], verts: new Set(tri) });
-      } else {
-        const first = hit[0];
-        first.tris.push(tri);
-        tri.forEach((v) => first.verts.add(v));
-        for (const other of hit.slice(1)) {
-          other.tris.forEach((x) => first.tris.push(x));
-          other.verts.forEach((v) => first.verts.add(v));
-          comps.splice(comps.indexOf(other), 1);
-        }
-      }
-    }
-    if (comps.length < 2) continue;
-
-    // The copy whose UVs sit inside the atlas is the one to keep in place.
-    const inAtlas = (k: { verts: Set<number> }) => {
-      let ok = true;
-      k.verts.forEach((v) => {
-        const u = uv.getX(v), w = uv.getY(v);
-        if (u < -0.001 || u > 1.001 || w < -0.001 || w > 1.001) ok = false;
-      });
-      return ok;
-    };
-    const keep = comps.find(inAtlas) ?? comps[0];
-    let back = 1;
-    for (const comp of comps) {
-      if (comp === keep) continue;
-      const [nx, ny, nz] = group.n;
-      comp.verts.forEach((v) => {
-        pos.setXYZ(
-          v,
-          pos.getX(v) - nx * nudge * back,
-          pos.getY(v) - ny * nudge * back,
-          pos.getZ(v) - nz * nudge * back
-        );
-      });
-      back++;
-    }
-  }
-  pos.needsUpdate = true;
-  geometry.computeVertexNormals();
-  geometry.computeBoundingBox();
-  geometry.computeBoundingSphere();
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
 }
 
 /**
- * Turn a freshly loaded gltf.scene into the shared, cache-ready form: centred
- * on its own box, stood upright if its file needs it, and with every
- * material put right — ONCE. Everything after this is a clone.
+ * Turn a freshly loaded gltf.scene into the shared, cache-ready form:
+ * centred on its own box, with UVs supplied where the file has none, and
+ * every texture's colour space/filtering set — ONCE. Everything after this
+ * is a clone. No per-file orientation flag or material override: every
+ * file in this pack is the same clean four-part (pages/front/back/spine)
+ * structure, correctly oriented and correctly coloured from the exporter.
  */
 function processRoot(
   THREE: typeof import("three"),
-  root: import("three").Object3D,
-  spec: Publication
+  root: import("three").Object3D
 ): import("three").Object3D {
   const box = new THREE.Box3().setFromObject(root);
   const centre = box.getCenter(new THREE.Vector3());
   root.position.sub(centre);
-  if (spec.upright === false) root.scale.y = -1;
-
-  const legacy = spec.legacyExport !== false;
 
   root.traverse((o) => {
     const mesh = o as import("three").Mesh;
     if (!mesh.isMesh) return;
-    separateCoincidentFaces(THREE, mesh.geometry);
-    // Sneh Sagar v2's Front_Cover_Edge / Back_Cover_Edge parts (the thin
-    // dark-brown board-edge trim) are exported reaching exactly as far in Z
-    // as the cover plate they sit against — an EXACT depth tie, not merely
-    // a close one, so which of the two surfaces wins is purely draw-order
-    // luck rather than anything camera or precision related. Caught by
-    // rendering the same book much larger on the Publications index page:
-    // there the edge consistently drew after (so won over) the front
-    // cover, blanking the illustrated artwork out behind a flat trim
-    // colour. Nudging the edge mesh a fraction further from its cover
-    // — the same "push the duplicate back along its own normal" fix
-    // `separateCoincidentFaces` already does within a single mesh, just
-    // reaching across two separate meshes here — breaks the tie once,
-    // permanently, in the cached geometry, before either view ever
-    // renders it.
-    if (mesh.name === "Front_Cover_Edge" || mesh.name === "Back_Cover_Edge") {
-      const geo = mesh.geometry;
-      geo.computeBoundingBox();
-      const size = geo.boundingBox!.getSize(new THREE.Vector3());
-      const nudge = Math.max(size.x, size.y, size.z) * 0.01;
-      const dir = mesh.name === "Front_Cover_Edge" ? -1 : 1;
-      const posAttr = geo.getAttribute("position");
-      for (let i = 0; i < posAttr.count; i++) {
-        posAttr.setZ(i, posAttr.getZ(i) + dir * nudge);
-      }
-      posAttr.needsUpdate = true;
-      geo.computeVertexNormals();
-      geo.computeBoundingBox();
-      geo.computeBoundingSphere();
-    }
+    addPlanarUV(THREE, mesh.geometry);
+    if (!mesh.geometry.getAttribute("normal")) mesh.geometry.computeVertexNormals();
     mesh.castShadow = true;
-    // Legacy exports receive nothing — see the big comment on
-    // `mesh.receiveShadow` below the loop that used to live here: a legacy
-    // publication is a couple of millimetres thick at this scale, thin
-    // enough that receiving its OWN cast shadow reads as stippled acne
-    // rather than a real contact shadow. The v2 rebuild's parts are
-    // genuinely separated in depth (cover, page block and opposite cover
-    // sit tens of millimetres apart once scaled), so letting them receive
-    // each other's shadows is what makes the page block visibly recede
-    // behind the front cover as the two lift apart on hover — the "contact
-    // shadows change as the objects lift" the brief asks for.
-    mesh.receiveShadow = !legacy;
+    // Every part sits at a genuinely different depth once scaled (cover,
+    // spine and page block are millimetres apart, not coincident), so
+    // letting them receive each other's shadows is what makes the page
+    // block visibly recede behind the front cover as the two lift apart on
+    // hover — real contact shadows, not the acne a paper-thin coincident
+    // surface would produce.
+    mesh.receiveShadow = true;
     const mat = mesh.material as import("three").MeshStandardMaterial;
     if (!mat) return;
-    if (legacy) {
-      // The exporter (trimesh) writes a baseColorFactor of 0.4 grey and
-      // leaves metalness at the glTF default of 1. Rendered as supplied,
-      // every cover comes out at two fifths of its own value and shaded
-      // like dull metal. Paper is not metal and the artwork is not grey:
-      // putting the factor back to white and the metalness to zero is what
-      // shows the supplied artwork AS supplied, rather than through the
-      // exporter's defaults. (The v2 rebuild needs none of this — its
-      // materials already carry the correct, VARIED values per part: a
-      // warm cream page block, a dark brown edge, white cover plates —
-      // overwriting them here would erase exactly that variation.)
-      mat.color = new THREE.Color(0xffffff);
-      mat.metalness = 0;
-      mat.roughness = 0.82;
-      // Shadows from the BACK faces only, for the reason above: a legacy
-      // publication cast-shadowing from its own front face onto its own
-      // back face (the only two surfaces it has) is what produced the
-      // acne in the first place.
-      mat.shadowSide = THREE.BackSide;
-    }
-    // RENDER BOTH SIDES, always. The legacy files declare doubleSided:false
-    // but their cover faces are wound the other way round, so with
-    // back-face culling on on, the one face carrying the artwork is the one
-    // that gets thrown away. The v2 rebuild already declares doubleSided
-    // itself; setting it again here is a harmless no-op for it and the one
-    // fix that matters for the other four.
-    mat.side = THREE.DoubleSide;
     if (mat.map) {
       mat.map.colorSpace = THREE.SRGBColorSpace;
       // The covers are the only detail in frame and they are seen at a
@@ -503,7 +332,7 @@ export function loadRoot(spec: Publication): Promise<import("three").Object3D> {
       new Promise<import("three").Object3D>((resolve) => {
         loader.load(
           `${BASE}/${spec.file}`,
-          (gltf) => resolve(processRoot(THREE, gltf.scene, spec)),
+          (gltf) => resolve(processRoot(THREE, gltf.scene)),
           undefined,
           // A publication that fails to load resolves to an empty group
           // rather than rejecting, so Promise.all below still settles and

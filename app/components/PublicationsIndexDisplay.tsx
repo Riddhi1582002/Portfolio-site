@@ -49,23 +49,23 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
     title: "Sneh Sagar",
     medium: "Book",
     emphasis: 1,
-    wide: { scale: 3.2, pos: [0.5, -0.05, 0.55], rot: [-3 * D, 6 * D, -2 * D] },
-    narrow: { scale: 2.3, pos: [-0.05, -0.6, 0.55], rot: [-3 * D, 5 * D, -2 * D] },
+    wide: { scale: 1.55, pos: [0.5, -0.05, 0.55], rot: [-3 * D, 6 * D, -2 * D] },
+    narrow: { scale: 1.1, pos: [-0.05, -0.6, 0.55], rot: [-3 * D, 5 * D, -2 * D] },
   },
   {
     id: "excledge",
     title: "ExcelEDGE",
     medium: "Newsletter",
     emphasis: 0.75,
-    wide: { scale: 1.1, pos: [1.6, -0.15, 0.25], rot: [-2 * D, -11 * D, 2.5 * D] },
-    narrow: { scale: 0.95, pos: [1.15, -1.0, 0.0], rot: [-2 * D, -9 * D, 2.5 * D] },
+    wide: { scale: 1.05, pos: [2.05, -0.15, 0.5], rot: [-2 * D, -11 * D, 2.5 * D] },
+    narrow: { scale: 0.85, pos: [1.15, -1.0, 0.0], rot: [-2 * D, -9 * D, 2.5 * D] },
   },
   {
     id: "mining",
     title: "Mining",
     medium: "Booklet",
     emphasis: 0.5,
-    wide: { scale: 0.82, pos: [-1.9, 0.7, -0.75], rot: [-4 * D, 16 * D, -5 * D] },
+    wide: { scale: 0.95, pos: [-1.9, 0.7, -0.75], rot: [-4 * D, 16 * D, -5 * D] },
     narrow: { scale: 0.85, pos: [-1.5, 0.5, -0.35], rot: [-4 * D, 13 * D, -5 * D] },
   },
   {
@@ -73,16 +73,20 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
     title: "Employee Handbook",
     medium: "Handbook",
     emphasis: 0.4,
-    wide: { scale: 0.68, pos: [3.3, 0.55, -1.0], rot: [-4 * D, -16 * D, 4 * D] },
-    narrow: { scale: 0.68, pos: [1.5, 1.0, -0.6], rot: [-4 * D, -13 * D, 4 * D] },
+    wide: { scale: 0.7, pos: [3.3, 0.55, -1.0], rot: [-4 * D, -16 * D, 4 * D] },
+    narrow: { scale: 0.6, pos: [1.5, 1.0, -0.6], rot: [-4 * D, -13 * D, 4 * D] },
   },
   {
     id: "policy",
     title: "Policy",
     medium: "Policy Document",
     emphasis: 0.3,
-    wide: { scale: 0.68, pos: [1.3, 1.55, -1.1], rot: [-5 * D, 5 * D, -2.5 * D] },
-    narrow: { scale: 0.55, pos: [0.15, 1.75, -0.85], rot: [-5 * D, 4 * D, -2.5 * D] },
+    // Lower-left and forward, not stacked behind the hero: buried
+    // upper-back (its original placement) put it entirely behind Sneh
+    // Sagar from this camera angle, so it never actually read as a fifth
+    // object — smallest still, but visible, is the point.
+    wide: { scale: 0.65, pos: [-1.15, -1.3, 0.9], rot: [-5 * D, 12 * D, -2.5 * D] },
+    narrow: { scale: 0.5, pos: [-1.15, -1.55, 0.7], rot: [-5 * D, 10 * D, -2.5 * D] },
   },
 ];
 
