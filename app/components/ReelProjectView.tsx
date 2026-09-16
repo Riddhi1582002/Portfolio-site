@@ -53,6 +53,21 @@ export default function ReelProjectView({
   const [displayIndex, setDisplayIndex] = useState<number | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  // THE ENTRANCE ANIMATION'S OWN CANCELLATION — see the identical comment
+  // in ReelVideoViewer.tsx for the full explanation. Short version: the
+  // double-rAF below is only cleaned up when the effect re-runs, which
+  // needs `mounted` to flip — and `mounted` does not flip to false until
+  // `onTransitionEnd` fires, well after a close is requested. A pending
+  // chain from opening can therefore still fire in that window and force
+  // `shown` back to true, silently reopening an already-closed panel.
+  const entranceRafIdsRef = useRef<[number, number]>([0, 0]);
+  const closeTokenRef = useRef(0);
+  const cancelEntrance = () => {
+    cancelAnimationFrame(entranceRafIdsRef.current[0]);
+    cancelAnimationFrame(entranceRafIdsRef.current[1]);
+    closeTokenRef.current++;
+  };
+
   // Reacting to the `openIndex` prop, not to a local event, so this is the
   // documented "adjust state during render" escape hatch rather than an
   // effect: state (not a ref — refs can't be read during render) remembers
@@ -82,6 +97,15 @@ export default function ReelProjectView({
     }
   }
 
+  // The actual cancellation (see `cancelEntrance`'s own comment above) has
+  // to live in an effect, not the render-time block above: refs cannot be
+  // read during render. Keyed directly on the `openIndex` PROP rather than
+  // on `wasOpen`/`shown` so it fires on the same commit as the render-time
+  // close above, not a render later.
+  useEffect(() => {
+    if (openIndex == null) cancelEntrance();
+  }, [openIndex]);
+
   // Double rAF entrance, same trick as the contact popup and the toast:
   // mount below-rest/invisible on one frame, only flip to the resting
   // state on the next so the browser has something to transition from.
@@ -92,10 +116,17 @@ export default function ReelProjectView({
   // open/close pair rather than only ever going true once.
   useEffect(() => {
     if (!mounted) return;
+    const token = closeTokenRef.current;
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setShown(true));
+      raf2 = requestAnimationFrame(() => {
+        // Stale if a close happened after this chain started and before
+        // it got here — see `closeTokenRef`'s own comment above.
+        if (closeTokenRef.current === token) setShown(true);
+      });
+      entranceRafIdsRef.current[1] = raf2;
     });
+    entranceRafIdsRef.current = [raf1, 0];
     return () => {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);

@@ -221,6 +221,32 @@ export default function ReelVideoViewer({
   // Applied once onReady actually fires; see both below.
   const pendingVideoIdRef = useRef<string | null>(null);
 
+  // THE ENTRANCE ANIMATION'S OWN CANCELLATION — a real bug, confirmed live:
+  // the double-rAF below (`raf1`/`raf2`) is only ever cleaned up when the
+  // EFFECT ITSELF re-runs, which needs `mounted` or `openSession` to
+  // change — and closing the panel changes neither (`mounted` is set once
+  // and never reset; `openSession` only increments on a FRESH open). A
+  // close issued before that pending chain's final callback has fired
+  // therefore left it free to fire anyway, moments later, forcing `shown`
+  // back to `true` and silently reopening an already-closed panel — its
+  // full-viewport `pointer-events: auto` then sat on top of everything
+  // underneath it, which is what made ReelProjectView's Next Project
+  // button unclickable after a fast Back.
+  //
+  // Two layers, not one: `entranceRafIdsRef` lets the close branch below
+  // cancel the pending frames directly and immediately, and
+  // `closeTokenRef` is the actual guarantee — bumped on every close, and
+  // compared against what the chain captured when it started, so even a
+  // callback that already slipped past cancellation (a frame boundary is
+  // enough) is a no-op rather than a reopen.
+  const entranceRafIdsRef = useRef<[number, number]>([0, 0]);
+  const closeTokenRef = useRef(0);
+  const cancelEntrance = () => {
+    cancelAnimationFrame(entranceRafIdsRef.current[0]);
+    cancelAnimationFrame(entranceRafIdsRef.current[1]);
+    closeTokenRef.current++;
+  };
+
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(true);
@@ -254,14 +280,30 @@ export default function ReelVideoViewer({
     }
   }
 
+  // The actual cancellation (see `cancelEntrance`'s own comment above) has
+  // to live in an effect, not the render-time block above: refs cannot be
+  // read during render. Keyed directly on the `reelIndex` PROP rather than
+  // on `wasOpen`/`shown` so it fires on the same commit as the render-time
+  // close above, not a render later.
+  useEffect(() => {
+    if (reelIndex == null) cancelEntrance();
+  }, [reelIndex]);
+
   // Keyed off `openSession`, not `mounted` alone — see openSession's own
   // comment above for why `[mounted]` on its own only fired this once.
   useEffect(() => {
     if (!mounted) return;
+    const token = closeTokenRef.current;
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setShown(true));
+      raf2 = requestAnimationFrame(() => {
+        // Stale if a close happened after this chain started and before
+        // it got here — see `closeTokenRef`'s own comment above.
+        if (closeTokenRef.current === token) setShown(true);
+      });
+      entranceRafIdsRef.current[1] = raf2;
     });
+    entranceRafIdsRef.current = [raf1, 0];
     return () => {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
