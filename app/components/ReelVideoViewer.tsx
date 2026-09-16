@@ -203,6 +203,23 @@ export default function ReelVideoViewer({
   const playerRef = useRef<YTPlayerInstance | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const detailsSectionRef = useRef<HTMLDivElement>(null);
+  // Whether the SINGLE player instance's very first onReady has fired —
+  // once true, stays true for the rest of the page session (the player
+  // itself is never recreated, only ever told to load a different video).
+  // Distinct from the `ready` STATE below, which is per-VIDEO and resets on
+  // every switch: this ref exists purely to answer "is it safe to call
+  // loadVideoById on this player yet", the one thing that genuinely only
+  // has to happen once, ever. A plain ref rather than state because it has
+  // to be read synchronously inside the player-creation effect, which can
+  // re-run (a fast Prev/Next) before a state update from an earlier run has
+  // committed.
+  const readyRef = useRef(false);
+  // The latest requested video, when a switch arrives before `readyRef` is
+  // true — loadVideoById is unsafe to call on a player that has not fired
+  // its first onReady (a documented YouTube IFrame API hazard: the player
+  // can end up stuck mid-load, or with audio and video tracks desynced).
+  // Applied once onReady actually fires; see both below.
+  const pendingVideoIdRef = useRef<string | null>(null);
 
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -312,6 +329,21 @@ export default function ReelVideoViewer({
   // before the browser has painted a frame and dropping the cover then
   // flashes black; the grace afterwards is now just long enough to cover
   // that first paint rather than long enough to outlast an animation.
+  //
+  // A SECOND, LONGER TIMER covers the case `playing` never arrives at
+  // all — autoplay blocked by browser policy despite being muted (rare,
+  // but real on some mobile browsers/embedded webviews), or any other
+  // silent stall. Without this the mask — and the "Loading…" label — sat
+  // over the frame forever, which is indistinguishable from the viewer
+  // being broken. Revealing the paused first frame instead lets the
+  // reader see the piece and press Play themselves, same as any other
+  // paused video.
+  useEffect(() => {
+    if (!ready || playing) return;
+    const t = window.setTimeout(() => setMaskVisible(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [ready, playing, videoKey]);
+
   useEffect(() => {
     if (!playing) return;
     const t = window.setTimeout(() => setMaskVisible(false), 350);
@@ -370,6 +402,18 @@ export default function ReelVideoViewer({
     if (!videoId) return;
 
     if (playerRef.current) {
+      // A Prev/Next fast enough to land before this player's very first
+      // onReady has fired — the async loadYouTubeApi()/YT.Player()
+      // construction can still be settling when this effect re-runs for
+      // a new videoId. loadVideoById on a not-yet-ready player is a
+      // documented IFrame API hazard (the internal state machine can end
+      // up stuck mid-load, or with the audio track running while the
+      // video frame never paints), so the request is queued instead —
+      // onReady applies whichever id is latest once it actually fires.
+      if (!readyRef.current) {
+        pendingVideoIdRef.current = videoId;
+        return;
+      }
       playerRef.current.loadVideoById(videoId);
       // Captions can turn back on with a newly loaded video even though
       // this same player had them stripped for the last one — see
@@ -416,8 +460,19 @@ export default function ReelVideoViewer({
             disablekb: 1,
           },
           events: {
+            // NOT guarded by `cancelled` (unlike the creation check right
+            // above `new YT.Player`, which correctly IS): `cancelled` means
+            // "a later effect run has taken over," but the player these
+            // three events fire on is the ONE player for the whole page
+            // session (see the file banner) — a later run reaches it
+            // through this same `playerRef`, not a different instance.
+            // Discarding these events once superseded used to mean a fast
+            // video switch could permanently stop `onReady` from ever
+            // setting `readyRef`/`ready`, which in turn stopped
+            // `pendingVideoIdRef` from ever being applied and left every
+            // later switch queued forever — the exact stuck-video failure
+            // this pass exists to fix, just moved one level up.
             onReady: (e) => {
-              if (cancelled) return;
               try {
                 const iframe = e.target.getIframe();
                 iframe.setAttribute(
@@ -433,6 +488,7 @@ export default function ReelVideoViewer({
               } catch {
                 // Non-essential.
               }
+              readyRef.current = true;
               setReady(true);
               // Muted first: unmuted autoplay is blocked outright by most
               // browsers unless the visitor has already interacted with
@@ -446,10 +502,28 @@ export default function ReelVideoViewer({
               // real user gesture and always permitted.
               e.target.mute();
               setMuted(true);
-              e.target.playVideo();
+              // A switch that arrived before THIS onReady is waiting here
+              // rather than lost — load whichever video is actually
+              // current instead of playing the one this player happened
+              // to be constructed with.
+              const pending = pendingVideoIdRef.current;
+              pendingVideoIdRef.current = null;
+              if (pending && pending !== videoId) {
+                e.target.loadVideoById(pending);
+              } else {
+                e.target.playVideo();
+              }
             },
             onStateChange: (e) => {
-              if (cancelled) return;
+              // onReady fires exactly once per player instance, not once
+              // per loadVideoById — every video after the first therefore
+              // has no OTHER signal that it has actually started loading,
+              // and `ready` was just reset to false for it (see the
+              // render-time reset above). Any state event proves the
+              // player is alive and responding to THIS video, which is
+              // what `ready` is standing in for (it gates the time/
+              // duration polling effect and the transport buttons below).
+              setReady(true);
               setPlaying(e.data === YT.PlayerState.PLAYING);
               // Replaying (seek-to-0 restart, or simply resuming after a
               // pause) is one of the points captions can silently turn
@@ -461,7 +535,6 @@ export default function ReelVideoViewer({
               }
             },
             onError: () => {
-              if (cancelled) return;
               setErrorMsg("This video can't be played here.");
             },
           },
@@ -550,13 +623,16 @@ export default function ReelVideoViewer({
 
   const togglePlay = () => {
     const player = playerRef.current;
-    if (!player) return;
+    // `ready` — commands like seekTo issued before the player has
+    // processed the current video are the same class of hazard
+    // loadVideoById guards against above.
+    if (!player || !ready) return;
     if (playing) player.pauseVideo();
     else player.playVideo();
   };
   const restart = () => {
     const player = playerRef.current;
-    if (!player) return;
+    if (!player || !ready) return;
     player.seekTo(0, true);
     player.playVideo();
   };
@@ -573,7 +649,7 @@ export default function ReelVideoViewer({
   };
   const seek = (e: ReactPointerEvent<HTMLDivElement>) => {
     const player = playerRef.current;
-    if (!player || duration <= 0) return;
+    if (!player || !ready || duration <= 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const fraction = clamp01((e.clientX - rect.left) / rect.width);
     player.seekTo(fraction * duration, true);
