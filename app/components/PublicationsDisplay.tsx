@@ -93,7 +93,7 @@ export const PUBLICATIONS: Publication[] = [
   {
     // 1. SNEH SAGAR — the hero, dominant and most forward.
     id: "sneh-sagar",
-    file: "sneh-sagar.glb",
+    file: "sneh-sagar-book-corrected.glb",
     scale: 1.55,
     pos: [-0.6, -0.22, 0.8],
     rot: [-3 * D, 16 * D, -2 * D],
@@ -239,6 +239,39 @@ function addPlanarUV(THREE: typeof import("three"), geometry: import("three").Bu
 }
 
 /**
+ * The Sneh Sagar rebuild's three textured parts (front/back cover, spine)
+ * ship with their OWN UVs — unlike the other four files, `addPlanarUV`
+ * above is a no-op for them — authored against a bottom-left texture
+ * origin (a vertex at the bottom of the quad reads UV v=0). glTF's own
+ * convention, which is what GLTFLoader configures every texture for
+ * (`flipY = false`, top-left origin), reads that same v=0 as the TOP of
+ * the image, so as supplied each cover rendered upside down. Flipping V
+ * on exactly the meshes that already carried their own UV corrects the
+ * mismatch without touching a single texel of the artwork or the geometry
+ * this file supplies, and without touching any of the other four files'
+ * own (generated, already top-left-correct) UVs.
+ *
+ * `seen` de-duplicates by the ACTUAL attribute object, not by mesh: this
+ * exporter (trimesh) reuses one glTF accessor — one underlying typed array
+ * — for every mesh whose UVs are byte-identical, and front_cover_artwork
+ * and spine are both plain full-bleed quads that share exactly that
+ * accessor. Flipping "per mesh visited" flipped their one shared array
+ * twice — back to its original, unflipped state — which is what silently
+ * undid this fix the first time it was written. Flipping per unique
+ * attribute, once, is what actually keeps the correction.
+ */
+function flipV(
+  geometry: import("three").BufferGeometry,
+  seen: Set<import("three").BufferAttribute | import("three").InterleavedBufferAttribute>
+) {
+  const uv = geometry.getAttribute("uv");
+  if (seen.has(uv)) return;
+  seen.add(uv);
+  for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
+  uv.needsUpdate = true;
+}
+
+/**
  * Turn a freshly loaded gltf.scene into the shared, cache-ready form:
  * centred on its own box, with UVs supplied where the file has none, and
  * every texture's colour space/filtering set — ONCE. Everything after this
@@ -254,10 +287,13 @@ function processRoot(
   const centre = box.getCenter(new THREE.Vector3());
   root.position.sub(centre);
 
+  const flippedUVs = new Set<import("three").BufferAttribute | import("three").InterleavedBufferAttribute>();
   root.traverse((o) => {
     const mesh = o as import("three").Mesh;
     if (!mesh.isMesh) return;
+    const hadOwnUV = !!mesh.geometry.getAttribute("uv");
     addPlanarUV(THREE, mesh.geometry);
+    if (hadOwnUV) flipV(mesh.geometry, flippedUVs);
     if (!mesh.geometry.getAttribute("normal")) mesh.geometry.computeVertexNormals();
     mesh.castShadow = true;
     // Every part sits at a genuinely different depth once scaled (cover,

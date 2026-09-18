@@ -54,7 +54,7 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
   },
   {
     id: "excledge",
-    title: "ExcelEDGE",
+    title: "Excel Edge - Company Newsletter",
     medium: "Newsletter",
     emphasis: 0.75,
     wide: { scale: 1.05, pos: [2.05, -0.15, 0.5], rot: [-2 * D, -11 * D, 2.5 * D] },
@@ -62,7 +62,7 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
   },
   {
     id: "mining",
-    title: "Mining",
+    title: "Company brochures",
     medium: "Booklet",
     emphasis: 0.5,
     wide: { scale: 0.95, pos: [-1.9, 0.7, -0.75], rot: [-4 * D, 16 * D, -5 * D] },
@@ -78,7 +78,7 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
   },
   {
     id: "policy",
-    title: "Policy",
+    title: "Policy documents",
     medium: "Policy Document",
     emphasis: 0.3,
     // Lower-left and forward, not stacked behind the hero: buried
