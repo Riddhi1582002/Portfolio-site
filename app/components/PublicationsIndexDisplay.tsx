@@ -36,20 +36,21 @@ export type IndexPublication = SpatialIndexObject & {
   medium: string;
 };
 
-// Asymmetric, compact, with real overlap — not a grid. The group sits right
-// of centre on a wide frame (the title and index text occupy the left third
-// of the page, see PublicationsIndexView), with Sneh Sagar dominant and
-// forward, ExcelEDGE clearly second, and Mining/Handbook/Policy receding in
-// both scale and depth behind them. `narrow` is a genuinely different,
-// more vertically stacked arrangement for portrait screens rather than a
-// scaled-down copy of `wide` — see the file banner on why that matters.
+// A shelf display, not a stacked still life: five publications standing
+// side by side across the width on a shared groundline (their bases align,
+// per the reference), Sneh Sagar centred, taller and a step forward as the
+// clear hero, the other four close to one another in scale and depth —
+// Policy and the Handbook to its left, ExcelEDGE and Mining to its right.
+// `narrow` is a genuinely different, more vertically stacked arrangement
+// for portrait screens rather than a scaled-down copy of `wide` — see the
+// file banner on why that matters.
 export const INDEX_PUBLICATIONS: IndexPublication[] = [
   {
     id: "sneh-sagar",
     title: "Sneh Sagar",
     medium: "Book",
     emphasis: 1,
-    wide: { scale: 1.55, pos: [0.5, 0.3, 0.55], rot: [-3 * D, 6 * D, -2 * D] },
+    wide: { scale: 1.7, pos: [0.15, 0.25, 0.5], rot: [-3 * D, 6 * D, -2 * D] },
     narrow: { scale: 0.82, pos: [-0.05, -0.5, 0.55], rot: [-3 * D, 5 * D, -2 * D] },
   },
   {
@@ -57,7 +58,7 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
     title: "Excel Edge - Company Newsletter",
     medium: "Newsletter",
     emphasis: 0.75,
-    wide: { scale: 1.05, pos: [2.05, 0.2, 0.5], rot: [-2 * D, -11 * D, 2.5 * D] },
+    wide: { scale: 0.85, pos: [2.15, -0.7, 0.15], rot: [-2 * D, -14 * D, 2.5 * D] },
     narrow: { scale: 0.64, pos: [1.15, -0.85, 0.0], rot: [-2 * D, -9 * D, 2.5 * D] },
   },
   {
@@ -65,7 +66,7 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
     title: "Company brochures",
     medium: "Booklet",
     emphasis: 0.5,
-    wide: { scale: 0.95, pos: [-1.9, 1.05, -0.75], rot: [-4 * D, 16 * D, -5 * D] },
+    wide: { scale: 0.85, pos: [3.55, -0.72, -0.1], rot: [-4 * D, 18 * D, -5 * D] },
     narrow: { scale: 0.64, pos: [-1.5, 0.45, -0.35], rot: [-4 * D, 13 * D, -5 * D] },
   },
   {
@@ -73,7 +74,7 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
     title: "Employee Handbook",
     medium: "Handbook",
     emphasis: 0.4,
-    wide: { scale: 0.7, pos: [3.3, 0.9, -1.0], rot: [-4 * D, -16 * D, 4 * D] },
+    wide: { scale: 0.85, pos: [-2.05, -0.3, 0.1], rot: [-4 * D, 15 * D, 4 * D] },
     narrow: { scale: 0.45, pos: [1.5, 0.85, -0.6], rot: [-4 * D, -13 * D, 4 * D] },
   },
   {
@@ -81,11 +82,9 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
     title: "Policy documents",
     medium: "Policy Document",
     emphasis: 0.3,
-    // Lower-left and forward, not stacked behind the hero: buried
-    // upper-back (its original placement) put it entirely behind Sneh
-    // Sagar from this camera angle, so it never actually read as a fifth
-    // object — smallest still, but visible, is the point.
-    wide: { scale: 0.65, pos: [-1.15, -0.95, 0.9], rot: [-5 * D, 12 * D, -2.5 * D] },
+    // Far left of the shelf, standing at its own full height rather than
+    // shrunk and tucked behind — see the file banner.
+    wide: { scale: 0.85, pos: [-3.3, -0.12, -0.15], rot: [-5 * D, 20 * D, -2.5 * D] },
     narrow: { scale: 0.38, pos: [-1.15, -1.3, 0.7], rot: [-5 * D, 10 * D, -2.5 * D] },
   },
 ];
