@@ -118,11 +118,25 @@ export default function PublicationsIndexDisplay({
           },
         },
         { hoveredIdRef, selectedIdRef, narrowRef },
-        // Closer than the engine's own default: at that distance the group
-        // read as a small cluster adrift in a mostly-empty viewport. This is
-        // the same "camera does the work, not per-object scale" adjustment
-        // as the card's own — see PublicationsDisplay's CAM_Z.
-        { focusMs: FOCUS_MS, camZ: 9.4, camY: 2.1, camNear: 5, camFar: 18 }
+        {
+          focusMs: FOCUS_MS,
+          // Closer than the engine's own default: at that distance the
+          // group read as a small cluster adrift in a mostly-empty
+          // viewport. This is the same "camera does the work, not
+          // per-object scale" adjustment as the card's own — see
+          // PublicationsDisplay's CAM_Z.
+          camZ: 9.4,
+          camY: 2.1,
+          camNear: 5,
+          camFar: 18,
+          // The engine's own default (5°) reads as a barely-perceptible
+          // twitch — a hovered publication has to visibly turn to present
+          // its cover, not merely acknowledge the pointer. This is the
+          // full amount the hero (Sneh Sagar, emphasis 1) turns; every
+          // other piece turns its own share of it, same as before — see
+          // the tick loop's `item.emphasis` scaling.
+          hoverTurnY: -20 * (Math.PI / 180),
+        }
       );
     })().catch((err) => {
       console.error("PublicationsIndexDisplay:", err);

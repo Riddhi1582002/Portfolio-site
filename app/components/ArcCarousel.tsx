@@ -26,7 +26,8 @@
 // wash on the wall and the cards can never disagree about how lit the room
 // is.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import gsap from "gsap";
 import HoverCard from "./HoverCard";
 import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
 
@@ -152,6 +153,21 @@ export default function ArcCarousel({
   // routing system," just reached with a full navigation instead of a
   // client-side one.
   const pubCardRef = useRef<HTMLDivElement | null>(null);
+  // The card's own INNER content wrapper (cover glow + HoverCard + the 3D
+  // display), one level below the element the ring itself transforms every
+  // scroll frame (`translate3d(...) rotateY(...)`, written fresh by React
+  // on every render of `p`). GSAP animates THIS element instead of that
+  // one: a CSS transform on a child composes with — rather than fights —
+  // whatever the parent's own transform is doing, so the enlarge can run
+  // without first silencing the scroll-driven ring underneath it.
+  const pubInnerRef = useRef<HTMLDivElement | null>(null);
+  // A whole-viewport cover the transition fades in behind the growing
+  // card, so the cut to the freshly loaded /publications page (dark
+  // itself) lands on a screen that is already most of the way there
+  // rather than as a hard flash from the bright ring to black.
+  const transitionOverlayRef = useRef<HTMLDivElement | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+  const transitioningRef = useRef(false);
   const pubActiveRef = useRef(false);
   const pubActive = p > 0.02 && p < 0.98;
   useEffect(() => {
@@ -174,8 +190,53 @@ export default function ArcCarousel({
     };
     const onDocLeave = () => setHover(false);
     const onClick = (e: MouseEvent) => {
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- deliberate: see the comment above this effect. useRouter().push() from this same handler reliably fired without throwing but never changed the URL.
-      if (inCard(e.clientX, e.clientY)) window.location.assign("/publications");
+      // Guards against a second click starting a second timeline while the
+      // first is still running — the visible symptom would be the card
+      // snapping partway back before continuing, or two overlapping
+      // navigations racing.
+      if (transitioningRef.current) return;
+      if (!inCard(e.clientX, e.clientY)) return;
+      transitioningRef.current = true;
+      setTransitioning(true);
+      // GSAP's default lag smoothing hides a brief stall by freezing the
+      // animation's own perceived clock, then resuming — meant to avoid a
+      // jarring jump after a short tab-backgrounded pause. This page keeps
+      // several WebGL canvases rendering (the bulb, the arc's own
+      // publications display) that can legitimately hold the main thread
+      // past the 500ms default threshold, and the freeze-then-jump that
+      // was hiding is worse than the jump would have been: "nothing
+      // happens for most of a second" reads as broken, not smooth.
+      // Disabled so the timeline tracks real elapsed time throughout.
+      gsap.ticker.lagSmoothing(0);
+      const inner = pubInnerRef.current;
+      const overlay = transitionOverlayRef.current;
+      const tl = gsap.timeline({
+        // The actual navigation. `router.push` fired without throwing from
+        // this exact handler but never changed the URL — see the note
+        // this replaced, still true, so this is still a real navigation to
+        // the existing route rather than a client transition; it just now
+        // fires once the enlarge has had its second, not the instant the
+        // card is clicked.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+        onComplete: () => window.location.assign("/publications"),
+      });
+      if (overlay) {
+        tl.to(overlay, { opacity: 1, duration: 1, ease: "power2.inOut" }, 0);
+      }
+      if (inner) {
+        tl.to(
+          inner,
+          {
+            scale: 1.55,
+            y: -18,
+            duration: 1,
+            ease: "power2.inOut",
+            transformOrigin: "50% 50%",
+          },
+          0
+        );
+      }
+      if (!overlay && !inner) tl.to({}, { duration: 1 });
     };
     window.addEventListener("pointermove", onMove);
     document.addEventListener("pointerleave", onDocLeave);
@@ -277,11 +338,17 @@ export default function ArcCarousel({
               marginTop: -card / 2,
               transform: `translate3d(${x.toFixed(2)}px, 0, ${z.toFixed(2)}px) rotateY(${yaw.toFixed(2)}deg)`,
               opacity,
-              zIndex: 10 + Math.round(Math.cos(rad) * 100),
+              // Above every other card while it grows, so it visibly
+              // passes in front of its ring neighbours instead of the
+              // stacking order it had mid-scroll fighting the enlarge.
+              zIndex: isPublications && transitioning ? 1000 : 10 + Math.round(Math.cos(rad) * 100),
               willChange: "transform, opacity",
             }}
           >
-            <div style={{ position: "relative", borderRadius: 14 }}>
+            <div
+              ref={isPublications ? pubInnerRef : undefined}
+              style={{ position: "relative", borderRadius: 14 }}
+            >
               {/* The same static, card-owned glow the strip uses:
                   brightest on the piece in focus, never cursor-driven.
                   Constant shadow on its own layer, faded rather than
@@ -435,6 +502,24 @@ export default function ArcCarousel({
           </div>
         );
       })}
+
+      {/* THE TRANSITION COVER. Fixed rather than scoped to the ring, so it
+          sits over the whole page (the bulb, the other cards, everything)
+          while the clicked card grows in front of it — opacity 0 and
+          non-interactive until a click starts the timeline above, which
+          fades it in over the same second the card enlarges over. */}
+      <div
+        ref={transitionOverlayRef}
+        aria-hidden
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 900,
+          background: "#000",
+          opacity: 0,
+          pointerEvents: "none",
+        }}
+      />
     </div>
   );
 }

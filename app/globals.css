@@ -1,8 +1,19 @@
 @import "tailwindcss";
 
+/* Every page on this site is dark, unconditionally — not "dark unless the
+   OS prefers light," which is what the unmodified Next.js template this
+   came from actually did (#ffffff by default, #0a0a0a only under
+   prefers-color-scheme: dark). On a light-scheme system that mismatch was
+   invisible while React was mounted (every page's own root sets its own
+   bg-black), but it is exactly the colour the BROWSER paints during a full
+   navigation, before the new document's CSS and React have run — the
+   flash a full `window.location.assign` (the homepage Publications card's
+   own transition, see ArcCarousel) would otherwise show. One unconditional
+   dark value removes that flash everywhere a full navigation can happen,
+   not only in that one transition. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -10,13 +21,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
