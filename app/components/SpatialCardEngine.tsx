@@ -172,21 +172,14 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   );
 
   if (opt.rocks) {
-    // Staged as the reference does: a broken boulder at the back right for
-    // the smallest piece to stand against and to close the gap beneath it,
-    // and a low slab forward and left, on the surface in front of the
-    // group. The boulder is set back far enough that its own jitter — up to
-    // a fifth of its radius — still cannot reach in front of the Policy
-    // document standing at z 0.5.
-    addRocks(THREE, group, [
-      { radius: 0.5, pos: [1.66, -0.72, -0.35], rot: [-0.3, 1.4, 0.5], seed: 2 },
-      {
-        radius: 0.31,
-        pos: [-1.1, -1.32, 0.95],
-        rot: [0.4, 0.8, 0.2],
-        scale: [1.3, 0.5, 1.0],
-        seed: 1,
-      },
+    // Staged as the reference does: the tall/irregular stone at the back
+    // right for the smallest piece to stand against and to close the gap
+    // beneath it, and the low/elongated one forward and left, on the
+    // surface in front of the group. Async — see addRocks — so this fires
+    // and forgets rather than blocking the rest of the synchronous setup.
+    void addRocks(THREE, group, [
+      { file: "rock-tall-irregular.glb", pos: [2.05, -0.85, 0.15], rot: [-0.3, 1.4, 0.5], scale: 0.5 },
+      { file: "rock-low-elongated.glb", pos: [-1.1, -1.32, 0.95], rot: [0.4, 0.8, 0.2], scale: 0.55 },
     ]);
   }
 

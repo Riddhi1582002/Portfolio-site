@@ -3,78 +3,122 @@
 // THE MINERAL PROPS.
 //
 // Both Publications scenes — the card's compact still life and the index
-// page's wide floor display — stage the publications against dark angular
+// page's wide floor display — stage the publications against dark, natural
 // stones, the way the references do: something with real weight in the
 // foreground for the printed pieces to read against. They are environmental
-// props, never focal points, so they share one very dark, fully rough
-// material and one shape generator rather than each engine growing its own.
+// props, never focal points.
 //
-// The shape is a bare icosahedron with its vertices pushed in and out by a
-// deterministic hash of their own index — the same seed always produces the
-// same stone, so a scene composed against one does not shift between loads.
+// TWO SUPPLIED GLBs, not a procedural shape. An earlier pass generated
+// stones as a jittered icosahedron — deterministic and cheap, but it reads
+// as exactly what it is: a low-poly ball with noise on it, not an eroded
+// natural form (uneven planes, asymmetric silhouette, no two faces the same
+// size). rock-low-elongated.glb and rock-tall-irregular.glb are real
+// sculpted forms, loaded and cached the same way the publications
+// themselves are — see PublicationsDisplay's own module-scope cache for
+// the pattern this mirrors.
 
 import type * as THREEModule from "three";
 
+const ROCK_BASE = "/model/publications";
+
+export type RockFile = "rock-low-elongated.glb" | "rock-tall-irregular.glb";
+
 export type RockPlacement = {
-  radius: number;
+  file: RockFile;
   pos: [number, number, number];
   rot: [number, number, number];
-  /** Per-axis stretch, so one generator yields both a broken boulder and a
-   *  low flat slab. Defaults to uniform. */
-  scale?: [number, number, number];
-  /** Seeds the vertex jitter — two stones with different seeds are
-   *  different stones, the same seed is the same stone every load. */
-  seed: number;
+  scale: number;
 };
 
+let rockLoaderPromise: Promise<
+  InstanceType<typeof import("three/examples/jsm/loaders/GLTFLoader.js").GLTFLoader>
+> | null = null;
+function getRockLoader() {
+  rockLoaderPromise ??= import("three/examples/jsm/loaders/GLTFLoader.js").then(
+    ({ GLTFLoader }) => new GLTFLoader()
+  );
+  return rockLoaderPromise;
+}
+
+// One cache entry per FILE, not per placement — the same two stones are
+// used, at different positions and scales, by both the card and the index
+// page, and (within the index page) more than once each along the floor.
+const rockRootCache = new Map<string, Promise<import("three").Object3D>>();
+function loadRockRoot(
+  THREE: typeof THREEModule,
+  file: RockFile
+): Promise<import("three").Object3D> {
+  let cached = rockRootCache.get(file);
+  if (cached) return cached;
+  cached = getRockLoader().then(
+    (loader) =>
+      new Promise<import("three").Object3D>((resolve) => {
+        loader.load(
+          `${ROCK_BASE}/${file}`,
+          (gltf) => {
+            const root = gltf.scene;
+            // Centred on its own bounding box, same as a publication's own
+            // root (see processRoot in PublicationsDisplay) — without
+            // this, `pos` in a placement refers to wherever the file's own
+            // pivot happens to sit, not to the stone's actual centre, and
+            // every placement has to be discovered by trial rather than
+            // reasoned about.
+            const box = new THREE.Box3().setFromObject(root);
+            const centre = box.getCenter(new THREE.Vector3());
+            root.position.sub(centre);
+            root.traverse((o) => {
+              const mesh = o as import("three").Mesh;
+              if (!mesh.isMesh) return;
+              mesh.castShadow = true;
+              mesh.receiveShadow = true;
+              if (!mesh.geometry.getAttribute("normal")) mesh.geometry.computeVertexNormals();
+              const mat = mesh.material as import("three").MeshStandardMaterial;
+              // The supplied material reads as a mid grey (~0x716d68) —
+              // true to the sculpt, but well short of the dark charcoal
+              // stone the reference calls for. Darkened here rather than
+              // re-exported: multiplying preserves whatever warm/cool cast
+              // and per-face variation the bake already carries, it just
+              // moves the whole thing down the value scale. Not pushed all
+              // the way to near-black — bare charcoal with no light
+              // response at all is what read as a hole cut in the floor
+              // during this scene's own earlier (procedural) pass.
+              if (mat?.color) mat.color.multiplyScalar(0.34);
+            });
+            resolve(root);
+          },
+          undefined,
+          // A stone that fails to load simply is not there — the floor
+          // still reads correctly without it, so this resolves to an
+          // empty group rather than breaking the composition around it.
+          () => resolve(new THREE.Group())
+        );
+      })
+  );
+  rockRootCache.set(file, cached);
+  return cached;
+}
+
 /**
- * Adds one stone per placement to `parent`, sharing a single material
- * across all of them, and returns that material so the caller can dispose
- * it (the geometries are per-stone and disposed by the caller's own scene
- * walk).
+ * Loads (from cache, after the first call anywhere) and adds one clone per
+ * placement to `parent`. Asynchronous — unlike the old procedural
+ * generator — so callers add it to their own loading sequence rather than
+ * expecting stones to be in the scene on the same frame the engine mounts.
  */
-export function addRocks(
+export async function addRocks(
   THREE: typeof THREEModule,
   parent: import("three").Object3D,
   placements: RockPlacement[]
-): import("three").MeshStandardMaterial {
-  // Dark, but not so dark the facets stop catching the key: at near-black
-  // with no specular at all a stone reads as a hole cut in the floor rather
-  // than as a solid sitting on it.
-  // These stones stand in the shadow of the publications they support, so
-  // almost all the light reaching them is fill and bounce. Their albedo has
-  // to sit well above the value they are meant to READ at, or they resolve
-  // to flat black silhouettes with no facets in them at all.
-  const material = new THREE.MeshStandardMaterial({
-    color: 0x5e574f,
-    roughness: 0.82,
-    metalness: 0.06,
-  });
-  for (const { radius, pos, rot, scale, seed } of placements) {
-    // One subdivision, not a bare icosahedron: twenty flat faces read as a
-    // low-poly prop, eighty jittered ones read as broken stone.
-    const geo = new THREE.IcosahedronGeometry(radius, 1);
-    const attr = geo.getAttribute("position");
-    const v = new THREE.Vector3();
-    for (let i = 0; i < attr.count; i++) {
-      v.fromBufferAttribute(attr, i);
-      const n = Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453;
-      // Enough to break the sphere, not so much that the subdivided faces
-      // spike apart and read as shattered crystal rather than stone.
-      v.multiplyScalar(1 + (n - Math.floor(n) - 0.5) * 0.22);
-      attr.setXYZ(i, v.x, v.y, v.z);
-    }
-    attr.needsUpdate = true;
-    geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, material);
-    mesh.position.set(...pos);
-    mesh.rotation.set(...rot);
-    if (scale) mesh.scale.set(...scale);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    parent.add(mesh);
+): Promise<void> {
+  const resolved = await Promise.all(
+    placements.map(async (p) => ({ p, root: await loadRockRoot(THREE, p.file) }))
+  );
+  for (const { p, root } of resolved) {
+    const instance = root.clone(true);
+    instance.scale.setScalar(p.scale);
+    instance.position.set(...p.pos);
+    instance.rotation.set(...p.rot);
+    parent.add(instance);
   }
-  return material;
 }
 
 /**

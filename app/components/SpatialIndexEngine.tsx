@@ -249,18 +249,15 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
     // base with one reads as a modelling error wedged under it, not as a
     // prop beside it — and both are low enough never to compete for
     // attention with the work.
-    const stones = new THREE.Group();
-    ownedMaterials.push(
-      addRocks(THREE, stones, [
-        { radius: 0.28, pos: [1.3, opt.floorY + 0.12, -1.15], rot: [-0.2, 1.9, 0.4], scale: [1.2, 0.6, 1.0], seed: 4 },
-        { radius: 0.32, pos: [-4.55, opt.floorY + 0.14, -1.9], rot: [0.3, 0.7, 0.2], scale: [1.3, 0.6, 1.1], seed: 3 },
-      ])
-    );
-    stones.traverse((o) => {
-      const mesh = o as import("three").Mesh;
-      if (mesh.isMesh) ownedGeometry.push(mesh.geometry);
-    });
-    group.add(stones);
+    //
+    // Loaded from the shared module-scope cache (see sceneRocks.ts), the
+    // same as a publication's own geometry — so unlike the floor below,
+    // this is NOT pushed onto `ownedGeometry`/`ownedMaterials`: that cache
+    // has to survive this mount's own cleanup for the next mount to reuse.
+    void addRocks(THREE, group, [
+      { file: "rock-low-elongated.glb", pos: [1.3, opt.floorY + 0.16, -1.15], rot: [-0.2, 1.9, 0.4], scale: 0.62 },
+      { file: "rock-tall-irregular.glb", pos: [-4.55, opt.floorY + 0.2, -1.9], rot: [0.3, 0.7, 0.2], scale: 0.7 },
+    ]);
   }
 
   type Loaded = {
