@@ -93,11 +93,13 @@ const D = Math.PI / 180;
  * are these same five files, and matching `id`s is what makes them share
  * this card's already-warm cache.
  *
- * All five files in this pack (asset pack v2) share one structure — four
- * meshes per book (`_pages`, `_front`, `_back`, `_spine`), each a proper
- * box with real thickness, built correctly-oriented from the start — so
- * unlike the old mixed legacy/rebuild set, none of these need a per-file
- * orientation flag or material override; see `processRoot` below.
+ * The four rebuilt publications (excel-edge, mining, handbook, policy)
+ * share one construction: page block, bevelled front/back cover shells,
+ * a textured front_cover_artwork, spine and layered page-edge strips.
+ * Sneh Sagar's own construction is separate and was not rebuilt. Only
+ * Sneh Sagar needs the V-flip correction in `processRoot` — see its
+ * comment for why the other four must NOT get it despite shipping their
+ * own UVs too.
  */
 export const PUBLICATIONS: Publication[] = [
   {
@@ -249,17 +251,24 @@ function addPlanarUV(THREE: typeof import("three"), geometry: import("three").Bu
 }
 
 /**
- * The Sneh Sagar rebuild's three textured parts (front/back cover, spine)
- * ship with their OWN UVs — unlike the other four files, `addPlanarUV`
- * above is a no-op for them — authored against a bottom-left texture
- * origin (a vertex at the bottom of the quad reads UV v=0). glTF's own
- * convention, which is what GLTFLoader configures every texture for
- * (`flipY = false`, top-left origin), reads that same v=0 as the TOP of
- * the image, so as supplied each cover rendered upside down. Flipping V
- * on exactly the meshes that already carried their own UV corrects the
+ * Sneh Sagar's own three textured parts (front/back cover, spine) ship
+ * with their OWN UVs, authored against a bottom-left texture origin (a
+ * vertex at the bottom of the quad reads UV v=0). glTF's own convention,
+ * which is what GLTFLoader configures every texture for (`flipY = false`,
+ * top-left origin), reads that same v=0 as the TOP of the image, so as
+ * supplied each cover rendered upside down. Flipping V corrects the
  * mismatch without touching a single texel of the artwork or the geometry
- * this file supplies, and without touching any of the other four files'
- * own (generated, already top-left-correct) UVs.
+ * this file supplies.
+ *
+ * Only ever called for that one file — see `needsVFlip` in `loadRoot`.
+ * The four rebuilt publications (excel-edge, mining, handbook, policy)
+ * ship authored UVs too, on every mesh including their bevelled edges and
+ * page block, but in the CORRECT top-left convention already: applying
+ * this same flip to them was the actual bug the first version of this
+ * function had — "has its own UV" is not the same fact as "was authored
+ * bottom-left", and conflating the two is what put ExcelEDGE's masthead
+ * and Mining's cover on screen mirrored/upside-down the first time these
+ * four were swapped in.
  *
  * `seen` de-duplicates by the ACTUAL attribute object, not by mesh: this
  * exporter (trimesh) reuses one glTF accessor — one underlying typed array
@@ -285,13 +294,17 @@ function flipV(
  * Turn a freshly loaded gltf.scene into the shared, cache-ready form:
  * centred on its own box, with UVs supplied where the file has none, and
  * every texture's colour space/filtering set — ONCE. Everything after this
- * is a clone. No per-file orientation flag or material override: every
- * file in this pack is the same clean four-part (pages/front/back/spine)
- * structure, correctly oriented and correctly coloured from the exporter.
+ * is a clone.
+ *
+ * `needsVFlip` is per-FILE, not inferred from "does this mesh already have
+ * a UV attribute" — every mesh in every one of these five files now ships
+ * authored UVs, but only Sneh Sagar's were authored bottom-left. See
+ * `flipV`'s own comment for the bug that conflating the two caused.
  */
 function processRoot(
   THREE: typeof import("three"),
-  root: import("three").Object3D
+  root: import("three").Object3D,
+  needsVFlip: boolean
 ): import("three").Object3D {
   const box = new THREE.Box3().setFromObject(root);
   const centre = box.getCenter(new THREE.Vector3());
@@ -303,7 +316,7 @@ function processRoot(
     if (!mesh.isMesh) return;
     const hadOwnUV = !!mesh.geometry.getAttribute("uv");
     addPlanarUV(THREE, mesh.geometry);
-    if (hadOwnUV) flipV(mesh.geometry, flippedUVs);
+    if (hadOwnUV && needsVFlip) flipV(mesh.geometry, flippedUVs);
     if (!mesh.geometry.getAttribute("normal")) mesh.geometry.computeVertexNormals();
     mesh.castShadow = true;
     // Every part sits at a genuinely different depth once scaled (cover,
@@ -378,7 +391,7 @@ export function loadRoot(spec: Publication): Promise<import("three").Object3D> {
       new Promise<import("three").Object3D>((resolve) => {
         loader.load(
           `${BASE}/${spec.file}`,
-          (gltf) => resolve(processRoot(THREE, gltf.scene)),
+          (gltf) => resolve(processRoot(THREE, gltf.scene, spec.id === "sneh-sagar")),
           undefined,
           // A publication that fails to load resolves to an empty group
           // rather than rejecting, so Promise.all below still settles and
