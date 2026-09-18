@@ -20,6 +20,7 @@
 // placement per object.
 
 import type * as THREEModule from "three";
+import { addRocks, makeFadedFloor } from "./sceneRocks";
 
 export type SpatialIndexPlacement = {
   scale: number;
@@ -50,6 +51,12 @@ export type SpatialIndexCallbacks = {
   /** Screen-space position of the active (hovered ?? selected) object's
    *  anchor point, for a metadata label — null when nothing is active. */
   onActiveScreenPos: (pos: { x: number; y: number } | null) => void;
+  /** A region of the page the composition must not grow into — a caller's
+   *  own fixed UI, in client coordinates. Consulted during the fit below,
+   *  so an object is only ever held off it when the two actually share
+   *  horizontal space; a composition well clear to the side is left at
+   *  full size. Omitted means nothing to avoid. */
+  getAvoidRect?: () => { top: number; left: number; right: number } | null;
 };
 
 export type SpatialIndexRefs = {
@@ -84,6 +91,19 @@ export type SpatialIndexOptions = {
   focusScale: number;
   focusMs: number;
   compositionArriveMs: number;
+  /** The groundline. Every object's placement is authored so its own base
+   *  sits exactly here, which is what makes the arrangement read as pieces
+   *  STANDING on a floor rather than hanging in front of one. */
+  floorY: number;
+  /** Dark stones lying on the floor between and behind the objects —
+   *  secondary props that give the surface something to be, never focal. */
+  rocks: boolean;
+  /** Fraction of the canvas width kept clear at each side by the fit. */
+  fitMarginX: number;
+  /** Pixels the fit keeps between the composition and `getAvoidRect`. */
+  fitAvoidGap: number;
+  /** How far the fit may shrink the composition before giving up. */
+  fitMinScale: number;
 };
 
 export const DEFAULT_SPATIAL_INDEX_OPTIONS: SpatialIndexOptions = {
@@ -105,6 +125,11 @@ export const DEFAULT_SPATIAL_INDEX_OPTIONS: SpatialIndexOptions = {
   focusScale: 1.07,
   focusMs: 520,
   compositionArriveMs: 480,
+  floorY: -0.98,
+  rocks: true,
+  fitMarginX: 0.015,
+  fitAvoidGap: 16,
+  fitMinScale: 0.3,
 };
 
 /**
@@ -123,7 +148,8 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
   options: Partial<SpatialIndexOptions> = {}
 ): () => void {
   const opt = { ...DEFAULT_SPATIAL_INDEX_OPTIONS, ...options };
-  const { onHoverObject, onSelectObject, onFocusComplete, onActiveScreenPos } = callbacks;
+  const { onHoverObject, onSelectObject, onFocusComplete, onActiveScreenPos, getAvoidRect } =
+    callbacks;
   const { hoveredIdRef, selectedIdRef, narrowRef } = refs;
   let disposed = false;
 
@@ -185,18 +211,57 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
   const group = new THREE.Group();
   scene.add(group);
 
-  // A dark, faintly glossy surface — not just a shadow catcher — so the
-  // group reads as physically standing on something even in the parts of
-  // the plane no cast shadow reaches, matching the reference's tabletop
-  // rather than objects floating over an catch-all shadow blob.
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(24, 24),
-    new THREE.MeshStandardMaterial({ color: 0x322c24, roughness: 0.28, metalness: 0.3 })
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -1.7;
-  floor.receiveShadow = true;
+  // A dark, glossy surface — not just a shadow catcher — so the group
+  // reads as physically standing on something even where no cast shadow
+  // reaches, and so the pieces get the shallow reflection the reference
+  // has under them. It FADES rather than ending at its own edge: this
+  // camera is tilted down only about 13 degrees, which puts an opaque
+  // plane's far edge squarely in frame as a hard line straight across the
+  // composition (it was landing at a third of the viewport height).
+  const floor = makeFadedFloor(THREE, {
+    size: 26,
+    y: opt.floorY,
+    // METALNESS IS NEAR ZERO ON PURPOSE. This scene carries no environment
+    // map, and on a MeshStandardMaterial metalness without one subtracts
+    // diffuse and supplies no reflection to replace it — at 0.3 it rendered
+    // the floor to within a hair of black, which is the "flat black
+    // rectangle" this display must not be. The sheen the reference has
+    // under the pieces comes from a low roughness catching the key light
+    // instead, and the albedo is lifted to match: the surface has to be a
+    // dark warm grey AFTER tone mapping, not before it.
+    color: 0x453b32,
+    core: 0.45,
+    roughness: 0.24,
+    metalness: 0.08,
+  });
   group.add(floor);
+
+  // The props this engine builds itself, as distinct from the object roots
+  // it borrows from a caller's cache — these it owns and has to release.
+  const ownedGeometry: import("three").BufferGeometry[] = [floor.geometry];
+  const ownedMaterials: import("three").Material[] = [floor.material as import("three").Material];
+
+  if (opt.rocks) {
+    // Lying on the OPEN floor, set back behind the line of publications:
+    // one in the gap the composition actually leaves between the hero and
+    // the piece to its right, one out past the far left of the row. Both
+    // are clear of every publication's own footprint — a stone sharing a
+    // base with one reads as a modelling error wedged under it, not as a
+    // prop beside it — and both are low enough never to compete for
+    // attention with the work.
+    const stones = new THREE.Group();
+    ownedMaterials.push(
+      addRocks(THREE, stones, [
+        { radius: 0.28, pos: [1.3, opt.floorY + 0.12, -1.15], rot: [-0.2, 1.9, 0.4], scale: [1.2, 0.6, 1.0], seed: 4 },
+        { radius: 0.32, pos: [-4.55, opt.floorY + 0.14, -1.9], rot: [0.3, 0.7, 0.2], scale: [1.3, 0.6, 1.1], seed: 3 },
+      ])
+    );
+    stones.traverse((o) => {
+      const mesh = o as import("three").Mesh;
+      if (mesh.isMesh) ownedGeometry.push(mesh.geometry);
+    });
+    group.add(stones);
+  }
 
   type Loaded = {
     item: T;
@@ -238,8 +303,96 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
         loaded.push({ item, holder, meshes });
       }
       compositionReadyAt = performance.now();
+      needsFit = true;
     }
   );
+
+  // ── THE FIT ──────────────────────────────────────────────────────
+  //
+  // A composition authored in WORLD units occupies a share of the frame
+  // that depends entirely on the viewport's aspect: this arrangement is
+  // laid out across roughly eight units of width, which at 16:9 sits
+  // comfortably inside the frame and at 4:3 runs a publication off each
+  // end of it. Authoring per-breakpoint placements does not fix that — it
+  // only moves the breakpoint the next screen size falls between.
+  //
+  // So the group is scaled, uniformly, to the largest size at which every
+  // object is still wholly on screen and still clear of whatever fixed UI
+  // the caller nominates. Uniform is the point: anything per-axis would
+  // squash real geometry, and these are supposed to be physical objects.
+  // Solved by bisection against the ACTUAL projected boxes rather than
+  // predicted analytically, because perspective, the camera's downward
+  // tilt and each object's own rotation all feed into where its corners
+  // land, and an estimate that is wrong at one aspect is wrong at all of
+  // them.
+  const fitBox = new THREE.Box3();
+  const fitV = new THREE.Vector3();
+  const fitsAt = (k: number, pan: number, w: number, h: number) => {
+    group.scale.setScalar(k);
+    group.position.x = pan;
+    group.updateMatrixWorld(true);
+    const canvas = renderer.domElement.getBoundingClientRect();
+    const avoid = getAvoidRect?.() ?? null;
+    const margin = w * opt.fitMarginX;
+    for (const { holder } of loaded) {
+      fitBox.setFromObject(holder);
+      let L = Infinity, R = -Infinity, T = Infinity, B = -Infinity;
+      for (const sx of [fitBox.min.x, fitBox.max.x])
+        for (const sy of [fitBox.min.y, fitBox.max.y])
+          for (const sz of [fitBox.min.z, fitBox.max.z]) {
+            fitV.set(sx, sy, sz).project(camera);
+            const px = (fitV.x * 0.5 + 0.5) * w;
+            const py = (-fitV.y * 0.5 + 0.5) * h;
+            L = Math.min(L, px); R = Math.max(R, px);
+            T = Math.min(T, py); B = Math.max(B, py);
+          }
+      if (L < margin || R > w - margin || T < 0 || B > h) return false;
+      if (avoid) {
+        const aL = avoid.left - canvas.left;
+        const aR = avoid.right - canvas.left;
+        const aT = avoid.top - canvas.top;
+        if (Math.min(R, aR) - Math.max(L, aL) > 0 && B > aT - opt.fitAvoidGap) return false;
+      }
+    }
+    return true;
+  };
+  // Shrinking is not the only way out of a collision, and on a short
+  // landscape phone it is the wrong one: there the text index takes the
+  // whole left half of the frame, and a composition that only ever scales
+  // shrinks to a thumbnail trying to squeeze past it. Sliding sideways
+  // out from over the index lets it stay a usable size instead. Centred is
+  // always preferred — these offsets are only ever reached when 0 fails.
+  const PAN_CANDIDATES = [0, 0.7, 1.4, 2.1, 2.8, -0.7, -1.4];
+  const panThatFits = (k: number, w: number, h: number) => {
+    for (const pan of PAN_CANDIDATES) if (fitsAt(k, pan, w, h)) return pan;
+    return null;
+  };
+  const fitGroup = () => {
+    const w = host.clientWidth || 1;
+    const h = host.clientHeight || 1;
+    if (!loaded.length) return;
+    if (panThatFits(1, w, h) !== null) return;
+    let lo = opt.fitMinScale;
+    let hi = 1;
+    let bestPan = 0;
+    for (let i = 0; i < 8; i++) {
+      const mid = (lo + hi) / 2;
+      const pan = panThatFits(mid, w, h);
+      if (pan !== null) {
+        lo = mid;
+        bestPan = pan;
+      } else hi = mid;
+    }
+    // Re-applies the largest size tested that fitted (or the floor, when
+    // even that did not — a too-small composition beats a clipped one).
+    // `panThatFits` leaves the group wherever its last, failing probe put
+    // it, so this is not optional.
+    fitsAt(lo, bestPan, w, h);
+  };
+  /** Set whenever the frame or the layout changes; consumed by the tick
+   *  once the arrival ease has finished, so the fit never measures the
+   *  composition mid-way through settling in. */
+  let needsFit = true;
 
   const resize = () => {
     const w = host.clientWidth || 1;
@@ -247,6 +400,7 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    needsFit = true;
   };
   resize();
   window.addEventListener("resize", resize);
@@ -314,6 +468,7 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
     lastScreenY = -1e9;
   const hoverAmount = new Map<string, number>();
   let focusFiredFor: string | null = null;
+  let lastNarrow = narrowRef.current;
 
   const tick = () => {
     raf = requestAnimationFrame(tick);
@@ -423,6 +578,21 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
       }
     }
 
+    // The wide and narrow arrangements are different compositions with
+    // different extents, so a switch between them needs its own fit.
+    if (narrowRef.current !== lastNarrow) {
+      lastNarrow = narrowRef.current;
+      needsFit = true;
+    }
+    // Deferred to here rather than run straight from resize/load: until the
+    // arrival ease finishes, every object carries an extra lift (see the
+    // position write above) and the composition would be measured somewhere
+    // it is not going to stay.
+    if (needsFit && arrive >= 1) {
+      needsFit = false;
+      fitGroup();
+    }
+
     // Report the active object's screen position for a metadata label, only
     // when it actually changed.
     if (activeId) {
@@ -472,9 +642,15 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
     host.removeEventListener("pointermove", onPointerMove);
     host.removeEventListener("pointerleave", onPointerLeave);
     host.removeEventListener("click", onClick as EventListener);
-    // Geometry is shared with a cache root — never disposed here.
+    // The OBJECTS' geometry is shared with a cache root — never disposed
+    // here. The floor and the stones are this engine's own, and are.
     for (const t of sharedTextures) t.dispose();
     for (const m of clonedMaterials) m.dispose();
+    for (const g of ownedGeometry) g.dispose();
+    for (const m of ownedMaterials) {
+      (m as import("three").MeshStandardMaterial).alphaMap?.dispose();
+      m.dispose();
+    }
     renderer.dispose();
     renderer.domElement.remove();
   };

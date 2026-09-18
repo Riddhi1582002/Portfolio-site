@@ -683,6 +683,15 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           for (let i = 0; i < found.length; i++) {
             if (taken >= SRC_CAP[kind] || srcCount >= SRC_POOL) break;
             const el = found[i];
+            // A surface can opt OUT of being one of the creature's sources.
+            // The publications card is the one that does: it is a composed
+            // still life that fills its own frame edge to edge, so a moth
+            // drawn to it and settling on it lands on the work rather than
+            // beside it. Opting the element out here — rather than adding a
+            // special case to the attraction, the perch and the lighting
+            // separately — is what keeps that a property of the SCENE and
+            // leaves every behaviour below untouched.
+            if ((el as HTMLElement).dataset.moth === "ignore") continue;
             const lum = lumOf(el);
             if (lum < 0.04) continue;
             const rect = el.getBoundingClientRect();

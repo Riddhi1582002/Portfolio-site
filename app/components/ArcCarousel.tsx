@@ -254,6 +254,10 @@ export default function ArcCarousel({
           <div
             key={i}
             data-arc-card={i}
+            // See MothLayer's own scan: the publications still life fills
+            // this card to its edges, so the moth is not offered it as
+            // somewhere to fly to or to settle on.
+            data-moth={isPublications ? "ignore" : undefined}
             ref={isPublications ? pubCardRef : undefined}
             // HOVER IS A CUSTOM PROPERTY, NOT REACT STATE — same reasoning
             // as before (a re-render here would wipe HoverCard's own

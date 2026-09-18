@@ -19,7 +19,16 @@ import PublicationsIndexDisplay, {
 } from "./PublicationsIndexDisplay";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
-const NARROW_BREAKPOINT = 860;
+// WHICH ARRANGEMENT THE SPATIAL INDEX USES IS A QUESTION ABOUT THE SHAPE OF
+// THE FRAME, NOT THE SIZE OF THE DEVICE. The two compositions are laid out
+// in world units, so what decides whether one fits is the viewport's aspect:
+// the wide display needs room across, the stacked one needs room down.
+// Keyed on width alone, a phone held in landscape (740x360 — wider than it
+// is tall, and barely any height) was handed the STACKED arrangement and
+// piled all five publications behind the hero. Anything at all taller than
+// it is wide gets the stacked one; everything else gets the wide display,
+// which the engine's own fit then scales to the frame it actually has.
+const NARROW_ASPECT = 1.1;
 
 export default function PublicationsIndexView() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -29,7 +38,7 @@ export default function PublicationsIndexView() {
   const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const check = () => setNarrow(window.innerWidth < NARROW_BREAKPOINT);
+    const check = () => setNarrow(window.innerWidth < window.innerHeight * NARROW_ASPECT);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);

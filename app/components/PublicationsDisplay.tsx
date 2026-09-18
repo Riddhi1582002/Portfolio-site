@@ -67,15 +67,25 @@ export type Publication = {
 
 const D = Math.PI / 180;
 
-// Hierarchy, top to bottom: Sneh Sagar dominant and most forward; ExcelEDGE
-// clearly the second voice; Mining supporting; the Handbook supporting and
-// deliberately quieter than ExcelEDGE; Policy the smallest.
+// ONE COMPACT STILL LIFE, IN THREE DEPTHS — the reference's own structure:
 //
-// They are arranged as a leaning group rather than a row: each one is turned
-// a few degrees off square and set back a little further, so the group has a
-// front and a back instead of five objects sharing a plane. The overlaps are
-// chosen so every cover keeps a readable strip of its own — the further back
-// a piece is, the more of its outer edge stays clear of the one in front.
+//   back    (z 0)      ExcelEDGE left, Employee Handbook right
+//   middle  (z ~0.45)  Mining left, Policy right
+//   front   (z ~0.85)  Sneh Sagar, centred
+//
+// so the group has a front and a back rather than five objects sharing a
+// plane, and every cover keeps a readable strip of its own.
+//
+// SNEH SAGAR IS DOMINANT BY BEING FOREMOST AND CENTRED, not by being huge.
+// Scaled to fill the card it measured 72% of the card's width and buried
+// the other four — the reference gives its hero about 44%, barely a fifth
+// wider than the newsletter behind it, and wins the hierarchy with depth
+// and placement instead. The four supporting pieces are therefore close to
+// one another in size, as they are in the reference.
+//
+// The back pair stand ABOVE the floor rather than on it: they are leaning
+// into the group from behind, and both their bases are covered — ExcelEDGE
+// by Sneh Sagar and Mining, the Handbook by Sneh Sagar and the back stone.
 /**
  * Exported so the Publications index page can read the loading-relevant
  * identity of each file (`id`, `file`) without duplicating it — that page
@@ -91,71 +101,71 @@ const D = Math.PI / 180;
  */
 export const PUBLICATIONS: Publication[] = [
   {
-    // 1. SNEH SAGAR — the hero, dominant and most forward.
+    // 1. SNEH SAGAR — the hero: front row, centred, standing on the floor.
     id: "sneh-sagar",
     file: "sneh-sagar-book-corrected.glb",
-    scale: 1.55,
-    pos: [0.0, -0.45, 0.85],
+    scale: 0.95,
+    pos: [0.13, -0.28, 0.85],
     rot: [-3 * D, 16 * D, -2 * D],
     lift: [0.16, 0.15, 0.35],
     turn: [1.5 * D, -4 * D, 1 * D],
     parallax: 1,
   },
   {
-    // 2. EXCELEDGE — the second voice, front row right, turned the other
-    // way, raised above the hero's own shoulder so it stands as a second
-    // voice beside it rather than mostly hidden behind it.
+    // 2. EXCELEDGE — the second voice: BACK LEFT, leaning in over the
+    // hero's left shoulder, its whole masthead clear of everything in
+    // front of it.
     id: "excledge",
     file: "excel-edge-newsletter.glb",
-    scale: 0.98,
-    pos: [-0.65, 1.05, 0.35],
+    scale: 1.02,
+    pos: [-0.59, 0.78, 0.0],
     rot: [-2 * D, -16 * D, 2.5 * D],
     lift: [0.36, 0.12, 0.22],
     turn: [1 * D, 4 * D, -1 * D],
     parallax: 0.78,
   },
   {
-    // 3. MINING — back row left, standing well above the hero's shoulder
-    // so its own title band clears the top of the cover in front of it.
+    // 3. MINING — MIDDLE ROW LEFT, forward of ExcelEDGE and overlapping
+    // the hero's left edge. Pulled in off the card's own edge, where it
+    // used to be clipped in half.
     id: "mining",
     file: "mining-brochure.glb",
     scale: 0.86,
-    pos: [-1.7, 0.5, -0.1],
+    pos: [-1.28, -0.24, 0.45],
     rot: [-4 * D, 20 * D, -5 * D],
     lift: [-0.24, 0.13, 0.12],
     turn: [0.5 * D, -3 * D, 2 * D],
     parallax: 0.6,
   },
   {
-    // 4. EMPLOYEE HANDBOOK — back row right, and deliberately quieter than
-    // ExcelEDGE: smaller, further back, and further off square, but raised
-    // in step with the other supporting pieces so it still stands clear of
-    // the hero rather than vanishing behind it.
+    // 4. EMPLOYEE HANDBOOK — BACK RIGHT, the mirror of ExcelEDGE across the
+    // hero and deliberately quieter than it: smaller and further off
+    // square, but standing just as clear of the piece in front.
     id: "handbook",
     file: "employee-handbook.glb",
-    scale: 0.74,
-    pos: [1.35, 0.95, 0.35],
+    scale: 0.61,
+    pos: [1.02, 0.87, 0.0],
     rot: [-4 * D, -23 * D, 4 * D],
     lift: [0.22, 0.09, 0.09],
     turn: [0.5 * D, 3 * D, -1.5 * D],
     parallax: 0.48,
   },
   {
-    // 5. POLICY — the smallest, tucked in low at the front-right rather
-    // than stacked behind the taller four: buried at the back put it
-    // entirely behind ExcelEDGE and the Handbook from this camera angle,
-    // so it never actually read as a fifth object — smallest still, but
-    // visible, is the point.
+    // 5. POLICY — MIDDLE ROW RIGHT, the mirror of Mining: the smallest of
+    // the five, standing forward of the Handbook and against the back
+    // stone rather than stacked behind the taller four, where it used to
+    // disappear entirely from this camera angle.
     id: "policy",
     file: "policy-document.glb",
-    scale: 0.62,
-    pos: [1.75, -0.85, 0.55],
+    scale: 0.54,
+    pos: [1.66, -0.55, 0.5],
     rot: [-5 * D, 7 * D, -2.5 * D],
-    // Pulled harder toward the reader on hover than its rest position alone
-    // would suggest — the front pair (Sneh Sagar, ExcelEDGE) also grow as
-    // they lift, and without a stronger push of its own Policy was ending
-    // up MORE hidden mid-hover than it is at rest, not less.
-    lift: [0.16, 0.12, 0.15],
+    // Its hover barely moves OUTWARD. Policy is the piece nearest the
+    // card's right edge, and lifting toward the reader already grows it;
+    // the sideways push this used to carry (0.16, from when it was buried
+    // behind the taller four and had to fight its way out) took its corner
+    // a few pixels past the frame at every viewport measured.
+    lift: [0.05, 0.12, 0.15],
     turn: [0.5 * D, -2 * D, 1 * D],
     parallax: 0.36,
   },

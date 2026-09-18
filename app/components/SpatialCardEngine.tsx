@@ -20,6 +20,7 @@
 // file only ever receives already-loadable `Object3D` roots.
 
 import type * as THREEModule from "three";
+import { addRocks, makeFadedFloor } from "./sceneRocks";
 
 /** The shape any spatial-card item must supply — the composition/hierarchy
  *  data, not the asset itself. `id` only needs to be unique within one
@@ -54,7 +55,11 @@ export type SpatialCardOptions = {
   /** How long the whole composition takes to fade/settle in once every
    *  object has finished loading — one shared clock, not one per object. */
   compositionArriveMs: number;
-  /** Two small irregular stones at the base, echoing a physical still-life.
+  /** Where the ground plane sits. Objects are composed against this, so it
+   *  is the one number that decides whether the group reads as standing on
+   *  something or hanging in front of it. */
+  floorY: number;
+  /** Dark irregular stones at the base, echoing a physical still-life.
    *  Publications keeps these on; a category with no reason for them can
    *  turn them off rather than inherit a Publications-specific prop. */
   rocks: boolean;
@@ -71,6 +76,7 @@ export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
   hoverOutTau: 120,
   pointerTau: 260,
   compositionArriveMs: 420,
+  floorY: -1.35,
   rocks: true,
 };
 
@@ -150,47 +156,38 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   const group = new THREE.Group();
   scene.add(group);
 
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(14, 14),
-    new THREE.ShadowMaterial({ opacity: 0.42 })
+  // A real surface, not a bare shadow catcher: with the group this close to
+  // filling the card, objects standing over an invisible plane read as
+  // floating in the case rather than set down in it. See makeFadedFloor for
+  // why it fades rather than ending at a horizon.
+  group.add(
+    makeFadedFloor(THREE, {
+      size: 7,
+      y: opt.floorY,
+      color: 0x100e0c,
+      core: 0.18,
+      roughness: 0.5,
+      metalness: 0.18,
+    })
   );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -1.72;
-  floor.receiveShadow = true;
-  group.add(floor);
 
   if (opt.rocks) {
-    const rockMaterial = new THREE.MeshStandardMaterial({
-      color: 0x171513,
-      roughness: 0.97,
-      metalness: 0,
-    });
-    const makeRock = (radius: number, seed: number) => {
-      const geo = new THREE.IcosahedronGeometry(radius, 0);
-      const pos = geo.getAttribute("position");
-      const v = new THREE.Vector3();
-      for (let i = 0; i < pos.count; i++) {
-        v.fromBufferAttribute(pos, i);
-        const n = Math.sin(i * 12.9898 + seed * 78.233) * 43758.5453;
-        const jitter = 1 + (n - Math.floor(n) - 0.5) * 0.34;
-        v.multiplyScalar(jitter);
-        pos.setXYZ(i, v.x, v.y, v.z);
-      }
-      pos.needsUpdate = true;
-      geo.computeVertexNormals();
-      const mesh = new THREE.Mesh(geo, rockMaterial);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      return mesh;
-    };
-    const rockA = makeRock(0.24, 1);
-    rockA.position.set(-1.55, -1.58, 0.35);
-    rockA.rotation.set(0.4, 0.8, 0.2);
-    group.add(rockA);
-    const rockB = makeRock(0.17, 2);
-    rockB.position.set(1.15, -1.62, -0.55);
-    rockB.rotation.set(-0.3, 1.4, 0.5);
-    group.add(rockB);
+    // Staged as the reference does: a broken boulder at the back right for
+    // the smallest piece to stand against and to close the gap beneath it,
+    // and a low slab forward and left, on the surface in front of the
+    // group. The boulder is set back far enough that its own jitter — up to
+    // a fifth of its radius — still cannot reach in front of the Policy
+    // document standing at z 0.5.
+    addRocks(THREE, group, [
+      { radius: 0.5, pos: [1.66, -0.72, -0.35], rot: [-0.3, 1.4, 0.5], seed: 2 },
+      {
+        radius: 0.31,
+        pos: [-1.1, -1.32, 0.95],
+        rot: [0.4, 0.8, 0.2],
+        scale: [1.3, 0.5, 1.0],
+        seed: 1,
+      },
+    ]);
   }
 
   type Loaded = { item: T; node: import("three").Object3D };
@@ -358,9 +355,14 @@ export function mountSpatialCard<T extends SpatialCardObject>(
       const mesh = o as import("three").Mesh;
       if (!mesh.isMesh) return;
       mesh.geometry?.dispose();
-      const mat = mesh.material;
-      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-      else mat?.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) {
+        // The floor's fade is a canvas texture this engine made itself, so
+        // unlike the publications' own maps (owned by the shared cache) it
+        // has to go with the material carrying it.
+        (m as import("three").MeshStandardMaterial)?.alphaMap?.dispose();
+        m?.dispose();
+      }
     });
     renderer.dispose();
     renderer.domElement.remove();
