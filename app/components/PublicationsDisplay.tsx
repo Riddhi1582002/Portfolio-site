@@ -97,7 +97,7 @@ export const PUBLICATIONS: Publication[] = [
     scale: 1.55,
     pos: [-0.6, -0.22, 0.8],
     rot: [-3 * D, 16 * D, -2 * D],
-    lift: [0.16, 0.15, 0.7],
+    lift: [0.16, 0.15, 0.35],
     turn: [1.5 * D, -4 * D, 1 * D],
     parallax: 1,
   },
@@ -110,7 +110,7 @@ export const PUBLICATIONS: Publication[] = [
     scale: 0.98,
     pos: [1.05, 0.62, 0.4],
     rot: [-2 * D, -16 * D, 2.5 * D],
-    lift: [0.36, 0.12, 0.44],
+    lift: [0.36, 0.12, 0.22],
     turn: [1 * D, 4 * D, -1 * D],
     parallax: 0.78,
   },
@@ -122,7 +122,7 @@ export const PUBLICATIONS: Publication[] = [
     scale: 0.86,
     pos: [-1.95, 1.3, -0.1],
     rot: [-4 * D, 20 * D, -5 * D],
-    lift: [-0.24, 0.13, 0.24],
+    lift: [-0.24, 0.13, 0.12],
     turn: [0.5 * D, -3 * D, 2 * D],
     parallax: 0.6,
   },
@@ -134,9 +134,9 @@ export const PUBLICATIONS: Publication[] = [
     id: "handbook",
     file: "employee-handbook.glb",
     scale: 0.74,
-    pos: [2.15, 1.05, -0.7],
+    pos: [1.85, 0.0, 0.85],
     rot: [-4 * D, -23 * D, 4 * D],
-    lift: [0.22, 0.09, 0.18],
+    lift: [0.22, 0.09, 0.09],
     turn: [0.5 * D, 3 * D, -1.5 * D],
     parallax: 0.48,
   },
@@ -155,17 +155,17 @@ export const PUBLICATIONS: Publication[] = [
     // would suggest — the front pair (Sneh Sagar, ExcelEDGE) also grow as
     // they lift, and without a stronger push of its own Policy was ending
     // up MORE hidden mid-hover than it is at rest, not less.
-    lift: [0.16, 0.12, 0.3],
+    lift: [0.16, 0.12, 0.15],
     turn: [0.5 * D, -2 * D, 1 * D],
     parallax: 0.36,
   },
 ];
 
-// The camera. A long-ish lens at a distance: the group has to read as
-// physical, and a wide angle this close would splay the outer pieces and
-// make the hero's cover keystone.
+// The camera. Close enough that the group fills most of the card, the way
+// a real still life photographed close-up would — the group's own overlap
+// and depth carries the composition, not empty air around it.
 const FOV = 26;
-const CAM_Z = 12.6;
+const CAM_Z = 10.4;
 const CAM_Y = 0.22;
 
 // How far the whole group lifts toward the reader on hover, on top of each
@@ -173,7 +173,7 @@ const CAM_Y = 0.22;
 // time is a Z move meaningful enough to actually perceive, not just a
 // tilt — while staying well short of anything that reads as a fan-out: the
 // picked-up-off-a-display feeling, not thrown off it.
-const GROUP_LIFT_Z = 0.62;
+const GROUP_LIFT_Z = 0.32;
 // The pointer's own contribution, in radians of group yaw/pitch. This rides
 // the SAME pointer position HoverCard is already tilting the card with, so
 // the two read as one gesture rather than two responses to one pointer —

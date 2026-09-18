@@ -185,12 +185,16 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
   const group = new THREE.Group();
   scene.add(group);
 
+  // A dark, faintly glossy surface — not just a shadow catcher — so the
+  // group reads as physically standing on something even in the parts of
+  // the plane no cast shadow reaches, matching the reference's tabletop
+  // rather than objects floating over an catch-all shadow blob.
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(24, 24),
-    new THREE.ShadowMaterial({ opacity: 0.4 })
+    new THREE.MeshStandardMaterial({ color: 0x322c24, roughness: 0.28, metalness: 0.3 })
   );
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -2.4;
+  floor.position.y = -1.7;
   floor.receiveShadow = true;
   group.add(floor);
 

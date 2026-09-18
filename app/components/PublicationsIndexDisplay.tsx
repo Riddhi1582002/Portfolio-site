@@ -49,32 +49,32 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
     title: "Sneh Sagar",
     medium: "Book",
     emphasis: 1,
-    wide: { scale: 1.55, pos: [0.5, -0.05, 0.55], rot: [-3 * D, 6 * D, -2 * D] },
-    narrow: { scale: 1.1, pos: [-0.05, -0.6, 0.55], rot: [-3 * D, 5 * D, -2 * D] },
+    wide: { scale: 1.55, pos: [0.5, 0.3, 0.55], rot: [-3 * D, 6 * D, -2 * D] },
+    narrow: { scale: 0.82, pos: [-0.05, -0.5, 0.55], rot: [-3 * D, 5 * D, -2 * D] },
   },
   {
     id: "excledge",
     title: "Excel Edge - Company Newsletter",
     medium: "Newsletter",
     emphasis: 0.75,
-    wide: { scale: 1.05, pos: [2.05, -0.15, 0.5], rot: [-2 * D, -11 * D, 2.5 * D] },
-    narrow: { scale: 0.85, pos: [1.15, -1.0, 0.0], rot: [-2 * D, -9 * D, 2.5 * D] },
+    wide: { scale: 1.05, pos: [2.05, 0.2, 0.5], rot: [-2 * D, -11 * D, 2.5 * D] },
+    narrow: { scale: 0.64, pos: [1.15, -0.85, 0.0], rot: [-2 * D, -9 * D, 2.5 * D] },
   },
   {
     id: "mining",
     title: "Company brochures",
     medium: "Booklet",
     emphasis: 0.5,
-    wide: { scale: 0.95, pos: [-1.9, 0.7, -0.75], rot: [-4 * D, 16 * D, -5 * D] },
-    narrow: { scale: 0.85, pos: [-1.5, 0.5, -0.35], rot: [-4 * D, 13 * D, -5 * D] },
+    wide: { scale: 0.95, pos: [-1.9, 1.05, -0.75], rot: [-4 * D, 16 * D, -5 * D] },
+    narrow: { scale: 0.64, pos: [-1.5, 0.45, -0.35], rot: [-4 * D, 13 * D, -5 * D] },
   },
   {
     id: "handbook",
     title: "Employee Handbook",
     medium: "Handbook",
     emphasis: 0.4,
-    wide: { scale: 0.7, pos: [3.3, 0.55, -1.0], rot: [-4 * D, -16 * D, 4 * D] },
-    narrow: { scale: 0.6, pos: [1.5, 1.0, -0.6], rot: [-4 * D, -13 * D, 4 * D] },
+    wide: { scale: 0.7, pos: [3.3, 0.9, -1.0], rot: [-4 * D, -16 * D, 4 * D] },
+    narrow: { scale: 0.45, pos: [1.5, 0.85, -0.6], rot: [-4 * D, -13 * D, 4 * D] },
   },
   {
     id: "policy",
@@ -85,8 +85,8 @@ export const INDEX_PUBLICATIONS: IndexPublication[] = [
     // upper-back (its original placement) put it entirely behind Sneh
     // Sagar from this camera angle, so it never actually read as a fifth
     // object — smallest still, but visible, is the point.
-    wide: { scale: 0.65, pos: [-1.15, -1.3, 0.9], rot: [-5 * D, 12 * D, -2.5 * D] },
-    narrow: { scale: 0.5, pos: [-1.15, -1.55, 0.7], rot: [-5 * D, 10 * D, -2.5 * D] },
+    wide: { scale: 0.65, pos: [-1.15, -0.95, 0.9], rot: [-5 * D, 12 * D, -2.5 * D] },
+    narrow: { scale: 0.38, pos: [-1.15, -1.3, 0.7], rot: [-5 * D, 10 * D, -2.5 * D] },
   },
 ];
 
@@ -157,7 +157,11 @@ export default function PublicationsIndexDisplay({
         },
         { onHoverObject, onSelectObject, onFocusComplete, onActiveScreenPos },
         { hoveredIdRef, selectedIdRef, narrowRef },
-        { focusMs: FOCUS_MS }
+        // Closer than the engine's own default: at that distance the group
+        // read as a small cluster adrift in a mostly-empty viewport. This is
+        // the same "camera does the work, not per-object scale" adjustment
+        // as the card's own — see PublicationsDisplay's CAM_Z.
+        { focusMs: FOCUS_MS, camZ: 9.4, camY: 2.1, camNear: 5, camFar: 18 }
       );
     })().catch((err) => {
       console.error("PublicationsIndexDisplay:", err);
