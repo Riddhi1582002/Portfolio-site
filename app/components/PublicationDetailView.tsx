@@ -7,6 +7,18 @@
 // is invented here to fill the page out. No subtitle under the title: the
 // medium label already says what kind of piece this is.
 //
+// NORMAL DOCUMENT FLOW, not a fixed 100dvh box with absolutely positioned
+// regions — that was this file's first draft, copied from the spatial
+// index page's own layout, and it was the wrong pattern to borrow: that
+// page's absolute positioning exists because a full-bleed 3D scene sits
+// behind it and everything else has to float over that scene. This page
+// has no scene, only flat content, and the fixed box clipped rather than
+// scrolled once the cover, title and "other publications" row together
+// needed more height than a short viewport (740x360 landscape) had —
+// the title rendered PARTLY BEHIND the cover's own bottom edge. A plain
+// stacked flow, the same shape SnehSagarDetailView already uses
+// successfully, simply grows the page and lets it scroll instead.
+//
 // Reached by clicking the publication on /publications (see
 // PublicationsIndexView's onFocusComplete) or directly by URL.
 
@@ -34,21 +46,13 @@ export default function PublicationDetailView({ slug }: { slug: string }) {
 
   return (
     <div
-      className="relative w-full overflow-hidden bg-black text-white"
-      style={{ height: "100dvh", fontFamily: SANS }}
+      className="relative w-full bg-black text-white"
+      style={{ minHeight: "100dvh", fontFamily: SANS }}
     >
-      {/* TOP: back + section label — identical placement/treatment to the
-          index page's own, so the two read as one place. Explicit href,
-          not router.back(): reaching this page from a direct link or from
-          a reopened tab must still land back on the index, never on
-          whatever the browser happened to have before it — see
-          PublicationsIndexView and the file banner on why. */}
+      {/* TOP: back + section label. */}
       <div
         style={{
-          position: "absolute",
-          top: "clamp(18px, 3.5vh, 34px)",
-          left: "clamp(18px, 4vw, 48px)",
-          zIndex: 5,
+          padding: "clamp(18px, 3.5vh, 34px) clamp(18px, 4vw, 48px) 0",
           display: "flex",
           flexDirection: "column",
           gap: 10,
@@ -89,13 +93,11 @@ export default function PublicationDetailView({ slug }: { slug: string }) {
           these four pieces actually have to show. */}
       <div
         style={{
-          position: "absolute",
-          inset: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           gap: "clamp(32px, 6vw, 96px)",
-          padding: "clamp(90px, 14vh, 140px) clamp(24px, 6vw, 80px) clamp(140px, 22vh, 200px)",
+          padding: "clamp(48px, 8vh, 96px) clamp(24px, 6vw, 80px)",
           flexWrap: "wrap",
         }}
       >
@@ -103,7 +105,7 @@ export default function PublicationDetailView({ slug }: { slug: string }) {
           <div
             style={{
               position: "relative",
-              height: "min(56vh, 560px)",
+              width: "min(70vw, 320px)",
               aspectRatio: "3 / 4",
               borderRadius: 8,
               overflow: "hidden",
@@ -155,11 +157,7 @@ export default function PublicationDetailView({ slug }: { slug: string }) {
           built from the same data and cover images this page itself uses. */}
       <div
         style={{
-          position: "absolute",
-          left: "clamp(18px, 4vw, 48px)",
-          right: "clamp(18px, 4vw, 48px)",
-          bottom: "clamp(18px, 3.5vh, 34px)",
-          zIndex: 5,
+          padding: "0 clamp(18px, 4vw, 48px) clamp(32px, 6vh, 56px)",
         }}
       >
         <div
