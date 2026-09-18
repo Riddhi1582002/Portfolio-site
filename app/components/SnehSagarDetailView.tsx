@@ -2,27 +2,29 @@
 
 // THE SNEH SAGAR PROJECT PAGE.
 //
-// Structure follows the supplied reference closely: a top identification
-// band (square preview + the other publications), a main viewer (title/
-// metadata/description left, the current page large and centred with its
-// neighbours softened behind it, an accent line right, zoom/overview
-// controls under it), and a lower band (overview grid, a mobile preview,
-// a compact recap). The reference governs placement, proportion and
-// hierarchy only — not typography (this page uses the site's own Neue
-// Montreal throughout, never the reference's serif/script) and not
-// content: every word here is either this project's own real metadata or
-// text drawn directly from the supplied PDF (the dedication poem on its
-// second page is what the "accent" column shows), never invented.
+// Rebuilt against the project's 16:9 reference layout: an Other
+// Publications strip at the top, a main viewer where the current page is
+// the largest thing on the page, and a page-overview glimpse below it.
+// Earlier drafts of this file also carried a phone-frame "mobile preview"
+// mock, a standalone square page-6 crop next to the Back link, a floating
+// dedication-poem column beside the viewer, and the project description
+// repeated a second time in the lower band — none of those are in the
+// reference and each one was competing with the actual pages for
+// attention, so none of them are rebuilt here. What's kept: the strip,
+// the overview grid, prev/next + thumbnail navigation, and one project
+// description, stated once.
 //
 // THE PAGES ARE THE SUPPLIED PDF, RASTERISED — all 37 of them (see
-// public/publications/sneh-sagar/pages), not a placeholder count. No
-// page-flip animation, no 3D book mockup: a plain crossfade between
-// flat images is what keeps "the actual publication pages are the hero"
-// rather than a viewer effect competing with them.
+// public/publications/sneh-sagar/pages). Page changes and thumbnail
+// clicks crossfade through the existing GSAP system (the same library
+// ArcCarousel's own transitions use) rather than swapping the <img> src
+// outright, so a page change reads as one page settling into place, not a
+// flash cut.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import gsap from "gsap";
 import { INDEX_PUBLICATIONS } from "./publicationsData";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
@@ -38,33 +40,123 @@ const COVER_SRC: Record<string, string> = {
   policy: "/images/publications/policy-front.jpg",
 };
 
-// The dedication, verbatim from the PDF's own second page — real content,
-// not reference copy, standing in for the reference's own "accent" column.
-const DEDICATION = [
-  "Turn these pages with gentlest care,",
-  "A lifetime of love is woven right there.",
-  "Through quiet strength and unwavering grace,",
-  "Her warmth lights up every single space.",
-  "Walk through her journey, inspiring and true",
-  "A heart this rare touches all of us, too.",
-];
-
+// The exact facts as given, and nothing beyond them: a tribute book made
+// by the children for their mother; letters, messages, memories,
+// photographs and small details from the people whose lives she touched
+// were gathered and compiled — that compilation done by Riddhi together
+// with the daughter; the book itself designed single-handedly by Riddhi,
+// shaping what was collected into a personal, handcrafted narrative.
 const DESCRIPTION =
-  "Sneha Sagar is a tribute book created by her children to celebrate the life and spirit of their mother. The book brings together letters, memories, photographs and small details from the people whose lives she has touched. I designed the book, shaping the words and images into a warm, personal and handcrafted visual narrative that reflects her generosity, strength and quiet impact. These are selected pages from the book.";
+  "Sneh Sagar is a tribute book created by the children for their mother, celebrating her life and spirit. Letters, messages, memories, photographs and small details from people whose lives she touched were collected and compiled into the book — the compilation done by Riddhi together with the daughter. Riddhi designed the entire book single-handedly, shaping the collected words, memories and images into a personal, warm, handcrafted visual narrative.";
 
-const CLOSING_LINE = "Some lives leave behind more than memories.";
+// Stepped zoom, not a binary in/out toggle — 100% (fit) through 275%.
+const ZOOM_LEVELS = [1, 1.5, 2, 2.75];
+const PAGE_TRANSITION_MS = 550;
 
 export default function SnehSagarDetailView() {
   const router = useRouter();
   const [page, setPage] = useState(1);
   const [overviewOpen, setOverviewOpen] = useState(false);
-  const [zoomed, setZoomed] = useState(false);
+  const [zoomIdx, setZoomIdx] = useState(0);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
 
   const others = useMemo(() => INDEX_PUBLICATIONS.filter((p) => p.id !== "sneh-sagar"), []);
 
-  const goTo = useCallback((n: number) => {
-    setPage(Math.min(PAGE_COUNT, Math.max(1, n)));
+  const zoom = ZOOM_LEVELS[zoomIdx];
+
+  // ── PAGE CHANGE, CROSSFADED VIA GSAP ────────────────────────────────
+  // `page` is the authoritative current page; `prevPage` is only set for
+  // the duration of a transition, to give the outgoing image something to
+  // render and fade from. transitioningRef blocks a second change (arrow,
+  // thumbnail, keyboard) from starting mid-fade, the same guard
+  // ArcCarousel's own click transition uses.
+  const [prevPage, setPrevPage] = useState<number | null>(null);
+  const transitioningRef = useRef(false);
+  const mountedRef = useRef(false);
+  const mainImgRef = useRef<HTMLImageElement>(null);
+  const prevImgRef = useRef<HTMLImageElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  const goTo = useCallback(
+    (n: number) => {
+      const clamped = Math.min(PAGE_COUNT, Math.max(1, n));
+      if (clamped === page || transitioningRef.current) return;
+      transitioningRef.current = true;
+      setPrevPage(page);
+      setPage(clamped);
+      setPan({ x: 0, y: 0 });
+    },
+    [page]
+  );
+
+  useLayoutEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    if (prevPage === null) return;
+    const mainImg = mainImgRef.current;
+    const prevImg = prevImgRef.current;
+    if (mainImg) gsap.set(mainImg, { opacity: 0, scale: 1.035 });
+    if (prevImg) gsap.set(prevImg, { opacity: 1, scale: 1 });
+    const tl = gsap.timeline({
+      onComplete: () => {
+        transitioningRef.current = false;
+        setPrevPage(null);
+      },
+    });
+    const dur = PAGE_TRANSITION_MS / 1000;
+    if (prevImg) tl.to(prevImg, { opacity: 0, duration: dur, ease: "power2.inOut" }, 0);
+    if (mainImg) tl.to(mainImg, { opacity: 1, scale: 1, duration: dur, ease: "power2.out" }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  // ── ZOOM ─────────────────────────────────────────────────────────────
+  const clampPan = useCallback((x: number, y: number, scale: number) => {
+    const rect = viewportRef.current?.getBoundingClientRect();
+    if (!rect || scale <= 1) return { x: 0, y: 0 };
+    const maxX = (rect.width * (scale - 1)) / 2;
+    const maxY = (rect.height * (scale - 1)) / 2;
+    return { x: Math.min(maxX, Math.max(-maxX, x)), y: Math.min(maxY, Math.max(-maxY, y)) };
   }, []);
+
+  // Re-clamping lives in these three handlers, not in an effect watching
+  // `zoomIdx` — zoomIdx only ever changes here, so there's nothing an
+  // effect would be "synchronizing with" that this doesn't already know
+  // in the same event; clampPan already collapses to {0,0} at scale 1.
+  const zoomIn = useCallback(() => {
+    const next = Math.min(ZOOM_LEVELS.length - 1, zoomIdx + 1);
+    setZoomIdx(next);
+    setPan((p) => clampPan(p.x, p.y, ZOOM_LEVELS[next]));
+  }, [zoomIdx, clampPan]);
+  const zoomOut = useCallback(() => {
+    const next = Math.max(0, zoomIdx - 1);
+    setZoomIdx(next);
+    setPan((p) => clampPan(p.x, p.y, ZOOM_LEVELS[next]));
+  }, [zoomIdx, clampPan]);
+  const resetZoom = useCallback(() => {
+    setZoomIdx(0);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  const dragState = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (zoomIdx === 0) return;
+    dragState.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    setDragging(true);
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragState.current) return;
+    const dx = e.clientX - dragState.current.x;
+    const dy = e.clientY - dragState.current.y;
+    setPan(clampPan(dragState.current.panX + dx, dragState.current.panY + dy, zoom));
+  };
+  const onPointerUp = () => {
+    dragState.current = null;
+    setDragging(false);
+  };
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -74,97 +166,78 @@ export default function SnehSagarDetailView() {
       }
       if (ev.key === "ArrowLeft") goTo(page - 1);
       else if (ev.key === "ArrowRight") goTo(page + 1);
-      else if (ev.key === "Escape" && zoomed) setZoomed(false);
+      else if (ev.key === "Escape" && zoomIdx > 0) resetZoom();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [page, goTo, overviewOpen, zoomed]);
+  }, [page, goTo, overviewOpen, zoomIdx, resetZoom]);
 
   return (
     <div
       className="relative w-full bg-black text-white"
       style={{ fontFamily: SANS, minHeight: "100dvh" }}
     >
-      {/* ── TOP: square preview + the other publications ──────────── */}
+      {/* ── TOP: Back + Other Publications strip ────────────────────── */}
       <div
         style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: "clamp(24px, 4vw, 56px)",
           padding: "clamp(20px, 3.5vh, 40px) clamp(20px, 4vw, 56px) clamp(28px, 4vh, 48px)",
-          flexWrap: "wrap",
           borderBottom: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <Link
-            href="/publications"
-            style={{
-              fontFamily: SANS,
-              fontSize: 12,
-              fontWeight: 500,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.6)",
-              textDecoration: "underline",
-              textUnderlineOffset: 3,
-            }}
-          >
-            Back
-          </Link>
-          {/* The square preview — a real fragment of the book (its own
-              dedication page), the same still-photograph role the
-              reference's own square card plays, not a redrawn icon. */}
-          <div
-            style={{
-              width: "clamp(140px, 16vw, 220px)",
-              aspectRatio: "1 / 1",
-              borderRadius: 14,
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,0.12)",
-              boxShadow: "0 0 60px rgba(255,255,255,0.04), 0 30px 70px rgba(0,0,0,0.7)",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={pageSrc(6)}
-              alt="Sneh Sagar"
-              style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 20%" }}
-            />
-          </div>
-        </div>
+        <Link
+          href="/publications"
+          style={{
+            fontFamily: SANS,
+            fontSize: 12,
+            fontWeight: 500,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.6)",
+            textDecoration: "underline",
+            textUnderlineOffset: 3,
+          }}
+        >
+          Back
+        </Link>
 
         <div
-          aria-hidden
-          style={{ alignSelf: "stretch", width: 1, background: "rgba(255,255,255,0.1)", minHeight: 120 }}
-        />
-
-        <div style={{ flex: "1 1 320px", minWidth: 260 }}>
-          <h2
-            style={{
-              margin: 0,
-              fontSize: "clamp(13px, 1.1vw, 16px)",
-              fontWeight: 600,
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.82)",
-            }}
-          >
-            Publications
-          </h2>
-          <div
-            style={{
-              marginTop: 4,
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.35)",
-            }}
-          >
-            Other publications in this section
+          style={{
+            marginTop: 18,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 24,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "clamp(13px, 1.1vw, 16px)",
+                fontWeight: 600,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.82)",
+              }}
+            >
+              Publications
+            </h2>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 11,
+                fontWeight: 500,
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.35)",
+              }}
+            >
+              Other publications in this section
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 14, marginTop: 18, flexWrap: "wrap" }}>
+
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
             {[{ id: "sneh-sagar", title: "Sneh Sagar" }, ...others].map((p) => (
               <button
                 key={p.id}
@@ -228,14 +301,14 @@ export default function SnehSagarDetailView() {
         </div>
       </div>
 
-      {/* ── MAIN VIEWER ─────────────────────────────────────────────── */}
+      {/* ── MAIN VIEWER: title/metadata/description, then the page ──── */}
       <div
         style={{
           position: "relative",
           padding: "clamp(28px, 4.5vh, 56px) clamp(20px, 4vw, 56px)",
           display: "grid",
-          gridTemplateColumns: "minmax(200px, 260px) minmax(0, 1fr) minmax(160px, 220px)",
-          gap: "clamp(20px, 3vw, 48px)",
+          gridTemplateColumns: "minmax(220px, 300px) minmax(0, 1fr)",
+          gap: "clamp(24px, 4vw, 64px)",
           alignItems: "center",
         }}
         className="sneh-main-grid"
@@ -254,7 +327,8 @@ export default function SnehSagarDetailView() {
         </div>
 
         {/* LEFT: title/metadata/description — no subtitle beneath the
-            title, per the site-wide rule for every publication page. */}
+            title, per the site-wide rule for every publication page, and
+            this is the ONLY place the description appears on the page. */}
         <div>
           <h1
             style={{
@@ -272,8 +346,8 @@ export default function SnehSagarDetailView() {
             {[
               ["Type", "Tribute Book"],
               ["Role", "Design"],
-              ["Year", "2024"],
-              ["Pages shown", `${PAGE_COUNT} (selected)`],
+              ["Year", "2026"],
+              ["Pages", `${PAGE_COUNT} selected`],
             ].map(([k, v]) => (
               <div key={k} style={{ display: "flex", gap: 10, fontSize: 12 }}>
                 <dt style={{ width: 86, color: "rgba(255,255,255,0.4)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
@@ -294,23 +368,11 @@ export default function SnehSagarDetailView() {
           >
             {DESCRIPTION}
           </p>
-          <div style={{ marginTop: 18, height: 1, background: "rgba(255,255,255,0.12)" }} />
-          <p
-            style={{
-              marginTop: 14,
-              fontSize: 13,
-              fontStyle: "italic",
-              color: "rgba(255,255,255,0.5)",
-            }}
-          >
-            {CLOSING_LINE}
-          </p>
         </div>
 
-        {/* CENTRE: the current page, its immediate neighbours softened
-            behind it at either edge — the same depth relationship the
-            reference has, built from this same page set rather than a
-            separate illustration. */}
+        {/* RIGHT/CENTRE: the current page — substantially larger than the
+            info column beside it, with its immediate neighbours softened
+            behind it, prev/next arrows, and pan-while-zoomed. */}
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <button
             type="button"
@@ -334,7 +396,7 @@ export default function SnehSagarDetailView() {
           <div
             style={{
               position: "relative",
-              width: "min(100%, 46vh)",
+              width: "min(100%, 64vh)",
               aspectRatio: String(PAGE_ASPECT),
             }}
           >
@@ -361,7 +423,7 @@ export default function SnehSagarDetailView() {
               ) : null
             )}
             <div
-              onClick={() => setZoomed((v) => !v)}
+              ref={viewportRef}
               style={{
                 position: "relative",
                 zIndex: 2,
@@ -371,31 +433,83 @@ export default function SnehSagarDetailView() {
                 overflow: "hidden",
                 border: "1px solid rgba(255,255,255,0.12)",
                 boxShadow: "0 0 90px rgba(255,255,255,0.05), 0 50px 120px rgba(0,0,0,0.8)",
-                cursor: "zoom-in",
+                touchAction: zoomIdx > 0 ? "none" : "auto",
+                cursor: zoomIdx > 0 ? (dragging ? "grabbing" : "grab") : "default",
               }}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerLeave={onPointerUp}
             >
+              {prevPage !== null && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  ref={prevImgRef}
+                  src={pageSrc(prevPage)}
+                  alt=""
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    zIndex: 1,
+                  }}
+                />
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                key={page}
+                ref={mainImgRef}
                 src={pageSrc(page)}
                 alt={`Sneh Sagar, page ${page}`}
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                style={{
+                  position: "relative",
+                  zIndex: 2,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transformOrigin: "50% 50%",
+                  transition: dragging ? "none" : "transform 320ms ease",
+                }}
               />
             </div>
           </div>
         </div>
 
-        {/* RIGHT: the dedication, real PDF copy. */}
-        <div style={{ fontSize: "clamp(13px, 1.05vw, 16px)", fontStyle: "italic", color: "rgba(255,255,255,0.55)", lineHeight: 1.7 }}>
-          {DEDICATION.map((line) => (
-            <div key={line}>{line}</div>
-          ))}
-        </div>
-
-        <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "center", gap: 20, marginTop: 8 }}>
-          <button type="button" onClick={() => setZoomed((v) => !v)} style={controlLinkStyle}>
-            Zoom {zoomed ? "−" : "+"}
-          </button>
+        <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginTop: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              type="button"
+              onClick={zoomOut}
+              disabled={zoomIdx === 0}
+              style={{ ...controlLinkStyle, opacity: zoomIdx === 0 ? 0.35 : 1, cursor: zoomIdx === 0 ? "default" : "pointer" }}
+            >
+              Zoom −
+            </button>
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", minWidth: 42, textAlign: "center" }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={zoomIn}
+              disabled={zoomIdx === ZOOM_LEVELS.length - 1}
+              style={{
+                ...controlLinkStyle,
+                opacity: zoomIdx === ZOOM_LEVELS.length - 1 ? 0.35 : 1,
+                cursor: zoomIdx === ZOOM_LEVELS.length - 1 ? "default" : "pointer",
+              }}
+            >
+              Zoom +
+            </button>
+            {zoomIdx > 0 && (
+              <button type="button" onClick={resetZoom} style={controlLinkStyle}>
+                Fit
+              </button>
+            )}
+          </div>
           <span style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
           <button type="button" onClick={() => setOverviewOpen(true)} style={controlLinkStyle}>
             Overview
@@ -403,79 +517,35 @@ export default function SnehSagarDetailView() {
         </div>
       </div>
 
-      {/* ── LOWER: overview glimpse / mobile preview / recap ───────── */}
+      {/* ── LOWER: page-overview glimpse ─────────────────────────────── */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "1.3fr 0.9fr 1fr",
-          gap: "clamp(20px, 3vw, 40px)",
           padding: "0 clamp(20px, 4vw, 56px) clamp(48px, 7vh, 88px)",
           borderTop: "1px solid rgba(255,255,255,0.08)",
           marginTop: 8,
           paddingTop: "clamp(28px, 4vh, 48px)",
         }}
-        className="sneh-lower-grid"
       >
-        <div>
-          <div style={sectionLabelStyle}>Overview</div>
-          <div
-            style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, marginTop: 12, cursor: "pointer" }}
-            onClick={() => setOverviewOpen(true)}
-          >
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={n}
-                src={pageSrc(n)}
-                alt=""
-                style={{ width: "100%", aspectRatio: String(PAGE_ASPECT), objectFit: "cover", borderRadius: 3, opacity: n === page ? 1 : 0.55 }}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div style={sectionLabelStyle}>Mobile preview</div>
-          <div
-            style={{
-              marginTop: 12,
-              width: "min(100%, 170px)",
-              border: "6px solid #1a1a1a",
-              borderRadius: 22,
-              background: "#000",
-              boxShadow: "0 20px 50px rgba(0,0,0,0.6)",
-            }}
-          >
-            <div style={{ position: "relative", aspectRatio: String(PAGE_ASPECT * 0.62), overflow: "hidden", borderRadius: 16, background: "#000" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={pageSrc(page)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              <div
-                style={{
-                  position: "absolute",
-                  left: 8,
-                  right: 8,
-                  bottom: 8,
-                  fontSize: 9,
-                  color: "rgba(255,255,255,0.85)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  textShadow: "0 1px 4px rgba(0,0,0,0.8)",
-                }}
-              >
-                <span>Sneh Sagar</span>
-                <span>
-                  {page}/{PAGE_COUNT}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div style={sectionLabelStyle}>Sneh Sagar</div>
-          <p style={{ marginTop: 12, fontSize: 12.5, lineHeight: 1.6, color: "rgba(255,255,255,0.55)", fontWeight: 300 }}>
-            {DESCRIPTION}
-          </p>
+        <div style={sectionLabelStyle}>Overview</div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))",
+            gap: 8,
+            marginTop: 14,
+            cursor: "pointer",
+          }}
+          onClick={() => setOverviewOpen(true)}
+        >
+          {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={n}
+              src={pageSrc(n)}
+              alt=""
+              style={{ width: "100%", aspectRatio: String(PAGE_ASPECT), objectFit: "cover", borderRadius: 3, opacity: n === page ? 1 : 0.55 }}
+            />
+          ))}
         </div>
       </div>
 
@@ -528,37 +598,9 @@ export default function SnehSagarDetailView() {
         </div>
       )}
 
-      {/* ── ZOOM ─────────────────────────────────────────────────────── */}
-      {zoomed && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setZoomed(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 60,
-            background: "rgba(0,0,0,0.94)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "4vh 4vw",
-            cursor: "zoom-out",
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={pageSrc(page)}
-            alt={`Sneh Sagar, page ${page}`}
-            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 4 }}
-          />
-        </div>
-      )}
-
       <style>{`
         @media (max-width: 860px) {
           .sneh-main-grid { grid-template-columns: 1fr !important; }
-          .sneh-lower-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>

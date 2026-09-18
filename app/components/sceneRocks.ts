@@ -8,20 +8,23 @@
 // foreground for the printed pieces to read against. They are environmental
 // props, never focal points.
 //
-// TWO SUPPLIED GLBs, not a procedural shape. An earlier pass generated
-// stones as a jittered icosahedron — deterministic and cheap, but it reads
-// as exactly what it is: a low-poly ball with noise on it, not an eroded
-// natural form (uneven planes, asymmetric silhouette, no two faces the same
-// size). rock-low-elongated.glb and rock-tall-irregular.glb are real
-// sculpted forms, loaded and cached the same way the publications
-// themselves are — see PublicationsDisplay's own module-scope cache for
-// the pattern this mirrors.
+// ONE SUPPLIED GLB, not a procedural shape and not several different rock
+// files. An earlier pass generated stones as a jittered icosahedron —
+// deterministic and cheap, but it reads as exactly what it is: a low-poly
+// ball with noise on it, not an eroded natural form (uneven planes,
+// asymmetric silhouette, no two faces the same size). A later pass used two
+// different sculpted GLBs for the two placements; the brief now calls for a
+// single supplied rock (converted from the delivered rock.usd) reused at
+// different scale/rotation/position instead — real weight and correct
+// geometry without introducing a second asset. Loaded and cached the same
+// way the publications themselves are — see PublicationsDisplay's own
+// module-scope cache for the pattern this mirrors.
 
 import type * as THREEModule from "three";
 
 const ROCK_BASE = "/model/publications";
 
-export type RockFile = "rock-low-elongated.glb" | "rock-tall-irregular.glb";
+export type RockFile = "rock.glb";
 
 export type RockPlacement = {
   file: RockFile;
@@ -73,16 +76,21 @@ function loadRockRoot(
               mesh.receiveShadow = true;
               if (!mesh.geometry.getAttribute("normal")) mesh.geometry.computeVertexNormals();
               const mat = mesh.material as import("three").MeshStandardMaterial;
-              // The supplied material reads as a mid grey (~0x716d68) —
+              // The supplied material reads as a flat mid grey (~0.59) —
               // true to the sculpt, but well short of the dark charcoal
-              // stone the reference calls for. Darkened here rather than
-              // re-exported: multiplying preserves whatever warm/cool cast
-              // and per-face variation the bake already carries, it just
-              // moves the whole thing down the value scale. Not pushed all
-              // the way to near-black — bare charcoal with no light
-              // response at all is what read as a hole cut in the floor
-              // during this scene's own earlier (procedural) pass.
-              if (mat?.color) mat.color.multiplyScalar(0.34);
+              // stone the reference calls for, and under this scene's warm
+              // bulb + cool hemisphere fill a plain multiply still read as
+              // a pale blue-grey pebble rather than stone. Darkened here
+              // rather than re-exported, to a fixed dark charcoal value
+              // rather than a multiply of the bake: this rock's own colour
+              // is a flat constant with no per-face variation to preserve,
+              // so a multiply and a fixed target land in the same place.
+              // Not pushed all the way to near-black — bare charcoal with
+              // no light response at all is what read as a hole cut in the
+              // floor during this scene's own earlier (procedural) pass;
+              // the PBR roughness/metalness on the material still carries
+              // the surface's lit detail at this value.
+              if (mat?.color) mat.color.setRGB(0.09, 0.085, 0.08);
             });
             resolve(root);
           },

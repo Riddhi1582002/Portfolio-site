@@ -91,6 +91,11 @@ export const REELS: Reel[] = [
       { id: "r3v8", src: r2("eipl 008.mp4"), thumbnail: "/reels/thumbnails/eipl-08.jpeg" },
       { id: "r3v9", src: r2("eipl 009.mp4"), thumbnail: "/reels/thumbnails/eipl-09.jpeg" },
       { id: "r3v10", src: r2("eipl 010.mp4"), thumbnail: "/reels/thumbnails/eipl-10.jpeg" },
+      // eipl 012.mp4 — an 11th piece from this same body of work; no
+      // supplied thumbnail exists for it (only 001–010 got one), so it
+      // falls back to the viewer's own no-thumbnail handling rather than
+      // borrowing another video's image.
+      { id: "r3v11", src: r2("eipl 012.mp4") },
     ],
   },
   {

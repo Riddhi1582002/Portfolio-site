@@ -102,7 +102,7 @@ export default function ReelVideoViewer({
 
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(true);
+  const [muted, setMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -282,18 +282,32 @@ export default function ReelVideoViewer({
     const el = videoRef.current;
     if (!el || !videoSrc) return;
     el.load();
-    // Muted first: unmuted autoplay is blocked outright by most browsers
-    // unless the visitor has already interacted with this exact site, and
-    // a blocked autoplay would leave the video sitting on its paused first
-    // frame. Muted autoplay is universally allowed, so the video always
-    // actually starts; the mute button lets the reader turn sound on with
-    // their own click, which is a real user gesture and always permitted.
-    el.muted = true;
-    setMuted(true);
-    el.play().catch(() => {
-      // Autoplay blocked entirely (rare, even muted) — the loading-mask
-      // fallback timer above reveals the paused frame either way.
-    });
+    // Unmuted first, not muted-first: opening this viewer (the WATCH/REELS
+    // click) and choosing Prev/Next are both real user gestures, and most
+    // browsers' autoplay policy allows unmuted playback started directly
+    // from one. Muting unconditionally regardless of that gesture is what
+    // the brief calls out as the thing to stop doing — the reader should
+    // hear the piece without having to find the mute button first.
+    el.muted = false;
+    setMuted(false);
+    const playAttempt = el.play();
+    if (playAttempt && typeof playAttempt.catch === "function") {
+      playAttempt.catch(() => {
+        // Only reached where the browser blocks unmuted autoplay outright
+        // (some mobile browsers, embedded webviews, a visitor's own
+        // browser setting) — fall back to muted so playback still starts
+        // rather than sitting stalled, but this is a fallback taken once
+        // per such block, not a silent permanent switch: the state stays
+        // visible on the mute button, and the reader's next click on it,
+        // also a real gesture, restores audio immediately.
+        el.muted = true;
+        setMuted(true);
+        el.play().catch(() => {
+          // Blocked even muted (rarer still) — the loading-mask fallback
+          // timer above reveals the paused frame either way.
+        });
+      });
+    }
   }, [videoSrc]);
 
   // Pause (never unmount) the instant the panel starts closing — the fade
@@ -494,7 +508,19 @@ export default function ReelVideoViewer({
               src={videoSrc ?? undefined}
               poster={video?.thumbnail}
               playsInline
-              preload="auto"
+              // "metadata", not "auto": this element is only ever given a
+              // source when a video is actually about to play (see the
+              // load/play effect below, which calls .play() immediately),
+              // so "auto" bought nothing there and cost something when
+              // autoplay is blocked — a browser can keep buffering well
+              // ahead of a paused, blocked-autoplay video under "auto",
+              // which is exactly the "downloading the whole file before
+              // playback" this is meant to avoid. "metadata" fetches just
+              // enough to know duration/dimensions; calling .play() is
+              // what actually starts the real, progressive/byte-range
+              // media fetch either way, so first-frame latency in the
+              // normal (unblocked) path is unchanged.
+              preload="metadata"
               style={{
                 position: "absolute",
                 inset: 0,

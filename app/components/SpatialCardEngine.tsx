@@ -172,14 +172,17 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   );
 
   if (opt.rocks) {
-    // Staged as the reference does: the tall/irregular stone at the back
-    // right for the smallest piece to stand against and to close the gap
-    // beneath it, and the low/elongated one forward and left, on the
-    // surface in front of the group. Async — see addRocks — so this fires
-    // and forgets rather than blocking the rest of the synchronous setup.
+    // Staged as the reference does: one rock at the back right for the
+    // smallest piece to stand against and to close the gap beneath it, one
+    // forward and left, on the surface in front of the group — the SAME
+    // supplied rock.glb both times, just a different scale/rotation/
+    // position, per the brief's "use the same supplied GLB at different
+    // scale/rotation/position rather than different rock files." Async —
+    // see addRocks — so this fires and forgets rather than blocking the
+    // rest of the synchronous setup.
     void addRocks(THREE, group, [
-      { file: "rock-tall-irregular.glb", pos: [2.05, -0.85, 0.15], rot: [-0.3, 1.4, 0.5], scale: 0.5 },
-      { file: "rock-low-elongated.glb", pos: [-1.1, -1.32, 0.95], rot: [0.4, 0.8, 0.2], scale: 0.55 },
+      { file: "rock.glb", pos: [2.05, -1.09, 0.15], rot: [-0.3, 1.4, 0.5], scale: 0.088 },
+      { file: "rock.glb", pos: [-1.1, -1.17, 0.95], rot: [0.4, 2.3, 0.2], scale: 0.1 },
     ]);
   }
 
