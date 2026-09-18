@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import PublicationsIndexDisplay, {
   INDEX_PUBLICATIONS,
 } from "./PublicationsIndexDisplay";
@@ -31,6 +32,7 @@ const SANS = "'Neue Montreal', system-ui, sans-serif";
 const NARROW_ASPECT = 1.1;
 
 export default function PublicationsIndexView() {
+  const router = useRouter();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activePos, setActivePos] = useState<{ x: number; y: number } | null>(null);
@@ -64,15 +66,17 @@ export default function PublicationsIndexView() {
     []
   );
   // THE HOOK. Fires once the click-focus transition for a publication has
-  // finished easing in. Nothing to hand off to yet — each publication's own
-  // presentation is a later pass — so this only logs the moment a reader
-  // has chosen a project cleanly enough to act on; a future pass replaces
-  // the body with `router.push` (or equivalent) to that publication's page.
-  const onFocusComplete = useCallback((id: string) => {
-    if (process.env.NODE_ENV !== "production") {
-      console.info(`[publications] would open project presentation: ${id}`);
-    }
-  }, []);
+  // finished easing in — the point at which the 3D object has visually
+  // taken over the frame, so the route change underneath it is not a jump
+  // cut. Each publication id is also its own route segment (see
+  // PublicationsIndexDisplay's INDEX_PUBLICATIONS and app/publications/
+  // [slug]).
+  const onFocusComplete = useCallback(
+    (id: string) => {
+      router.push(`/publications/${id}`);
+    },
+    [router]
+  );
 
   const active = hoveredId ?? selectedId;
   const activePub = active ? INDEX_PUBLICATIONS.find((p) => p.id === active) ?? null : null;
