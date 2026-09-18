@@ -2,22 +2,23 @@
 
 // THE IMMERSIVE VIDEO VIEWER.
 //
-// YouTube is only the host: `controls: 0` turns off its own chrome, and
-// everything the viewer shows — play/pause, restart, progress, prev/next
-// video, details, back — is our own restrained UI on top of a bare
-// <iframe>. Opened either from the project index's WATCH button (a
-// multi-video project) or directly from a REELS card (a single-video
-// project skips the project index entirely) — either way this component
-// only needs to know which reel and which of its videos, both owned by
-// HeroSection so the project index (if any) stays in sync underneath.
+// Every source is a plain MP4 hosted on Cloudflare R2, played with a native
+// <video> element — no host player, no iframe, no chrome to mask. Every
+// control on screen — play/pause, restart, progress, prev/next video,
+// details, back — is our own restrained UI, same as before; only what sat
+// underneath it changed. Opened either from the project index's WATCH
+// button (a multi-video project) or directly from a REELS card (a
+// single-video project skips the project index entirely) — either way this
+// component only needs to know which reel and which of its videos, both
+// owned by HeroSection so the project index (if any) stays in sync
+// underneath.
 //
 // Mount/unmount mirrors ReelProjectView: two flags so the panel enters
 // and exits with a real transition, only actually unmounting once the
-// exit transition finishes. The YT.Player itself is created once per
-// "open session" (keyed on `mounted`) and told to load a different video
-// in place — via `loadVideoById`, not a fresh iframe — whenever
-// `videoIndex` changes, which is what keeps prev/next feeling like the
-// same viewer rather than a reopen.
+// exit transition finishes. The <video> element itself is created once
+// per "open session" (keyed on `mounted`) and told to load a different
+// source in place whenever `videoIndex` changes, which is what keeps
+// prev/next feeling like the same viewer rather than a reopen.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
@@ -25,139 +26,12 @@ import type { Reel } from "./ReelStrip";
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-function extractYouTubeId(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (u.hostname === "youtu.be") return u.pathname.slice(1).split("/")[0] || null;
-    const shorts = u.pathname.match(/^\/shorts\/([^/]+)/);
-    if (shorts) return shorts[1];
-    const v = u.searchParams.get("v");
-    if (v) return v;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const s = Math.floor(seconds);
   const m = Math.floor(s / 60);
   const rem = s % 60;
   return `${m}:${String(rem).padStart(2, "0")}`;
-}
-
-// The minimal slice of the YouTube IFrame Player API this viewer uses.
-type YTPlayerInstance = {
-  playVideo(): void;
-  pauseVideo(): void;
-  mute(): void;
-  unMute(): void;
-  isMuted(): boolean;
-  seekTo(seconds: number, allowSeekAhead: boolean): void;
-  loadVideoById(videoId: string): void;
-  getCurrentTime(): number;
-  getDuration(): number;
-  getIframe(): HTMLIFrameElement;
-  destroy(): void;
-  // Undocumented but long-standing IFrame API method: forces the captions
-  // module out of the player. `cc_load_policy: 0` (set below) only tells
-  // YouTube not to load captions BY DEFAULT — some videos carry
-  // creator/auto-translate settings that turn them on anyway, ignoring
-  // that flag. unloadModule is the one lever that removes them regardless
-  // of why they turned on, so it is called on every point captions could
-  // reappear (ready, a state change, and a fresh loadVideoById), not just
-  // once at creation.
-  unloadModule?(moduleName: string): void;
-};
-type YTNamespace = {
-  Player: new (
-    el: HTMLElement,
-    opts: {
-      videoId: string;
-      width?: string | number;
-      height?: string | number;
-      playerVars?: Record<string, number>;
-      events?: {
-        onReady?: (e: { target: YTPlayerInstance }) => void;
-        onStateChange?: (e: { data: number; target: YTPlayerInstance }) => void;
-        onError?: (e: { data: number }) => void;
-      };
-    }
-  ) => YTPlayerInstance;
-  PlayerState: { PLAYING: number; PAUSED: number; ENDED: number; BUFFERING: number; CUED: number };
-};
-
-declare global {
-  interface Window {
-    YT?: YTNamespace;
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
-
-let ytApiPromise: Promise<YTNamespace> | null = null;
-function loadYouTubeApi(): Promise<YTNamespace> {
-  if (typeof window === "undefined") return Promise.reject(new Error("no window"));
-  if (window.YT?.Player) return Promise.resolve(window.YT);
-  if (ytApiPromise) return ytApiPromise;
-  ytApiPromise = new Promise((resolve, reject) => {
-    // The script can fail outright (network/ad-block/offline) or simply
-    // never call back — neither should leave the viewer stuck on
-    // "Loading…" forever, so both are treated as a load failure and the
-    // cached promise is cleared to let a later retry (closing and
-    // reopening the viewer) try again from scratch.
-    const timeout = window.setTimeout(() => {
-      ytApiPromise = null;
-      reject(new Error("Timed out loading the YouTube player."));
-    }, 10000);
-    const prevReady = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      window.clearTimeout(timeout);
-      prevReady?.();
-      if (window.YT) resolve(window.YT);
-      else {
-        ytApiPromise = null;
-        reject(new Error("YouTube player failed to initialise."));
-      }
-    };
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    tag.onerror = () => {
-      window.clearTimeout(timeout);
-      ytApiPromise = null;
-      reject(new Error("Failed to load the YouTube player."));
-    };
-    document.head.appendChild(tag);
-  });
-  return ytApiPromise;
-}
-
-/**
- * KEEPING THE IFRAME HONEST — no crop, no oversize, no negative offset.
- *
- * `controls: 0` turns off the scrubber, and `modestbranding`/`rel`/
- * `iv_load_policy` take care of what they take care of, but YouTube still
- * reserves the right to draw its title/channel card at the top-left and a
- * small logo watermark at the bottom-right, and there is no parameter that
- * reliably disables either. This used to be handled by making the iframe
- * taller than its box and shifting it up so that band of chrome fell
- * outside the visible area — correct in that it never touched the actual
- * picture, but it is exactly the "enlarged iframe, negative positioning"
- * this pass asks to remove. The iframe is now sized to its box exactly,
- * 1:1, nothing more. See the two small corner masks in the render below
- * for how the chrome itself is kept out of sight instead.
- *
- * The iframe is also made non-interactive: every control here is the
- * viewer's own, so the player never needs the pointer, and YouTube's
- * hover-summoned chrome can never be summoned in the first place.
- */
-function containYouTubeChrome(iframe: HTMLIFrameElement) {
-  iframe.style.position = "absolute";
-  iframe.style.inset = "0";
-  iframe.style.width = "100%";
-  iframe.style.height = "100%";
-  iframe.style.border = "0";
-  iframe.style.pointerEvents = "none";
 }
 
 export default function ReelVideoViewer({
@@ -190,27 +64,15 @@ export default function ReelVideoViewer({
   // WATCH click onward.
   const [openSession, setOpenSession] = useState(0);
   const [displayReelIndex, setDisplayReelIndex] = useState<number | null>(null);
-  const hostRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<YTPlayerInstance | null>(null);
+  // The one <video> element, kept mounted and reused across the whole
+  // "open session" (Prev/Next, reopen) the same way the single YT.Player
+  // instance used to be — a native <video> has no equivalent hazard
+  // against recreating it, but rendering it once and swapping its `src`
+  // is simpler and keeps this exactly as unintrusive to the rest of the
+  // component (mount/unmount, entrance/exit) as the iframe host was.
+  const videoRef = useRef<HTMLVideoElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const detailsSectionRef = useRef<HTMLDivElement>(null);
-  // Whether the SINGLE player instance's very first onReady has fired —
-  // once true, stays true for the rest of the page session (the player
-  // itself is never recreated, only ever told to load a different video).
-  // Distinct from the `ready` STATE below, which is per-VIDEO and resets on
-  // every switch: this ref exists purely to answer "is it safe to call
-  // loadVideoById on this player yet", the one thing that genuinely only
-  // has to happen once, ever. A plain ref rather than state because it has
-  // to be read synchronously inside the player-creation effect, which can
-  // re-run (a fast Prev/Next) before a state update from an earlier run has
-  // committed.
-  const readyRef = useRef(false);
-  // The latest requested video, when a switch arrives before `readyRef` is
-  // true — loadVideoById is unsafe to call on a player that has not fired
-  // its first onReady (a documented YouTube IFrame API hazard: the player
-  // can end up stuck mid-load, or with audio and video tracks desynced).
-  // Applied once onReady actually fires; see both below.
-  const pendingVideoIdRef = useRef<string | null>(null);
 
   // THE ENTRANCE ANIMATION'S OWN CANCELLATION — a real bug, confirmed live:
   // the double-rAF below (`raf1`/`raf2`) is only ever cleaned up when the
@@ -316,9 +178,7 @@ export default function ReelVideoViewer({
   const reel = displayReelIndex != null ? reels[displayReelIndex] : null;
   const videos = reel?.videos ?? [];
   const video = videos[videoIndex];
-  // Pure derivation, not state: parsing the URL can't itself need a
-  // render-triggered reset.
-  const videoId = video ? extractYouTubeId(video.src) : null;
+  const videoSrc = video?.src ?? null;
 
   // Reset the per-video UI (ready/playing/time/error) the instant the
   // video actually changes — during render, the same "adjust state on a
@@ -338,7 +198,7 @@ export default function ReelVideoViewer({
       setReady(false);
       setPlaying(false);
       setCurrentTime(0);
-      setErrorMsg(videoId ? null : "This video couldn't be loaded.");
+      setErrorMsg(videoSrc ? null : "This video couldn't be loaded.");
       setMaskVisible(true);
       // DETAILS describes the PROJECT, but it is opened against whatever
       // video is on screen, and leaving it open across a Prev/Next left
@@ -351,12 +211,8 @@ export default function ReelVideoViewer({
 
   // THE LOADING STATE — and only that.
   //
-  // This used to be the thing keeping YouTube's branding out of sight: a
-  // three-second opaque cover, timed to outlast the title bar. That is no
-  // longer its job. `containYouTubeChrome` crops that chrome out of the
-  // visible box structurally (see its own comment), so this is free to be
-  // what it should have been all along — the piece's own thumbnail,
-  // standing in for the picture only until there is a picture.
+  // The piece's own thumbnail stands in for the picture until there is a
+  // picture, then fades.
   //
   // Still keyed to `playing` rather than `ready`, because `ready` fires
   // before the browser has painted a frame and dropping the cover then
@@ -386,22 +242,21 @@ export default function ReelVideoViewer({
   // Whenever the panel becomes visible again, make sure it is actually
   // playing and re-cover the frame while that resumes.
   //
-  // The player-creation effect above only calls loadVideoById when
-  // `videoId` itself changes — reopening the SAME video after a close (the
-  // common "watch it again" / accidental double WATCH-click path) leaves
-  // `videoId` unchanged, so that effect does nothing, and the only thing
-  // that had happened on close was the pause effect below calling
-  // pauseVideo(). Without this, a reopen landed on a bare paused frame —
+  // The element-creation effect below only reloads the source when
+  // `videoSrc` itself changes — reopening the SAME video after a close
+  // (the common "watch it again" / accidental double WATCH-click path)
+  // leaves `videoSrc` unchanged, so that effect does nothing, and the only
+  // thing that had happened on close was the pause effect below calling
+  // pause(). Without this, a reopen landed on a bare paused frame —
   // looking exactly like "WATCH did nothing" — instead of picking the
   // video back up. Re-arming `maskVisible` here too covers that resume the
-  // same way a fresh load is covered, so YouTube's own paused-state chrome
-  // never gets a frame to show through on either.
+  // same way a fresh load is covered.
   //
   // The mask reset is done during render (the same "adjust state on a
   // changed value" pattern the rest of this file uses), not inside the
   // effect below — a setState call synchronous in an effect body forces an
   // extra cascading render. The effect is left to do only what actually
-  // has to be an effect: the imperative call out to the player.
+  // has to be an effect: the imperative call out to the element.
   const [prevShownForResume, setPrevShownForResume] = useState(shown);
   if (prevShownForResume !== shown) {
     setPrevShownForResume(shown);
@@ -409,205 +264,55 @@ export default function ReelVideoViewer({
   }
   useEffect(() => {
     if (!shown) return;
-    const player = playerRef.current;
-    if (!player) return;
-    player.playVideo();
-    // Reopening is the fourth and last point captions can come back (load,
-    // video change, state change, reopen), and the crop goes with them for
-    // the same reason — see containYouTubeChrome.
-    try {
-      player.unloadModule?.("captions");
-      containYouTubeChrome(player.getIframe());
-    } catch {
-      // Non-essential.
-    }
+    videoRef.current?.play().catch(() => {
+      // Blocked autoplay on resume — the paused-frame fallback above
+      // covers this; the reader presses Play themselves.
+    });
   }, [shown]);
 
-  // Create the player ONCE EVER per page session, then swap videos in
-  // place — via `loadVideoById`, never a fresh iframe — for every open
-  // after that, whether that is Prev/Next within a reel or a completely
-  // different reel opened later. Repeatedly destroying and recreating the
-  // YT.Player on every close/reopen is what made the viewer occasionally
-  // glitch badly enough to need a page reload; the player and its iframe
-  // now live for as long as the tab does; see the visibility effect below
-  // for how closing just pauses and hides it instead of tearing it down.
+  // Load a fresh source into the ONE <video> element whenever the
+  // selected video changes — Prev/Next within a reel, or a completely
+  // different reel opened later — rather than mounting a new element each
+  // time, the same "one instance, swapped in place" idiom the removed
+  // YT.Player used, kept for the same reason: the element and its buffered
+  // network state live for as long as the tab does; see the visibility
+  // effect below for how closing just pauses it instead of tearing it
+  // down.
   useEffect(() => {
-    if (!videoId) return;
+    const el = videoRef.current;
+    if (!el || !videoSrc) return;
+    el.load();
+    // Muted first: unmuted autoplay is blocked outright by most browsers
+    // unless the visitor has already interacted with this exact site, and
+    // a blocked autoplay would leave the video sitting on its paused first
+    // frame. Muted autoplay is universally allowed, so the video always
+    // actually starts; the mute button lets the reader turn sound on with
+    // their own click, which is a real user gesture and always permitted.
+    el.muted = true;
+    setMuted(true);
+    el.play().catch(() => {
+      // Autoplay blocked entirely (rare, even muted) — the loading-mask
+      // fallback timer above reveals the paused frame either way.
+    });
+  }, [videoSrc]);
 
-    if (playerRef.current) {
-      // A Prev/Next fast enough to land before this player's very first
-      // onReady has fired — the async loadYouTubeApi()/YT.Player()
-      // construction can still be settling when this effect re-runs for
-      // a new videoId. loadVideoById on a not-yet-ready player is a
-      // documented IFrame API hazard (the internal state machine can end
-      // up stuck mid-load, or with the audio track running while the
-      // video frame never paints), so the request is queued instead —
-      // onReady applies whichever id is latest once it actually fires.
-      if (!readyRef.current) {
-        pendingVideoIdRef.current = videoId;
-        return;
-      }
-      playerRef.current.loadVideoById(videoId);
-      // Captions can turn back on with a newly loaded video even though
-      // this same player had them stripped for the last one — see
-      // unloadModule's own comment on the type above. The crop is
-      // reasserted alongside them for the same reason: this is a new video
-      // in an existing iframe, and nothing about that is ours to trust.
-      try {
-        playerRef.current.unloadModule?.("captions");
-        containYouTubeChrome(playerRef.current.getIframe());
-      } catch {
-        // Non-essential.
-      }
-      return;
-    }
-
-    let cancelled = false;
-    loadYouTubeApi()
-      .then((YT) => {
-        if (cancelled || !hostRef.current || playerRef.current) return;
-        const player = new YT.Player(hostRef.current, {
-          // Without these the IFrame API defaults to a fixed 640x390 iframe
-          // and — since creating the player REPLACES the host element
-          // rather than filling it — the CSS on that host (position:
-          // absolute; inset:0) goes with it. The result is a small,
-          // conventional embed sitting at the top-left of its container
-          // instead of filling the composed frame this viewer builds for
-          // it, so both dimensions are pinned to 100% here and the iframe's
-          // own inline style is reasserted below as a second guarantee.
-          width: "100%",
-          height: "100%",
-          videoId,
-          playerVars: {
-            autoplay: 1,
-            controls: 0,
-            modestbranding: 1,
-            rel: 0,
-            playsinline: 1,
-            iv_load_policy: 3,
-            cc_load_policy: 0,
-            fs: 0,
-            // Nothing here is keyboard-driven through YouTube — the
-            // viewer's own controls own every gesture — and leaving it on
-            // is one more way its UI can be summoned into frame.
-            disablekb: 1,
-          },
-          events: {
-            // NOT guarded by `cancelled` (unlike the creation check right
-            // above `new YT.Player`, which correctly IS): `cancelled` means
-            // "a later effect run has taken over," but the player these
-            // three events fire on is the ONE player for the whole page
-            // session (see the file banner) — a later run reaches it
-            // through this same `playerRef`, not a different instance.
-            // Discarding these events once superseded used to mean a fast
-            // video switch could permanently stop `onReady` from ever
-            // setting `readyRef`/`ready`, which in turn stopped
-            // `pendingVideoIdRef` from ever being applied and left every
-            // later switch queued forever — the exact stuck-video failure
-            // this pass exists to fix, just moved one level up.
-            onReady: (e) => {
-              try {
-                const iframe = e.target.getIframe();
-                iframe.setAttribute(
-                  "allow",
-                  "autoplay; encrypted-media; picture-in-picture"
-                );
-                containYouTubeChrome(iframe);
-              } catch {
-                // Non-essential; playback still works without it.
-              }
-              try {
-                e.target.unloadModule?.("captions");
-              } catch {
-                // Non-essential.
-              }
-              readyRef.current = true;
-              setReady(true);
-              // Muted first: unmuted autoplay is blocked outright by most
-              // browsers unless the visitor has already interacted with
-              // this exact site, and a blocked autoplay leaves the video
-              // sitting on YouTube's own paused/cued frame — thumbnail,
-              // channel card and all — which is exactly the "YouTube
-              // branding" chrome this viewer is meant to keep out of
-              // sight. Muted autoplay is universally allowed, so the
-              // video always actually starts; the mute button lets the
-              // reader turn sound on with their own click, which is a
-              // real user gesture and always permitted.
-              e.target.mute();
-              setMuted(true);
-              // A switch that arrived before THIS onReady is waiting here
-              // rather than lost — load whichever video is actually
-              // current instead of playing the one this player happened
-              // to be constructed with.
-              const pending = pendingVideoIdRef.current;
-              pendingVideoIdRef.current = null;
-              if (pending && pending !== videoId) {
-                e.target.loadVideoById(pending);
-              } else {
-                e.target.playVideo();
-              }
-            },
-            onStateChange: (e) => {
-              // onReady fires exactly once per player instance, not once
-              // per loadVideoById — every video after the first therefore
-              // has no OTHER signal that it has actually started loading,
-              // and `ready` was just reset to false for it (see the
-              // render-time reset above). Any state event proves the
-              // player is alive and responding to THIS video, which is
-              // what `ready` is standing in for (it gates the time/
-              // duration polling effect and the transport buttons below).
-              setReady(true);
-              setPlaying(e.data === YT.PlayerState.PLAYING);
-              // Replaying (seek-to-0 restart, or simply resuming after a
-              // pause) is one of the points captions can silently turn
-              // back on — reasserted here rather than only at creation.
-              try {
-                e.target.unloadModule?.("captions");
-              } catch {
-                // Non-essential.
-              }
-            },
-            onError: () => {
-              setErrorMsg("This video can't be played here.");
-            },
-          },
-        });
-        playerRef.current = player;
-      })
-      .catch(() => {
-        if (!cancelled) setErrorMsg("This video couldn't be loaded.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [videoId]);
-
-  // Pause (never destroy) the instant the panel starts closing — the fade
+  // Pause (never unmount) the instant the panel starts closing — the fade
   // is still playing, but the audience for the audio has already left.
   useEffect(() => {
-    if (!shown) playerRef.current?.pauseVideo();
+    if (!shown) videoRef.current?.pause();
   }, [shown]);
 
-  // The one and only teardown: a real unmount of this component (the page
-  // itself navigating away), not a close. Opening/closing the viewer never
-  // reaches this.
-  useEffect(
-    () => () => {
-      playerRef.current?.destroy();
-      playerRef.current = null;
-    },
-    []
-  );
-
-  // Poll current time/duration while a player exists — the IFrame API has
-  // no timeupdate event, only getters.
+  // Poll current time/duration while a video exists. A native <video>
+  // fires `timeupdate` on its own, but only every 250ms or so and not
+  // reliably enough to gate the transport buttons' first paint — polling
+  // keeps this on the exact same clock the removed IFrame version used.
   useEffect(() => {
     if (!ready) return;
     const id = window.setInterval(() => {
-      const player = playerRef.current;
-      if (!player) return;
-      setCurrentTime(player.getCurrentTime());
-      setDuration(player.getDuration());
+      const el = videoRef.current;
+      if (!el) return;
+      setCurrentTime(el.currentTime);
+      setDuration(el.duration || 0);
     }, 250);
     return () => window.clearInterval(id);
   }, [ready]);
@@ -655,37 +360,31 @@ export default function ReelVideoViewer({
   const t = clamp01(shown ? 1 : 0);
 
   const togglePlay = () => {
-    const player = playerRef.current;
-    // `ready` — commands like seekTo issued before the player has
-    // processed the current video are the same class of hazard
-    // loadVideoById guards against above.
-    if (!player || !ready) return;
-    if (playing) player.pauseVideo();
-    else player.playVideo();
+    const el = videoRef.current;
+    // `ready` — commands issued before the element has processed the
+    // current source are the same class of hazard the old IFrame API had.
+    if (!el || !ready) return;
+    if (playing) el.pause();
+    else el.play().catch(() => {});
   };
   const restart = () => {
-    const player = playerRef.current;
-    if (!player || !ready) return;
-    player.seekTo(0, true);
-    player.playVideo();
+    const el = videoRef.current;
+    if (!el || !ready) return;
+    el.currentTime = 0;
+    el.play().catch(() => {});
   };
   const toggleMute = () => {
-    const player = playerRef.current;
-    if (!player) return;
-    if (muted) {
-      player.unMute();
-      setMuted(false);
-    } else {
-      player.mute();
-      setMuted(true);
-    }
+    const el = videoRef.current;
+    if (!el) return;
+    el.muted = !muted;
+    setMuted((v) => !v);
   };
   const seek = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const player = playerRef.current;
-    if (!player || !ready || duration <= 0) return;
+    const el = videoRef.current;
+    if (!el || !ready || duration <= 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const fraction = clamp01((e.clientX - rect.left) / rect.width);
-    player.seekTo(fraction * duration, true);
+    el.currentTime = fraction * duration;
     setCurrentTime(fraction * duration);
   };
 
@@ -790,54 +489,41 @@ export default function ReelVideoViewer({
                 "0 0 70px rgba(255,255,255,0.05), 0 40px 110px rgba(0,0,0,0.75)",
             }}
           >
-            <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />
-            {/* THE TWO UNWANTED YOUTUBE OVERLAYS, not the picture itself.
-                The iframe above is sized exactly to this box — no crop, no
-                oversize, no shift — so every edge of the actual footage
-                stays on screen. What these cover is YouTube's OWN chrome,
-                which it draws on top of the video regardless: a title/
-                channel card top-left, and a small logo watermark
-                bottom-right. Small, corner-anchored, and gradient-edged
-                rather than a hard rectangle, so they read as a soft vignette
-                consistent with the frame's own glow rather than a visible
-                patch — and non-interactive, so they never sit between the
-                reader and the viewer's own controls. */}
-            {!errorMsg && (
-              <>
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "clamp(150px, 34%, 320px)",
-                    height: "clamp(42px, 13%, 78px)",
-                    background:
-                      "linear-gradient(135deg, rgba(5,5,5,0.95) 0%, rgba(5,5,5,0.72) 45%, rgba(5,5,5,0) 100%)",
-                    pointerEvents: "none",
-                  }}
-                />
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    bottom: 0,
-                    right: 0,
-                    width: "clamp(40px, 11%, 72px)",
-                    height: "clamp(40px, 11%, 72px)",
-                    background:
-                      "radial-gradient(circle at 100% 100%, rgba(5,5,5,0.95) 0%, rgba(5,5,5,0.6) 55%, rgba(5,5,5,0) 100%)",
-                    pointerEvents: "none",
-                  }}
-                />
-              </>
-            )}
-            {/* An OPAQUE mask, not just a label: YouTube's own cued-state
-                chrome (its title card, thumbnail and logo) sits on the
-                iframe the instant it is created, well before `onReady`, and
-                a transparent overlay would leave that showing through
-                behind the text — exactly the branding this viewer is
-                meant to keep out of sight. Solid until ready, then a plain
+            <video
+              ref={videoRef}
+              src={videoSrc ?? undefined}
+              poster={video?.thumbnail}
+              playsInline
+              preload="auto"
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                // "contain", not "cover": the wrapper is already sized to
+                // this reel's own aspect ratio (see `aspectRatio` above),
+                // so a source that matches it exactly fills the box either
+                // way — contain is what keeps a source that does not match
+                // exactly (a pixel-aspect rounding difference) from ever
+                // cropping into the actual footage.
+                objectFit: "contain",
+                background: "#050505",
+                pointerEvents: "none",
+              }}
+              onLoadedData={() => setReady(true)}
+              onPlay={() => {
+                setReady(true);
+                setPlaying(true);
+              }}
+              onPause={() => setPlaying(false)}
+              onEnded={() => setPlaying(false)}
+              onError={() => setErrorMsg("This video can't be played here.")}
+            />
+            {/* An OPAQUE mask, not just a label: the video's own first
+                frame does not paint until playback actually starts, and a
+                transparent overlay would leave a flash of the empty black
+                element showing through behind the text. Solid until ready,
+                then a plain
                 fade rather than an abrupt unmount. */}
             {!errorMsg && (
               <div
@@ -851,9 +537,7 @@ export default function ReelVideoViewer({
                   // The selected video's own thumbnail, not a flat colour
                   // — the reader sees the actual piece immediately instead
                   // of a blank wait, and the dark wash keeps the "Loading…"
-                  // label (and, incidentally, whatever native chrome the
-                  // iframe shows before playback starts) legible and out
-                  // of the way underneath it.
+                  // label legible over it.
                   backgroundImage: video?.thumbnail
                     ? `linear-gradient(rgba(5,5,5,0.6), rgba(5,5,5,0.6)), url(${video.thumbnail})`
                     : undefined,

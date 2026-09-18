@@ -19,6 +19,14 @@ import HoverCard from "./HoverCard";
 import { carry, easeInOutSine as baseEaseInOutSine } from "../lib/motion";
 import "./reel-card.css";
 
+// THE VIDEOS THEMSELVES ARE HOSTED ON CLOUDFLARE R2, not YouTube — see
+// ReelVideoViewer, which plays these as plain HTML5 <video> sources. `r2`
+// builds the object URL from the bucket's own object name (encoded, since
+// several of them contain spaces) rather than every call site repeating
+// the base URL.
+const R2_BASE = "https://pub-0ddc522dfc834a90ab7c556775e1dd6f.r2.dev";
+const r2 = (object: string) => `${R2_BASE}/${encodeURIComponent(object)}`;
+
 // Source information needed to identify/load one video. Nothing beyond
 // that — no per-video title/description; the reel's own title/meta cover it.
 export type ReelVideo = {
@@ -49,8 +57,8 @@ export const REELS: Reel[] = [
     description:
       "My video editing work of now, summarised in a single video. The 2024 version follows, you can judge the difference yourself.",
     videos: [
-      { id: "r1v1", src: "https://youtu.be/wzX9HGc-GoI", thumbnail: "/reels/thumbnails/showreel-2025.jpeg" },
-      { id: "r1v2", src: "https://youtu.be/w3BT-6uKNl0", thumbnail: "/reels/thumbnails/showreel-2024.jpeg" },
+      { id: "r1v1", src: r2("showreel 2025.mp4"), thumbnail: "/reels/thumbnails/showreel-2025.jpeg" },
+      { id: "r1v2", src: r2("Showreel 2024.mp4"), thumbnail: "/reels/thumbnails/showreel-2024.jpeg" },
     ],
   },
   {
@@ -61,7 +69,7 @@ export const REELS: Reel[] = [
     description:
       "Six values. One word. One moving piece. CREATE was my way of giving EIPL's values a visual form.",
     videos: [
-      { id: "r2v1", src: "https://youtu.be/Gy-nZqf74_g", thumbnail: "/reels/thumbnails/create.jpeg" },
+      { id: "r2v1", src: r2("eipl 011.mp4"), thumbnail: "/reels/thumbnails/create.jpeg" },
     ],
   },
   {
@@ -73,16 +81,16 @@ export const REELS: Reel[] = [
     description:
       "Over 18 months, I worked across Excelsource International's different departments, creating social media content around what each one actually needed to communicate. These are some of the video pieces from that work.",
     videos: [
-      { id: "r3v1", src: "https://youtu.be/NaEXnvyCkDY", thumbnail: "/reels/thumbnails/eipl-01.jpeg" },
-      { id: "r3v2", src: "https://youtu.be/CAMlZf6jnaM", thumbnail: "/reels/thumbnails/eipl-02.jpeg" },
-      { id: "r3v3", src: "https://youtu.be/7Lbbfn0cWsA", thumbnail: "/reels/thumbnails/eipl-03.jpeg" },
-      { id: "r3v4", src: "https://youtu.be/BfXzpWco39Q", thumbnail: "/reels/thumbnails/eipl-04.jpeg" },
-      { id: "r3v5", src: "https://youtu.be/Xqbh1J92DzE", thumbnail: "/reels/thumbnails/eipl-05.jpeg" },
-      { id: "r3v6", src: "https://youtu.be/5XEBuj-jyRg", thumbnail: "/reels/thumbnails/eipl-06.jpeg" },
-      { id: "r3v7", src: "https://youtu.be/gOHTE0jKTMs", thumbnail: "/reels/thumbnails/eipl-07.jpeg" },
-      { id: "r3v8", src: "https://youtu.be/vcjuHjs9RX4", thumbnail: "/reels/thumbnails/eipl-08.jpeg" },
-      { id: "r3v9", src: "https://youtube.com/shorts/TwZSJ0yg3kM?feature=share", thumbnail: "/reels/thumbnails/eipl-09.jpeg" },
-      { id: "r3v10", src: "https://youtu.be/qmmr3Pnfy_s", thumbnail: "/reels/thumbnails/eipl-10.jpeg" },
+      { id: "r3v1", src: r2("SHOWCASE.mp4"), thumbnail: "/reels/thumbnails/eipl-01.jpeg" },
+      { id: "r3v2", src: r2("eipl 002.mp4"), thumbnail: "/reels/thumbnails/eipl-02.jpeg" },
+      { id: "r3v3", src: r2("eipl 003.mp4"), thumbnail: "/reels/thumbnails/eipl-03.jpeg" },
+      { id: "r3v4", src: r2("eipl 004.mp4"), thumbnail: "/reels/thumbnails/eipl-04.jpeg" },
+      { id: "r3v5", src: r2("eipl 005.mp4"), thumbnail: "/reels/thumbnails/eipl-05.jpeg" },
+      { id: "r3v6", src: r2("eipl 006.mp4"), thumbnail: "/reels/thumbnails/eipl-06.jpeg" },
+      { id: "r3v7", src: r2("eipl 007.mp4"), thumbnail: "/reels/thumbnails/eipl-07.jpeg" },
+      { id: "r3v8", src: r2("eipl 008.mp4"), thumbnail: "/reels/thumbnails/eipl-08.jpeg" },
+      { id: "r3v9", src: r2("eipl 009.mp4"), thumbnail: "/reels/thumbnails/eipl-09.jpeg" },
+      { id: "r3v10", src: r2("eipl 010.mp4"), thumbnail: "/reels/thumbnails/eipl-10.jpeg" },
     ],
   },
   {
@@ -95,11 +103,11 @@ export const REELS: Reel[] = [
     description:
       "I didn't expect Gujarati bhajans to look like this. Neither did I expect to make five reels about it.",
     videos: [
-      { id: "r4v1", src: "https://youtube.com/shorts/AO1LJKXRLME?feature=share", thumbnail: "/reels/thumbnails/vtg-01.jpeg" },
-      { id: "r4v2", src: "https://youtube.com/shorts/TXDUKbouvhc?feature=share", thumbnail: "/reels/thumbnails/vtg-02.jpeg" },
-      { id: "r4v3", src: "https://youtube.com/shorts/OWAH_nXqhmY?feature=share", thumbnail: "/reels/thumbnails/vtg-03.jpeg" },
-      { id: "r4v4", src: "https://youtube.com/shorts/JlDq3TmoC4Q?feature=share", thumbnail: "/reels/thumbnails/vtg-04.jpeg" },
-      { id: "r4v5", src: "https://youtube.com/shorts/q_ofEHFIDoE?feature=share", thumbnail: "/reels/thumbnails/vtg-05.jpeg" },
+      { id: "r4v1", src: r2("VTG 01.mp4"), thumbnail: "/reels/thumbnails/vtg-01.jpeg" },
+      { id: "r4v2", src: r2("VTG 02.mp4"), thumbnail: "/reels/thumbnails/vtg-02.jpeg" },
+      { id: "r4v3", src: r2("VTG 03.mp4"), thumbnail: "/reels/thumbnails/vtg-03.jpeg" },
+      { id: "r4v4", src: r2("VTG 04.mp4"), thumbnail: "/reels/thumbnails/vtg-04.jpeg" },
+      { id: "r4v5", src: r2("VTG 05.mp4"), thumbnail: "/reels/thumbnails/vtg-05.jpeg" },
     ],
   },
   {
@@ -111,14 +119,14 @@ export const REELS: Reel[] = [
     description:
       "Different people. Different products. Different briefs. A lot of figuring it out as I went.",
     videos: [
-      { id: "r5v1", src: "https://youtu.be/LwNADWPVBCg", thumbnail: "/reels/thumbnails/bmw.jpeg" },
-      { id: "r5v2", src: "https://youtu.be/FO19ZkNdR78", thumbnail: "/reels/thumbnails/prewedding.jpeg" },
-      { id: "r5v3", src: "https://youtu.be/XbAmstlYRlA", thumbnail: "/reels/thumbnails/whirlwind-copper-towels.jpeg" },
-      { id: "r5v4", src: "https://youtu.be/tQLNsxy-y1o", thumbnail: "/reels/thumbnails/heart-failure.jpeg" },
-      { id: "r5v5", src: "https://youtu.be/eqOmeyVMhwY", thumbnail: "/reels/thumbnails/rachaita.jpeg" },
-      { id: "r5v6", src: "https://youtube.com/shorts/hjPuDeRVOIo?feature=share", thumbnail: "/reels/thumbnails/aicerts.jpeg" },
-      { id: "r5v7", src: "https://youtube.com/shorts/haie9TWiJM4?feature=share", thumbnail: "/reels/thumbnails/watch.jpeg" },
-      { id: "r5v8", src: "https://youtube.com/shorts/XkYJbxrV3Ks?feature=share", thumbnail: "/reels/thumbnails/silver-oak.jpeg" },
+      { id: "r5v1", src: r2("BMW.mp4"), thumbnail: "/reels/thumbnails/bmw.jpeg" },
+      { id: "r5v2", src: r2("prewedding.mp4"), thumbnail: "/reels/thumbnails/prewedding.jpeg" },
+      { id: "r5v3", src: r2("whirlwind copper towels.mp4"), thumbnail: "/reels/thumbnails/whirlwind-copper-towels.jpeg" },
+      { id: "r5v4", src: r2("heart failure.mp4"), thumbnail: "/reels/thumbnails/heart-failure.jpeg" },
+      { id: "r5v5", src: r2("rachaita.mp4"), thumbnail: "/reels/thumbnails/rachaita.jpeg" },
+      { id: "r5v6", src: r2("aircert.mp4"), thumbnail: "/reels/thumbnails/aicerts.jpeg" },
+      { id: "r5v7", src: r2("watch.mp4"), thumbnail: "/reels/thumbnails/watch.jpeg" },
+      { id: "r5v8", src: r2("silver oak.mp4"), thumbnail: "/reels/thumbnails/silver-oak.jpeg" },
     ],
   },
   {
@@ -129,13 +137,13 @@ export const REELS: Reel[] = [
     meta: "Instagram",
     description: "An Instagram account I started to have somewhere to put these things.",
     videos: [
-      { id: "r6v1", src: "https://youtu.be/XA8ZEEbfR6g", thumbnail: "/reels/thumbnails/i-want-to-live.jpeg" },
-      { id: "r6v2", src: "https://youtu.be/bPXrPa34YsI", thumbnail: "/reels/thumbnails/shringar.jpg" },
-      { id: "r6v3", src: "https://youtu.be/4Gk-19KB_Fs", thumbnail: "/reels/thumbnails/mediums.jpg" },
-      { id: "r6v4", src: "https://youtube.com/shorts/AIfjS-CaYqY?feature=share", thumbnail: "/reels/thumbnails/superstar.jpeg" },
-      { id: "r6v5", src: "https://youtube.com/shorts/d6jtmr-Tatg?feature=share", thumbnail: "/reels/thumbnails/bling-bang-bang.jpeg" },
-      { id: "r6v6", src: "https://youtube.com/shorts/wSAckMtNREo?feature=share", thumbnail: "/reels/thumbnails/reminder.jpg" },
-      { id: "r6v7", src: "https://youtube.com/shorts/zbnz7kXYuOs?feature=share", thumbnail: "/reels/thumbnails/pal-pal.jpeg" },
+      { id: "r6v1", src: r2("i want to live.mp4"), thumbnail: "/reels/thumbnails/i-want-to-live.jpeg" },
+      { id: "r6v2", src: r2("shringar.mp4"), thumbnail: "/reels/thumbnails/shringar.jpg" },
+      { id: "r6v3", src: r2("mediums.mp4"), thumbnail: "/reels/thumbnails/mediums.jpg" },
+      { id: "r6v4", src: r2("superstar.mp4"), thumbnail: "/reels/thumbnails/superstar.jpeg" },
+      { id: "r6v5", src: r2("bling bang bang.mp4"), thumbnail: "/reels/thumbnails/bling-bang-bang.jpeg" },
+      { id: "r6v6", src: r2("reminder.mp4"), thumbnail: "/reels/thumbnails/reminder.jpg" },
+      { id: "r6v7", src: r2("palpal.mp4"), thumbnail: "/reels/thumbnails/pal-pal.jpeg" },
     ],
   },
   {
@@ -145,7 +153,7 @@ export const REELS: Reel[] = [
     meta: "Baby Driver edit",
     description: "I watched Baby Driver and immediately wanted to edit it.",
     videos: [
-      { id: "r7v1", src: "https://youtu.be/vgxNu5STlJM", thumbnail: "/reels/thumbnails/baby-driver.jpeg" },
+      { id: "r7v1", src: r2("BABY1.mp4"), thumbnail: "/reels/thumbnails/baby-driver.jpeg" },
     ],
   },
 ];
