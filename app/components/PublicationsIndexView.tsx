@@ -112,8 +112,10 @@ export default function PublicationsIndexView() {
           screen position — appearing "near the object" rather than in a
           fixed panel — offset up and left of its anchor point so it clears
           the object itself. Only ever the title and what kind of document
-          it is (from the file's own name): nothing else about these five
-          is known, so nothing else is claimed. */}
+          it is. The kind-of-document subtitle that used to sit under the
+          title here is gone: the arrangement already shows what each piece
+          is, and a second line under a hovered object was labelling it
+          twice. */}
       {activePub && activePos && (
         <div
           aria-hidden
@@ -142,18 +144,6 @@ export default function PublicationsIndexView() {
           >
             {activePub.title}
           </div>
-          <div
-            style={{
-              marginTop: 4,
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.55)",
-            }}
-          >
-            {activePub.medium}
-          </div>
         </div>
       )}
 
@@ -171,7 +161,7 @@ export default function PublicationsIndexView() {
         }}
       >
         <Link
-          href="/"
+          href="/?to=graphic-design"
           style={{
             fontFamily: SANS,
             fontSize: 12,
