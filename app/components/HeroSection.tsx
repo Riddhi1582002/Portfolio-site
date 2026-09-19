@@ -322,6 +322,24 @@ export type HomeSectionKey = keyof typeof HOME_SECTIONS;
 /** Query parameter a section's own Back link uses to say where to land. */
 export const HOME_SECTION_PARAM = "to";
 
+/**
+ * THE JOURNEY, ONCE COMPLETED.
+ *
+ * The three category links are not a menu that is simply always there:
+ * they are what the homepage leaves behind once the reader has been all
+ * the way through it. So the page has to remember that they have, and
+ * that memory has to survive leaving for a category and coming back —
+ * which is a real navigation, not a client transition. sessionStorage is
+ * exactly the right lifetime: the rest of this visit, and no longer.
+ */
+export const JOURNEY_DONE_KEY = "homeJourneyComplete";
+/** A category's Back link sets this to say "open at the final state". */
+export const HOME_FINAL_PARAM = "home";
+export const HOME_FINAL_VALUE = "final";
+
+/** Where the journey counts as finished: the settled gallery at the end. */
+const JOURNEY_DONE_AT = 0.965;
+
 const HOME_NAV_LINKS: { key: HomeSectionKey; label: string }[] = [
   { key: "video", label: "VIDEO" },
   { key: "graphic-design", label: "GRAPHIC DESIGN" },
@@ -888,22 +906,62 @@ export default function HeroSection() {
     measureRef.current?.();
   }, []);
 
-  // A section's own Back link lands here with ?to=<section>, which is what
-  // returns the reader to the beat they left rather than to the top of the
-  // page. Consumed once and stripped from the URL, so a later reload opens
-  // the homepage normally.
+  // HAS THE READER BEEN ALL THE WAY THROUGH? Read once on mount (a real
+  // navigation back from a category re-mounts this component), then kept
+  // up to date by the scroll clock below.
+  const [journeyDone, setJourneyDone] = useState(false);
+  const journeyDoneRef = useRef(false);
+  const markJourneyDone = useCallback(() => {
+    if (journeyDoneRef.current) return;
+    journeyDoneRef.current = true;
+    setJourneyDone(true);
+    try {
+      sessionStorage.setItem(JOURNEY_DONE_KEY, "1");
+    } catch {
+      // Private mode or blocked storage: the flag simply does not persist
+      // across the trip to a category, which costs the links on return
+      // and nothing else.
+    }
+  }, []);
+
+  // A section's own Back link lands here with ?to=<section> (the beat it
+  // left) or ?home=final (the homepage's own final state). Consumed once
+  // and stripped from the URL, so a later reload opens normally.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const to = params.get(HOME_SECTION_PARAM);
-    if (!to || !(to in HOME_SECTIONS)) return;
-    // After layout: the track's full height has to exist before a fraction
-    // of it means anything.
+    const home = params.get(HOME_FINAL_PARAM);
+    if (home === HOME_FINAL_VALUE) {
+      // Back from a category: the reader has already been through the
+      // journey (that is the only way to reach a category), so the final
+      // state is where they return to, links and all.
+      markJourneyDone();
+      const raf = requestAnimationFrame(() => {
+        const smoother = ScrollSmoother.get();
+        if (smoother) smoother.scrollTo(0, false);
+        else window.scrollTo(0, 0);
+        measureRef.current?.();
+        window.history.replaceState(null, "", window.location.pathname);
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    // Restoring the remembered flag, and any ?to= jump, both happen after
+    // layout rather than synchronously in this effect body: the track's
+    // full height has to exist before a fraction of it means anything,
+    // and a setState in an effect body is a cascading render.
     const raf = requestAnimationFrame(() => {
-      jumpToSection(to as HomeSectionKey);
-      window.history.replaceState(null, "", window.location.pathname);
+      try {
+        if (sessionStorage.getItem(JOURNEY_DONE_KEY) === "1") markJourneyDone();
+      } catch {
+        // See markJourneyDone.
+      }
+      if (to && to in HOME_SECTIONS) {
+        jumpToSection(to as HomeSectionKey);
+        window.history.replaceState(null, "", window.location.pathname);
+      }
     });
     return () => cancelAnimationFrame(raf);
-  }, [jumpToSection]);
+  }, [jumpToSection, markJourneyDone]);
 
   // Continuous clock purely for the subtle breathing/drift micro-motion —
   // independent of scroll, exactly like the prototype's idle sway.
@@ -938,12 +996,17 @@ export default function HeroSection() {
       // sequence parked a hair short of a checkpoint.
       scrollSmoothRef.current = Math.abs(target - next) < 0.0002 ? target : next;
       setScrollP(scrollSmoothRef.current);
+      // Reaching the settled gallery is what "has been through the whole
+      // homepage" means; from then on the final state carries the three
+      // category links. Guarded by its own ref so this fires once, not on
+      // every frame past the threshold.
+      if (scrollSmoothRef.current >= JOURNEY_DONE_AT) markJourneyDone();
       setT((now - start) / 1000);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [markJourneyDone]);
 
   // The beats play across the first HERO_BEATS_END of the track; the rest
   // of it is the camera move. One scroll progress, two consumers.
@@ -1047,8 +1110,23 @@ export default function HeroSection() {
   const tag2Focus = interpolate([1.42, 1.95], [0, 1])(p);
   const tag2Y = interpolate([1.42, 2], [925, 859])(p) - drift * 0.3;
 
-  const contactOpacity = interpolate([0, 0.5], [0.38, 0])(p);
+  // THE FINAL STATE ITSELF: the hero at rest, before the narration has
+  // started moving. Everything that belongs to the homepage's resting
+  // page — the contact block and the category links — is gated on this
+  // rather than on a slow fade, because "still faintly there three
+  // sections later" is what it used to do.
+  const atFinalState = p <= 0.02;
+  // The block LEAVES as soon as the reader starts moving (a short fade,
+  // not a scrub), and comes back when they return to rest.
+  const contactOpacity = atFinalState ? 0.38 : 0;
   const contactOpacityRender = contactOpacity * reappearFade;
+
+  // The category row is not on the page until the reader has been through
+  // the whole homepage (see JOURNEY_DONE_KEY) — it is what the journey
+  // leaves behind, not a menu that greets them. After that it behaves
+  // like the contact block: present at the final state, gone once they
+  // move off it.
+  const navOpacity = journeyDone && atFinalState ? contactOpacity : 0;
 
   const haloSize = 1500 * artScale;
 
@@ -1059,11 +1137,12 @@ export default function HeroSection() {
   // and scaled gives its current half-height at rest, translateY(-50%)
   // centered like ART itself).
   const artBottomY = 540 + artY + ((ART_FONT_SIZE * 0.86) / 2) * artScale;
-  // The section row sits directly under ART; the easter-egg hint, which
-  // used to have this space to itself, moves below it so the two can
-  // never occupy the same line.
-  const homeNavY = artBottomY + 46;
-  const hintY = artBottomY + 116;
+  // The section row sits directly under ART — about half the gap it first
+  // had, so it reads as belonging to the wordmark rather than floating
+  // under it. The easter-egg hint, which used to have this space to
+  // itself, sits below the row so the two never share a line.
+  const homeNavY = artBottomY + 23;
+  const hintY = artBottomY + 92;
 
   // Split each narration line into a SplitText clip-mask once on mount.
   // Because the stage is a fixed 1920x1080 canvas that's scaled as a
@@ -1295,6 +1374,16 @@ export default function HeroSection() {
     setContactPopupOpen(false);
     setContactPopupEntered(false);
   }, []);
+
+  // Leaving the final state closes the popup outright rather than only
+  // hiding it: an open popup that merely faded out would pop straight back
+  // into view the moment the reader returned to rest, still open from a
+  // gesture several sections ago.
+  const wasAtFinalStateRef = useRef(atFinalState);
+  useEffect(() => {
+    if (wasAtFinalStateRef.current && !atFinalState) closeContactPopup();
+    wasAtFinalStateRef.current = atFinalState;
+  }, [atFinalState, closeContactPopup]);
 
   // Close the contact popup on Escape or a click/tap outside it — the
   // same conventions the gallery's own opened card and the site's other
@@ -1649,12 +1738,18 @@ export default function HeroSection() {
               cursor: "pointer",
               textDecoration: contactHover ? "underline" : "none",
               textUnderlineOffset: "5px",
-              // Once faded out, this must not be an invisible-but-clickable
-              // element sitting over whatever the deep stage shows instead
-              // — the same guard the name link uses. Not a visual opacity
-              // any more (see the span below) — purely the interactivity
-              // gate, which still has to track the same value.
-              pointerEvents: contactOpacityRender < 0.05 ? "none" : "auto",
+              // THE LEAVING GATE LIVES HERE, on the wrapper, so the popup's
+              // icons leave with the trigger. The resting dim stays on the
+              // span below (opacity on this wrapper would cap the icons at
+              // the trigger's own 0.38 while the popup is open), but
+              // "contact info is gone once the reader starts moving" has to
+              // cover the whole block, icons included — floating over the
+              // reels, the bulb and the gallery is exactly what it used to
+              // do once the popup had been opened.
+              opacity: atFinalState ? 1 : 0,
+              transition: "opacity 260ms ease",
+              pointerEvents:
+                atFinalState && contactOpacityRender >= 0.05 ? "auto" : "none",
             }}
             onMouseEnter={() => setContactHover(true)}
             onMouseLeave={() => setContactHover(false)}
@@ -1742,7 +1837,7 @@ export default function HeroSection() {
                   return item.key === "linkedin" ? (
                     <a
                       key={item.key}
-                      href="https://www.linkedin.com/in/riddhi-thakkar-8800041b"
+                      href="https://www.linkedin.com/in/riddhi-thakkar-8800041b7/"
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label="Open LinkedIn profile"
@@ -1831,9 +1926,9 @@ export default function HeroSection() {
               gap: "clamp(26px, 3.2vw, 58px)",
               flexWrap: "wrap",
               paddingInline: "6%",
-              opacity: contactOpacityRender,
-              transition: "opacity 200ms ease",
-              pointerEvents: contactOpacityRender < 0.05 ? "none" : "auto",
+              opacity: navOpacity,
+              transition: "opacity 420ms ease",
+              pointerEvents: navOpacity < 0.05 ? "none" : "auto",
             }}
           >
             {HOME_NAV_LINKS.map((item) => (
