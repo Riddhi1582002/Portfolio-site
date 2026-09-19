@@ -19,8 +19,16 @@ import { ScrollSmoother } from "gsap/ScrollSmoother";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
 import DepthCards from "./DepthCards";
 import { SMOOTHER_ACTIVE } from "./SmoothScroll";
+import {
+  HOME_FINAL_PARAM,
+  HOME_FINAL_VALUE,
+  HOME_SECTION_HREF,
+  JOURNEY_DONE_KEY,
+  type HomeSectionKey,
+} from "./homeSections";
 import usePinnedPane from "./usePinnedPane";
 import ReelStrip, { REELS } from "./ReelStrip";
+import useReelOverlays from "./useReelOverlays";
 import ReelProjectView from "./ReelProjectView";
 import ReelVideoViewer from "./ReelVideoViewer";
 import CordSection from "./CordSection";
@@ -29,6 +37,7 @@ import InfiniteCanvas from "./InfiniteCanvas";
 import NarrationLine from "./NarrationLine";
 import { easeInPow, easeOutSine } from "../lib/motion";
 import MothLayer from "./MothLayer";
+import { preloadBulb } from "./BulbModel";
 import { setMothCamera, type MothPhase } from "./mothStage";
 import "./hero-fonts.css";
 import "./hero-hint.css";
@@ -298,44 +307,18 @@ const IRIS_HANDOFF_SCROLL_P =
 // beats' own pacing exactly as tuned regardless of how TAIL_VH changes.
 const HERO_BEATS_END = BEATS_VH / HERO_VH;
 
-// THE THREE SECTIONS, AS SCROLL POSITIONS.
+// THE THREE SECTIONS, AS ROUTES.
 //
-// The site is one continuous scroll-driven sequence, not a set of routes —
-// VIDEO, GRAPHIC DESIGN and ART are beats on the same track (the strip,
-// the cord/bulb carousel, and the gallery). "Go to that section" therefore
-// means landing on that beat's own scroll position, not navigating away,
-// which is what keeps each section exactly the experience it already was
-// and what makes returning to the homepage's final state free.
+// VIDEO, GRAPHIC DESIGN and ART used to be scroll positions on this same
+// track, and "go to that section" meant jumping the playhead to that
+// beat. That is why a category was never isolated: the rest of the site
+// sat directly below it in the scroll flow, so scrolling past the reels
+// arrived at the bulb, and past the bulb at the gallery. Each one now has
+// a route of its own (see CategoryStage), holding that beat and nothing
+// else, and these links are real navigations to them.
 //
-// Each value is a share of the beat it belongs to, so these follow the
-// beat boundaries automatically if any beat's vh changes: far enough in
-// that the beat is SETTLED rather than mid-hand-off, since arriving at a
-// boundary frame would show the previous beat still leaving.
-export const HOME_SECTIONS = {
-  video: HERO_SPAN + (REELS_SPAN_END - HERO_SPAN) * 0.06,
-  "graphic-design": REELS_SPAN_END + (CORD_SPAN_END - REELS_SPAN_END) * 0.59,
-  art: PENCIL_SPAN_END + (1 - PENCIL_SPAN_END) * 0.86,
-} as const;
-
-export type HomeSectionKey = keyof typeof HOME_SECTIONS;
-
-/** Query parameter a section's own Back link uses to say where to land. */
-export const HOME_SECTION_PARAM = "to";
-
-/**
- * THE JOURNEY, ONCE COMPLETED.
- *
- * The three category links are not a menu that is simply always there:
- * they are what the homepage leaves behind once the reader has been all
- * the way through it. So the page has to remember that they have, and
- * that memory has to survive leaving for a category and coming back —
- * which is a real navigation, not a client transition. sessionStorage is
- * exactly the right lifetime: the rest of this visit, and no longer.
- */
-export const JOURNEY_DONE_KEY = "homeJourneyComplete";
-/** A category's Back link sets this to say "open at the final state". */
-export const HOME_FINAL_PARAM = "home";
-export const HOME_FINAL_VALUE = "final";
+// The keys, hrefs and the two query parameters live in homeSections.ts so
+// the category routes can read them without importing this whole file.
 
 /** Where the journey counts as finished: the settled gallery at the end. */
 const JOURNEY_DONE_AT = 0.965;
@@ -554,95 +537,20 @@ export default function HeroSection() {
   // just copied, for a brief confirmation, and clears itself.
   const [contactHover, setContactHover] = useState(false);
   const [contactPopupOpen, setContactPopupOpen] = useState(false);
-  // Which REELS project is open in the full-screen project index, if any —
-  // an index into REELS, not a copy of the reel itself, so prev/next just
-  // moves this number. `selectedVideo` is lifted up here too (rather than
-  // living inside ReelProjectView) so the project index and the
-  // immersive viewer below always agree on which video is current, in
-  // both directions: WATCH hands the viewer whatever was selected, and
-  // Prev/Next Video inside the viewer is reflected back the moment BACK
-  // returns to the project index.
-  const [reelOpenIndex, setReelOpenIndex] = useState<number | null>(null);
-  const [selectedVideo, setSelectedVideo] = useState(0);
-  // Which reel the immersive viewer is showing, if any. Independent of
-  // `reelOpenIndex`: a single-video project jumps straight here without
-  // the project index ever opening.
-  const [viewerReelIndex, setViewerReelIndex] = useState<number | null>(null);
-  const closeReel = useCallback(() => setReelOpenIndex(null), []);
-  const openReel = useCallback((id: string) => {
-    const idx = REELS.findIndex((r) => r.id === id);
-    if (idx === -1) return;
-    setSelectedVideo(0);
-    const reel = REELS[idx];
-    if (reel.videos && reel.videos.length === 1) {
-      // Single-video project: the project index would have nothing to
-      // add over the card itself, so skip straight to the viewer.
-      setViewerReelIndex(idx);
-    } else {
-      setReelOpenIndex(idx);
-    }
-  }, []);
-  const navigateReel = useCallback((idx: number) => {
-    setSelectedVideo(0);
-    setReelOpenIndex(idx);
-  }, []);
-  const watchVideo = useCallback(() => {
-    setViewerReelIndex(reelOpenIndex);
-  }, [reelOpenIndex]);
-  const closeViewer = useCallback(() => setViewerReelIndex(null), []);
-  // Freeze the underlying scroll-driven pane while the project view or
-  // the immersive viewer is open: this whole page is one continuous
-  // ScrollSmoother-driven pane, so an un-intercepted wheel/touch would
-  // keep advancing `scrollP` behind the overlay and land somewhere else
-  // in the REELS strip on close.
-  useEffect(() => {
-    if (reelOpenIndex == null && viewerReelIndex == null) return;
-    // The project index itself is allowed to scroll — a long description
-    // paired with a full thumbnail index can genuinely be taller than one
-    // screen, and this same effect otherwise swallows every wheel/touch
-    // event on the page, the panel's own included, which would make that
-    // overflow unreachable rather than merely offscreen. Only events
-    // outside it need blocking, to keep the pane underneath from advancing.
-    //
-    // Stepping aside for the panel has to be conditional on the panel
-    // actually having somewhere to go, not merely on the event landing
-    // inside it. `overscroll-behavior: contain` is the usual guard against
-    // the leftover scroll chaining out to the page, but it only applies to
-    // elements that ARE scroll containers: with DETAILS closed the panel is
-    // exactly one viewport tall, scrollHeight === clientHeight, so it is not
-    // a scroll container at all and the browser hands the event straight to
-    // the page — which here is the whole sequence's playhead. So the check
-    // is "can this panel consume this scroll, in this direction, right now":
-    // if it can, it keeps the event; if it can't, the event is blocked here
-    // rather than chaining.
-    const roomFor = (panel: Element, deltaY: number) => {
-      const scrollable = panel.scrollHeight - panel.clientHeight;
-      if (scrollable <= 1) return false;
-      // No delta to read (touchmove): the panel having any scroll of its
-      // own is enough — overscroll-behavior handles the boundary once it
-      // genuinely is a scroll container.
-      if (deltaY === 0) return true;
-      return deltaY > 0
-        ? panel.scrollTop < scrollable - 1
-        : panel.scrollTop > 1;
-    };
-    const block = (e: Event) => {
-      const panel =
-        e.target instanceof Element
-          ? e.target.closest("[data-reel-modal-scroll]")
-          : null;
-      if (panel && roomFor(panel, e instanceof WheelEvent ? e.deltaY : 0)) {
-        return;
-      }
-      e.preventDefault();
-    };
-    window.addEventListener("wheel", block, { passive: false });
-    window.addEventListener("touchmove", block, { passive: false });
-    return () => {
-      window.removeEventListener("wheel", block);
-      window.removeEventListener("touchmove", block);
-    };
-  }, [reelOpenIndex, viewerReelIndex]);
+  // The reels overlays — project index, immersive viewer, and the
+  // scroll-freeze that keeps the pane underneath still while either is
+  // open. Shared with /video, which runs the same strip on its own route.
+  const {
+    reelOpenIndex,
+    viewerReelIndex,
+    selectedVideo,
+    setSelectedVideo,
+    openReel,
+    closeReel,
+    navigateReel,
+    watchVideo,
+    closeViewer,
+  } = useReelOverlays();
   // Two states so the pop-up can mount at its BELOW-rest, hidden starting
   // point on one frame and only then transition up onto its landing line —
   // the same before/after-a-frame trick InfiniteCanvas uses to open a
@@ -885,25 +793,26 @@ export default function HeroSection() {
     };
   }, []);
 
-  // SECTION JUMPS.
-  //
-  // Instant, never eased: easing to a beat hundreds of viewport-heights
-  // away would scrub the whole narration on the way there, which is
-  // exactly what "go directly to that section without replaying the
-  // homepage narration" rules out. ScrollSmoother's own scrollTo with
-  // smooth=false moves both the native scroll and its content transform
-  // in the same frame; without the smoother mounted a plain scrollTo does
-  // the same job. The rAF clock above re-measures every frame, so the
-  // beat this lands on is already correct on the next one.
-  const jumpToSection = useCallback((key: HomeSectionKey) => {
-    const fraction = HOME_SECTIONS[key];
-    const max = document.documentElement.scrollHeight - window.innerHeight;
-    if (max <= 0) return;
-    const y = fraction * max;
-    const smoother = ScrollSmoother.get();
-    if (smoother) smoother.scrollTo(y, false);
-    else window.scrollTo(0, y);
-    measureRef.current?.();
+  // The bulb's own model and chunks, fetched while the reader is still at
+  // the top of the page rather than at the moment its beat arrives — see
+  // preloadBulb. On an idle callback so it never competes with first
+  // paint, and behind a timeout for browsers without one.
+  useEffect(() => {
+    const idle = (
+      window as typeof window & {
+        requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+      }
+    ).requestIdleCallback;
+    if (idle) {
+      const id = idle(() => void preloadBulb(), { timeout: 2500 });
+      return () => {
+        (
+          window as typeof window & { cancelIdleCallback?: (h: number) => void }
+        ).cancelIdleCallback?.(id);
+      };
+    }
+    const t = window.setTimeout(() => void preloadBulb(), 1200);
+    return () => window.clearTimeout(t);
   }, []);
 
   // HAS THE READER BEEN ALL THE WAY THROUGH? Read once on mount (a real
@@ -924,12 +833,10 @@ export default function HeroSection() {
     }
   }, []);
 
-  // A section's own Back link lands here with ?to=<section> (the beat it
-  // left) or ?home=final (the homepage's own final state). Consumed once
+  // A category's own Back link lands here with ?home=final. Consumed once
   // and stripped from the URL, so a later reload opens normally.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const to = params.get(HOME_SECTION_PARAM);
     const home = params.get(HOME_FINAL_PARAM);
     if (home === HOME_FINAL_VALUE) {
       // Back from a category: the reader has already been through the
@@ -945,23 +852,18 @@ export default function HeroSection() {
       });
       return () => cancelAnimationFrame(raf);
     }
-    // Restoring the remembered flag, and any ?to= jump, both happen after
-    // layout rather than synchronously in this effect body: the track's
-    // full height has to exist before a fraction of it means anything,
-    // and a setState in an effect body is a cascading render.
+    // Restoring the remembered flag happens after layout rather than
+    // synchronously in this effect body: a setState in an effect body is a
+    // cascading render.
     const raf = requestAnimationFrame(() => {
       try {
         if (sessionStorage.getItem(JOURNEY_DONE_KEY) === "1") markJourneyDone();
       } catch {
         // See markJourneyDone.
       }
-      if (to && to in HOME_SECTIONS) {
-        jumpToSection(to as HomeSectionKey);
-        window.history.replaceState(null, "", window.location.pathname);
-      }
     });
     return () => cancelAnimationFrame(raf);
-  }, [jumpToSection, markJourneyDone]);
+  }, [markJourneyDone]);
 
   // Continuous clock purely for the subtle breathing/drift micro-motion —
   // independent of scroll, exactly like the prototype's idle sway.
@@ -1932,16 +1834,18 @@ export default function HeroSection() {
             }}
           >
             {HOME_NAV_LINKS.map((item) => (
-              <button
+              // A real navigation, not a scroll jump: each category is its
+              // own route now, holding that beat and nothing below it. A
+              // plain anchor rather than next/link on purpose — this page
+              // owns a ScrollSmoother, a pinned ScrollTrigger, live WebGL
+              // contexts and a per-frame clock, and handing to a category
+              // as a client transition left those alive underneath it.
+              <a
                 key={item.key}
-                type="button"
-                onClick={() => jumpToSection(item.key)}
+                href={HOME_SECTION_HREF[item.key]}
                 className="relative inline-block before:absolute before:bottom-0 before:left-0 before:h-px before:w-full before:origin-right before:scale-x-0 before:bg-white before:transition-transform before:duration-200 before:ease-[cubic-bezier(0.4,0,0.2,1)] before:content-[''] hover:before:origin-left hover:before:scale-x-100 focus:before:origin-left focus:before:scale-x-100"
                 style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
+                  textDecoration: "none",
                   fontFamily: SANS,
                   fontWeight: 400,
                   fontSize: 26,
@@ -1952,7 +1856,7 @@ export default function HeroSection() {
                 }}
               >
                 {item.label}
-              </button>
+              </a>
             ))}
           </div>
 

@@ -161,7 +161,7 @@ export default function PublicationsIndexView() {
         }}
       >
         <Link
-          href="/?to=graphic-design"
+          href="/work/graphic-design"
           style={{
             fontFamily: SANS,
             fontSize: 12,

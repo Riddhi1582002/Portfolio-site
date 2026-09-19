@@ -111,7 +111,7 @@ export default function CampaignsView() {
         >
           {/* Back goes to the gallery this project sits in — the homepage's
               Graphic Design beat — not to the top of the homepage. */}
-          <Link href="/?to=graphic-design" style={backLinkStyle}>
+          <Link href="/work/graphic-design" style={backLinkStyle}>
             <span aria-hidden>←</span> Back
           </Link>
           <h1

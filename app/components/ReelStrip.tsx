@@ -471,6 +471,8 @@ export default function ReelStrip({
                           src={reel.videos[0].thumbnail}
                           alt=""
                           draggable={false}
+                          decoding="async"
+                          loading="lazy"
                           style={{
                             position: "absolute",
                             inset: 0,

@@ -383,6 +383,11 @@ export default function ReelProjectView({
                   <img
                     src={video.thumbnail}
                     alt=""
+                    // A project can list a dozen or more videos; decoding
+                    // every thumbnail at once is work the reader has not
+                    // asked for yet.
+                    loading="lazy"
+                    decoding="async"
                     style={{
                       position: "absolute",
                       inset: 0,

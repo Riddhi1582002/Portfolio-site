@@ -41,6 +41,42 @@ import { useEffect, useRef } from "react";
 
 const MODEL_URL = "/model/bulb.glb";
 
+// PREWARMING THE BULB.
+//
+// This component only mounts when its own beat comes into range, and it
+// then has to fetch 2.3MB of GLB and three separate code-split chunks
+// before anything can be drawn — which is exactly the gap the bulb used
+// to appear in, several hundred pixels of scrolling after the beat had
+// started. Nothing here changes what is loaded or how it is used; it only
+// starts the same work earlier, from an idle callback on the homepage, so
+// the bytes are already in hand by the time the beat needs them.
+//
+// three's own Cache is what makes this stick: GLTFLoader reads through
+// FileLoader, so a file already in that cache is returned without a
+// network round trip no matter what the server said about caching.
+let warmed: Promise<void> | null = null;
+export function preloadBulb(): Promise<void> {
+  warmed ??= (async () => {
+    const [THREE] = await Promise.all([
+      import("three"),
+      import("three/examples/jsm/loaders/GLTFLoader.js"),
+      import("three/examples/jsm/postprocessing/EffectComposer.js"),
+      import("three/examples/jsm/postprocessing/RenderPass.js"),
+      import("three/examples/jsm/postprocessing/UnrealBloomPass.js"),
+    ]);
+    THREE.Cache.enabled = true;
+    await new Promise<void>((resolve) => {
+      new THREE.FileLoader()
+        .setResponseType("arraybuffer")
+        .load(MODEL_URL, () => resolve(), undefined, () => resolve());
+    });
+  })().catch(() => {
+    // A warm-up that fails changes nothing: the mount path still loads the
+    // model itself, exactly as it did before this existed.
+  });
+  return warmed;
+}
+
 // The idle turn, in radians per second — a clock rate rather than a
 // per-frame increment. See the render loop for why: two independent
 // instances of this component are briefly on screen together at the
@@ -357,6 +393,9 @@ export default function BulbModel({
       scene.add(pivot);
       let loaded = false;
 
+      // Same cache the warm-up above fills, so a prewarmed model is
+      // already in memory here rather than being fetched again.
+      THREE.Cache.enabled = true;
       new GLTFLoader().load(MODEL_URL, (gltf) => {
         if (disposed) return;
         const root = gltf.scene;

@@ -627,11 +627,21 @@ export default function InfiniteCanvas({
   vw,
   vh,
   visible = true,
+  onReturnHome,
 }: {
   progress: number;
   sans: string;
   vw: number;
   vh: number;
+  /**
+   * Where the return gesture goes when this gallery is NOT the last beat
+   * of the homepage's scroll track. On the homepage the move arrives at
+   * the hero's own ART and the page's scroll position is simply reset
+   * underneath it (see the arrival effect below); on /art there is no
+   * hero above to arrive at, so the route hands this in and the same
+   * completed move navigates home instead.
+   */
+  onReturnHome?: () => void;
   /**
    * False for the lead-in stretch where this section is mounted early —
    * fourteen pieces per cell plus the plane's first layout is not work to
@@ -1524,6 +1534,13 @@ export default function InfiniteCanvas({
   // simply stops being this section's and starts being page one's.
   useEffect(() => {
     if (!returning || returnT < 0.999) return;
+    if (onReturnHome) {
+      // Standalone route: the camera has completed its travel through the
+      // gap, so this is the frame to leave on. No scroll reset — there is
+      // nothing above this gallery on its own route to reset to.
+      onReturnHome();
+      return;
+    }
     let cancelled = false;
     import("gsap/ScrollSmoother")
       .then((m) => {
@@ -1563,7 +1580,7 @@ export default function InfiniteCanvas({
     return () => {
       cancelled = true;
     };
-  }, [returning, returnT]);
+  }, [returning, returnT, onReturnHome]);
 
   const hintOpacity =
     opened || returning ? 0 : span(revealT, 0.92, 1);

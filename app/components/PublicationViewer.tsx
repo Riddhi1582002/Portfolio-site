@@ -10,7 +10,7 @@
 // controls). What changes is the ARTEFACT, because the right way to read
 // one is a property of the thing itself:
 //
-//   book              a cover, then facing-page spreads, turned like pages
+//   book              a set of selected pages, dragged through one at a time
 //   page              one portrait page at a time
 //   collection        several documents, each read a page at a time
 //   spreadCollection  several documents whose every supplied page is
@@ -20,6 +20,14 @@
 // Every image on screen is a supplied page, rasterised from the supplied
 // PDF. Nothing is recreated, re-typeset or reordered, and no metadata line
 // exists that the approved copy did not give.
+//
+// EVERY FORMAT IS READ ONE PAGE AT A TIME, and a page change is a
+// horizontal slide — never a fold, a curl or a crossfade. Not one of
+// these is a bound volume: Sneh Sagar is a set of selected pages, a
+// brochure's page is a printed spread already, and a newsletter, a
+// handbook and a policy document are read a sheet at a time. Pages can
+// also be dragged through directly, which is the same slide under the
+// reader's own hand.
 //
 // ZOOM AND NAVIGATION ARE INDEPENDENT ON PURPOSE. The controls, the
 // arrows and the thumbnails all sit OUTSIDE the transformed surface, so
@@ -42,23 +50,14 @@ const SANS = "'Neue Montreal', system-ui, sans-serif";
 
 /** Deep enough to read set type on a rasterised A4 page, not just to peer. */
 const ZOOM_LEVELS = [1, 1.6, 2.4, 3.6, 5];
-const TURN_MS = 620;
+const TURN_MS = 520;
 
-/** One thing the reader looks at: a single page, or a facing pair. */
+/** One thing the reader looks at. A brochure's page is already a printed
+ *  spread, so a "page" here is always exactly one supplied image. */
 type View = { pages: string[]; labels: number[] };
 
-function buildViews(doc: PublicationDoc, kind: "book" | "single"): View[] {
-  if (kind === "single") {
-    return doc.pages.map((p, i) => ({ pages: [p], labels: [i + 1] }));
-  }
-  // A bound book: the cover stands alone, then every following pair of
-  // pages faces each other exactly as they do in the object itself.
-  const views: View[] = [{ pages: [doc.pages[0]], labels: [1] }];
-  for (let i = 1; i < doc.pages.length; i += 2) {
-    const pair = doc.pages.slice(i, i + 2);
-    views.push({ pages: pair, labels: pair.map((_, k) => i + k + 1) });
-  }
-  return views;
+function buildViews(doc: PublicationDoc): View[] {
+  return doc.pages.map((p, i) => ({ pages: [p], labels: [i + 1] }));
 }
 
 export default function PublicationViewer({ slug }: { slug: string }) {
@@ -80,10 +79,7 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   // a book's facing pair is drawn as two pages meeting at a gutter.
   const isWidePage = content?.viewer.kind === "spreadCollection";
 
-  const views = useMemo(
-    () => (activeDoc ? buildViews(activeDoc, isBook ? "book" : "single") : []),
-    [activeDoc, isBook]
-  );
+  const views = useMemo(() => (activeDoc ? buildViews(activeDoc) : []), [activeDoc]);
 
   const [viewIndex, setViewIndex] = useState(0);
   const [prevView, setPrevView] = useState<{ view: View; dir: 1 | -1 } | null>(null);
@@ -100,6 +96,10 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   const prevLayerRef = useRef<HTMLDivElement>(null);
 
   const view = views[viewIndex];
+  const viewIndexRef = useRef(viewIndex);
+  useEffect(() => {
+    viewIndexRef.current = viewIndex;
+  }, [viewIndex]);
 
   // ── TURNING ───────────────────────────────────────────────────────────
   const goToView = useCallback(
@@ -115,12 +115,13 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     [viewIndex, views]
   );
 
-  // The turn itself. Not a crossfade: the outgoing leaf swings away around
-  // the gutter while the incoming one swings in from the other side, which
-  // is what makes a page change read as the object moving rather than as
-  // one picture being replaced by another. Single-page and spread formats
-  // use the same move with a shallower angle, so the whole system feels
-  // like one publication family rather than two viewers.
+  // THE PAGE CHANGE: one page slides out while the next slides in behind
+  // it, along a straight horizontal line. No rotation, no fold, no
+  // perspective — none of these publications is a bound book, and a page
+  // curl on a newsletter or a policy document is a metaphor for something
+  // that is not there. It is also not a crossfade: both sheets are
+  // travelling, which is what makes it read as movement rather than as one
+  // picture being swapped for another.
   useLayoutEffect(() => {
     if (!mountedRef.current) {
       mountedRef.current = true;
@@ -130,7 +131,7 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     const incoming = currentLayerRef.current;
     const outgoing = prevLayerRef.current;
     const dir = prevView.dir;
-    const swing = isBook ? 52 : 26;
+    const travel = (stageRef.current?.getBoundingClientRect().width ?? 600) * 0.62;
     const done = () => {
       turningRef.current = false;
       setPrevView(null);
@@ -142,28 +143,16 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     const tl = gsap.timeline({ onComplete: done });
     const dur = TURN_MS / 1000;
     if (outgoing) {
-      gsap.set(outgoing, {
-        transformOrigin: dir === 1 ? "0% 50%" : "100% 50%",
-        zIndex: 3,
-      });
+      gsap.set(outgoing, { x: 0, zIndex: 3 });
       tl.to(
         outgoing,
-        { rotateY: dir === 1 ? -swing : swing, opacity: 0, duration: dur * 0.62, ease: "power2.in" },
+        { x: dir === 1 ? -travel : travel, duration: dur, ease: "power3.inOut" },
         0
       );
     }
     if (incoming) {
-      gsap.set(incoming, {
-        transformOrigin: dir === 1 ? "100% 50%" : "0% 50%",
-        rotateY: dir === 1 ? swing * 0.7 : -swing * 0.7,
-        opacity: 0,
-        zIndex: 2,
-      });
-      tl.to(
-        incoming,
-        { rotateY: 0, opacity: 1, duration: dur * 0.8, ease: "power2.out" },
-        dur * 0.2
-      );
+      gsap.set(incoming, { x: dir === 1 ? travel : -travel, zIndex: 2 });
+      tl.to(incoming, { x: 0, duration: dur, ease: "power3.inOut" }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewIndex, docIndex]);
@@ -200,21 +189,56 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     [clampPan]
   );
 
-  const dragState = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  // ONE POINTER, TWO JOBS, decided by whether the page is zoomed: zoomed
+  // in, a drag pans the page; at fit, it pulls the page across to the next
+  // one. Both are the same gesture doing the obvious thing at that zoom.
+  const dragState = useRef<{
+    x: number;
+    y: number;
+    panX: number;
+    panY: number;
+    paging: boolean;
+    moved: number;
+  } | null>(null);
   const onPointerDown = (e: React.PointerEvent) => {
-    if (zoomIdx === 0) return;
-    dragState.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    if (turningRef.current) return;
+    dragState.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+      paging: zoomIdx === 0,
+      moved: 0,
+    };
     setDragging(true);
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragState.current;
     if (!d) return;
-    setPan(clampPan(d.panX + (e.clientX - d.x), d.panY + (e.clientY - d.y), zoom));
+    const dx = e.clientX - d.x;
+    d.moved = dx;
+    if (d.paging) {
+      // The current page follows the hand, so the slide that finishes the
+      // gesture is continuous with it rather than a separate animation.
+      if (currentLayerRef.current) gsap.set(currentLayerRef.current, { x: dx * 0.7 });
+      return;
+    }
+    setPan(clampPan(d.panX + dx, d.panY + (e.clientY - d.y), zoom));
   };
   const endDrag = () => {
+    const d = dragState.current;
     dragState.current = null;
     setDragging(false);
+    if (!d?.paging) return;
+    const rect = stageRef.current?.getBoundingClientRect();
+    const threshold = Math.max(40, (rect?.width ?? 400) * 0.12);
+    if (Math.abs(d.moved) > threshold) {
+      goToView(viewIndexRef.current + (d.moved < 0 ? 1 : -1));
+    } else if (currentLayerRef.current) {
+      // Not far enough: it settles back where it was.
+      gsap.to(currentLayerRef.current, { x: 0, duration: 0.32, ease: "power2.out" });
+    }
   };
 
   useEffect(() => {
@@ -514,8 +538,8 @@ export default function PublicationViewer({ slug }: { slug: string }) {
                 margin: "0 auto",
                 overflow: "hidden",
                 perspective: 2200,
-                touchAction: zoomIdx > 0 ? "none" : "auto",
-                cursor: zoomIdx > 0 ? (dragging ? "grabbing" : "grab") : "default",
+                touchAction: "pan-y",
+                cursor: dragging ? "grabbing" : "grab",
               }}
             >
               <div

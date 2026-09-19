@@ -92,7 +92,7 @@ export default function ReceptionTvView() {
             gap: 22,
           }}
         >
-          <Link href="/?to=graphic-design" style={backLinkStyle}>
+          <Link href="/work/graphic-design" style={backLinkStyle}>
             <span aria-hidden>←</span> Back
           </Link>
           <h1
