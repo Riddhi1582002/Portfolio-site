@@ -69,7 +69,7 @@ export const REELS: Reel[] = [
     description:
       "Six values. One word. One moving piece. CREATE was my way of giving EIPL's values a visual form.",
     videos: [
-      { id: "r2v1", src: r2("eipl 011.mp4"), thumbnail: "/reels/thumbnails/create.jpeg" },
+      { id: "r2v1", src: r2("CREATE v.04 final.mp4"), thumbnail: "/reels/thumbnails/create.jpeg" },
     ],
   },
   {

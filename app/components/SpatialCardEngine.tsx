@@ -203,8 +203,17 @@ export function mountSpatialCard<T extends SpatialCardObject>(
         instance.traverse((o) => {
           const mesh = o as import("three").Mesh;
           if (!mesh.isMesh) return;
-          const mat = mesh.material as import("three").MeshStandardMaterial;
-          if (mat?.map) textures.push(mat.map);
+          // A mesh can carry ONE material or an array of them (a panel
+          // whose face is artwork and whose edges are plain stock). The
+          // array case has to be unpacked rather than read as a material:
+          // `someArray.map` is Array.prototype.map, a function, and
+          // pushing that here is what later threw "t.dispose is not a
+          // function" when this ran its own cleanup.
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const m of mats) {
+            const map = (m as import("three").MeshStandardMaterial)?.map;
+            if (map) textures.push(map);
+          }
         });
         const holder = new THREE.Group();
         holder.add(instance);

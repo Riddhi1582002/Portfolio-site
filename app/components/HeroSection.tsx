@@ -15,6 +15,7 @@ import localFont from "next/font/local";
 import gsap from "gsap";
 import { SplitText } from "gsap/SplitText";
 import { Flip } from "gsap/Flip";
+import { ScrollSmoother } from "gsap/ScrollSmoother";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
 import DepthCards from "./DepthCards";
 import { SMOOTHER_ACTIVE } from "./SmoothScroll";
@@ -296,6 +297,36 @@ const IRIS_HANDOFF_SCROLL_P =
 // fraction of it that BEATS_VH itself occupies, which is what keeps the
 // beats' own pacing exactly as tuned regardless of how TAIL_VH changes.
 const HERO_BEATS_END = BEATS_VH / HERO_VH;
+
+// THE THREE SECTIONS, AS SCROLL POSITIONS.
+//
+// The site is one continuous scroll-driven sequence, not a set of routes —
+// VIDEO, GRAPHIC DESIGN and ART are beats on the same track (the strip,
+// the cord/bulb carousel, and the gallery). "Go to that section" therefore
+// means landing on that beat's own scroll position, not navigating away,
+// which is what keeps each section exactly the experience it already was
+// and what makes returning to the homepage's final state free.
+//
+// Each value is a share of the beat it belongs to, so these follow the
+// beat boundaries automatically if any beat's vh changes: far enough in
+// that the beat is SETTLED rather than mid-hand-off, since arriving at a
+// boundary frame would show the previous beat still leaving.
+export const HOME_SECTIONS = {
+  video: HERO_SPAN + (REELS_SPAN_END - HERO_SPAN) * 0.06,
+  "graphic-design": REELS_SPAN_END + (CORD_SPAN_END - REELS_SPAN_END) * 0.59,
+  art: PENCIL_SPAN_END + (1 - PENCIL_SPAN_END) * 0.86,
+} as const;
+
+export type HomeSectionKey = keyof typeof HOME_SECTIONS;
+
+/** Query parameter a section's own Back link uses to say where to land. */
+export const HOME_SECTION_PARAM = "to";
+
+const HOME_NAV_LINKS: { key: HomeSectionKey; label: string }[] = [
+  { key: "video", label: "VIDEO" },
+  { key: "graphic-design", label: "GRAPHIC DESIGN" },
+  { key: "art", label: "ART" },
+];
 // Where the camera push finishes, as a share of the post-beats tail.
 const ZOOM_END = 0.349;
 // The cards begin their travel forward on the frame the camera releases
@@ -836,6 +867,44 @@ export default function HeroSection() {
     };
   }, []);
 
+  // SECTION JUMPS.
+  //
+  // Instant, never eased: easing to a beat hundreds of viewport-heights
+  // away would scrub the whole narration on the way there, which is
+  // exactly what "go directly to that section without replaying the
+  // homepage narration" rules out. ScrollSmoother's own scrollTo with
+  // smooth=false moves both the native scroll and its content transform
+  // in the same frame; without the smoother mounted a plain scrollTo does
+  // the same job. The rAF clock above re-measures every frame, so the
+  // beat this lands on is already correct on the next one.
+  const jumpToSection = useCallback((key: HomeSectionKey) => {
+    const fraction = HOME_SECTIONS[key];
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    if (max <= 0) return;
+    const y = fraction * max;
+    const smoother = ScrollSmoother.get();
+    if (smoother) smoother.scrollTo(y, false);
+    else window.scrollTo(0, y);
+    measureRef.current?.();
+  }, []);
+
+  // A section's own Back link lands here with ?to=<section>, which is what
+  // returns the reader to the beat they left rather than to the top of the
+  // page. Consumed once and stripped from the URL, so a later reload opens
+  // the homepage normally.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const to = params.get(HOME_SECTION_PARAM);
+    if (!to || !(to in HOME_SECTIONS)) return;
+    // After layout: the track's full height has to exist before a fraction
+    // of it means anything.
+    const raf = requestAnimationFrame(() => {
+      jumpToSection(to as HomeSectionKey);
+      window.history.replaceState(null, "", window.location.pathname);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [jumpToSection]);
+
   // Continuous clock purely for the subtle breathing/drift micro-motion —
   // independent of scroll, exactly like the prototype's idle sway.
   useEffect(() => {
@@ -990,7 +1059,11 @@ export default function HeroSection() {
   // and scaled gives its current half-height at rest, translateY(-50%)
   // centered like ART itself).
   const artBottomY = 540 + artY + ((ART_FONT_SIZE * 0.86) / 2) * artScale;
-  const hintY = artBottomY + 40;
+  // The section row sits directly under ART; the easter-egg hint, which
+  // used to have this space to itself, moves below it so the two can
+  // never occupy the same line.
+  const homeNavY = artBottomY + 46;
+  const hintY = artBottomY + 116;
 
   // Split each narration line into a SplitText clip-mask once on mount.
   // Because the stage is a fixed 1920x1080 canvas that's scaled as a
@@ -1730,6 +1803,62 @@ export default function HeroSection() {
                 Email copied
               </div>
             )}
+          </div>
+
+          {/* THE SECTION ROW — the homepage's only navigation.
+              Three words under ART, on the same centre axis as the name
+              above it (both are full-width, text-align centre, so they
+              share the stage's own centreline). No bar, no container, no
+              background: this is the site's final state with three more
+              words in it, not a navbar bolted onto it.
+
+              It carries CONTACT INFO's own treatment — same family,
+              weight, size, tracking, colour, and the same scroll-driven
+              dim (contactOpacity) that takes it off screen as the
+              narration begins — so the row belongs to the resting page
+              and is simply not there once the reader has left it. The
+              hover underline is the NAME's, not a new one: the same
+              Tailwind swipe-in from the right. */}
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: homeNavY,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "baseline",
+              gap: "clamp(26px, 3.2vw, 58px)",
+              flexWrap: "wrap",
+              paddingInline: "6%",
+              opacity: contactOpacityRender,
+              transition: "opacity 200ms ease",
+              pointerEvents: contactOpacityRender < 0.05 ? "none" : "auto",
+            }}
+          >
+            {HOME_NAV_LINKS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => jumpToSection(item.key)}
+                className="relative inline-block before:absolute before:bottom-0 before:left-0 before:h-px before:w-full before:origin-right before:scale-x-0 before:bg-white before:transition-transform before:duration-200 before:ease-[cubic-bezier(0.4,0,0.2,1)] before:content-[''] hover:before:origin-left hover:before:scale-x-100 focus:before:origin-left focus:before:scale-x-100"
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  fontFamily: SANS,
+                  fontWeight: 400,
+                  fontSize: 26,
+                  letterSpacing: "0.02em",
+                  whiteSpace: "nowrap",
+                  color: "#fff",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
 
           {/* Easter-egg hint: two clicks on ART within 4s, no scroll in

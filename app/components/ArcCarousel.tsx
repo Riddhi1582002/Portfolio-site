@@ -26,21 +26,41 @@
 // wash on the wall and the cards can never disagree about how lit the room
 // is.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import gsap from "gsap";
 import HoverCard from "./HoverCard";
 import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
+import CampaignsDisplay, { preloadCampaigns } from "./CampaignsDisplay";
+import ReceptionTvDisplay, { preloadReceptionTv } from "./ReceptionTvDisplay";
 
 export const ARC_CARD_COUNT = 9;
 /**
- * THE PUBLICATIONS CARD.
+ * THE CARDS THAT HOLD REAL WORK.
  *
- * The first piece on the arc is the publications work, and it is the only
- * one that carries a real 3D display rather than a placeholder: five books
- * and booklets standing inside the card (see PublicationsDisplay). Every
+ * The first three pieces on the arc each carry a real 3D display rather
+ * than a placeholder — the publications standing in a lit case, the
+ * campaigns posts staged as a printed stack, the reception-TV pieces as
+ * physical 16:9 panels. Everything about a holder that is not its own
+ * contents is shared: the case, the glow, the label, the hover, and the
+ * click transition into its page all come from this one table. Every
  * other slot on the ring is untouched and still shows the neutral plate.
  */
-const PUBLICATIONS_INDEX = 0;
+type CardHolder = {
+  index: number;
+  /** The category tag revealed above the card on hover. */
+  label: string;
+  /** Where clicking it goes. */
+  href: string;
+  Display: ComponentType<{ luminance?: number }>;
+};
+
+const CARD_HOLDERS: CardHolder[] = [
+  { index: 0, label: "Publications", href: "/publications", Display: PublicationsDisplay },
+  { index: 1, label: "Campaigns / Social", href: "/campaigns", Display: CampaignsDisplay },
+  { index: 2, label: "Reception TV", href: "/reception-tv", Display: ReceptionTvDisplay },
+];
+
+const holderAt = (i: number) => CARD_HOLDERS.find((h) => h.index === i) ?? null;
 // Angle between neighbouring cards on the ring. 9 x 30 = 270 degrees
 // occupied, so 90 degrees of the ring stays empty: the gap that stops it
 // reading as a loop.
@@ -119,6 +139,8 @@ export default function ArcCarousel({
   // simply "as early as possible," not "the only place it's requested."
   useEffect(() => {
     preloadPublications();
+    preloadCampaigns();
+    preloadReceptionTv();
   }, []);
 
   // THE PUBLICATIONS CARD'S HOVER AND CLICK, MEASURED IN PLAIN 2D — NOT
@@ -152,7 +174,10 @@ export default function ArcCarousel({
   // route (`app/publications/page.tsx`), so this is still "the existing
   // routing system," just reached with a full navigation instead of a
   // client-side one.
-  const pubCardRef = useRef<HTMLDivElement | null>(null);
+  // One entry per holder, not one pair of refs for the publications card:
+  // all three holders share the same hover measurement and the same click
+  // transition, and differ only in which page they open.
+  const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
   // The card's own INNER content wrapper (cover glow + HoverCard + the 3D
   // display), one level below the element the ring itself transforms every
   // scroll frame (`translate3d(...) rotateY(...)`, written fresh by React
@@ -160,13 +185,15 @@ export default function ArcCarousel({
   // one: a CSS transform on a child composes with — rather than fights —
   // whatever the parent's own transform is doing, so the enlarge can run
   // without first silencing the scroll-driven ring underneath it.
-  const pubInnerRef = useRef<HTMLDivElement | null>(null);
+  const innerRefs = useRef<Record<number, HTMLDivElement | null>>({});
   // A whole-viewport cover the transition fades in behind the growing
   // card, so the cut to the freshly loaded /publications page (dark
   // itself) lands on a screen that is already most of the way there
   // rather than as a hard flash from the bright ring to black.
   const transitionOverlayRef = useRef<HTMLDivElement | null>(null);
-  const [transitioning, setTransitioning] = useState(false);
+  /** Which holder's transition is running, if any — only that card is
+   *  promoted above its ring neighbours while it grows. */
+  const [transitioningIndex, setTransitioningIndex] = useState<number | null>(null);
   const transitioningRef = useRef(false);
   const pubActiveRef = useRef(false);
   const pubActive = p > 0.02 && p < 0.98;
@@ -175,29 +202,49 @@ export default function ArcCarousel({
   }, [pubActive]);
 
   useEffect(() => {
-    const setHover = (on: boolean) => {
-      pubCardRef.current?.style.setProperty("--pub-hover", on ? "1" : "0");
+    const setHover = (index: number, on: boolean) => {
+      cardRefs.current[index]?.style.setProperty("--pub-hover", on ? "1" : "0");
     };
-    const inCard = (x: number, y: number) => {
-      const el = pubCardRef.current;
+    const inCard = (index: number, x: number, y: number) => {
+      const el = cardRefs.current[index];
       if (!el || !pubActiveRef.current) return false;
       const r = el.getBoundingClientRect();
       return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
     };
+    /** Which holder the pointer is over, if any — the front-most wins,
+     *  since the ring can overlap two cards at the edges of the beat. */
+    const holderUnder = (x: number, y: number) => {
+      let best: CardHolder | null = null;
+      let bestZ = -Infinity;
+      for (const h of CARD_HOLDERS) {
+        if (!inCard(h.index, x, y)) continue;
+        const el = cardRefs.current[h.index];
+        const z = el ? Number(el.style.zIndex) || 0 : 0;
+        if (z > bestZ) {
+          bestZ = z;
+          best = h;
+        }
+      }
+      return best;
+    };
     const onMove = (e: PointerEvent) => {
       if (e.pointerType !== "mouse") return;
-      setHover(inCard(e.clientX, e.clientY));
+      const over = holderUnder(e.clientX, e.clientY);
+      for (const h of CARD_HOLDERS) setHover(h.index, over?.index === h.index);
     };
-    const onDocLeave = () => setHover(false);
+    const onDocLeave = () => {
+      for (const h of CARD_HOLDERS) setHover(h.index, false);
+    };
     const onClick = (e: MouseEvent) => {
       // Guards against a second click starting a second timeline while the
       // first is still running — the visible symptom would be the card
       // snapping partway back before continuing, or two overlapping
       // navigations racing.
       if (transitioningRef.current) return;
-      if (!inCard(e.clientX, e.clientY)) return;
+      const holder = holderUnder(e.clientX, e.clientY);
+      if (!holder) return;
       transitioningRef.current = true;
-      setTransitioning(true);
+      setTransitioningIndex(holder.index);
       // GSAP's default lag smoothing hides a brief stall by freezing the
       // animation's own perceived clock, then resuming — meant to avoid a
       // jarring jump after a short tab-backgrounded pause. This page keeps
@@ -208,7 +255,7 @@ export default function ArcCarousel({
       // happens for most of a second" reads as broken, not smooth.
       // Disabled so the timeline tracks real elapsed time throughout.
       gsap.ticker.lagSmoothing(0);
-      const inner = pubInnerRef.current;
+      const inner = innerRefs.current[holder.index];
       const overlay = transitionOverlayRef.current;
       const tl = gsap.timeline({
         // The actual navigation. `router.push` fired without throwing from
@@ -217,8 +264,7 @@ export default function ArcCarousel({
         // the existing route rather than a client transition; it just now
         // fires once the enlarge has had its second, not the instant the
         // card is clicked.
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-        onComplete: () => window.location.assign("/publications"),
+        onComplete: () => window.location.assign(holder.href),
       });
       if (overlay) {
         tl.to(overlay, { opacity: 1, duration: 1, ease: "power2.inOut" }, 0);
@@ -304,11 +350,12 @@ export default function ArcCarousel({
         // Distance from the front, in cards — drives the glow.
         const dist = absDeg / ARC_STEP_DEG;
 
-        const isPublications = i === PUBLICATIONS_INDEX;
-        // The publications card's own light, before hover: it rides the same
-        // `dist` the glow below already uses, so a piece turned away from the
-        // reader is dimmer. The hover part is added inside the display, off
-        // the same `--pub-hover` everything else here reads.
+        const holder = holderAt(i);
+        const isPublications = holder != null;
+        // A holder's own light, before hover: it rides the same `dist` the
+        // glow below already uses, so a piece turned away from the reader
+        // is dimmer. The hover part is added inside the display, off the
+        // same `--pub-hover` everything else here reads.
         const pubLuminance = Math.max(0.55, 1 - dist * 0.17);
 
         return (
@@ -319,7 +366,9 @@ export default function ArcCarousel({
             // this card to its edges, so the moth is not offered it as
             // somewhere to fly to or to settle on.
             data-moth={isPublications ? "ignore" : undefined}
-            ref={isPublications ? pubCardRef : undefined}
+            ref={(el) => {
+              if (holder) cardRefs.current[holder.index] = el;
+            }}
             // HOVER IS A CUSTOM PROPERTY, NOT REACT STATE — same reasoning
             // as before (a re-render here would wipe HoverCard's own
             // imperative `active` class), but no longer written from this
@@ -341,12 +390,17 @@ export default function ArcCarousel({
               // Above every other card while it grows, so it visibly
               // passes in front of its ring neighbours instead of the
               // stacking order it had mid-scroll fighting the enlarge.
-              zIndex: isPublications && transitioning ? 1000 : 10 + Math.round(Math.cos(rad) * 100),
+              zIndex:
+                transitioningIndex != null && holder?.index === transitioningIndex
+                  ? 1000
+                  : 10 + Math.round(Math.cos(rad) * 100),
               willChange: "transform, opacity",
             }}
           >
             <div
-              ref={isPublications ? pubInnerRef : undefined}
+              ref={(el) => {
+                if (holder) innerRefs.current[holder.index] = el;
+              }}
               style={{ position: "relative", borderRadius: 14 }}
             >
               {/* The same static, card-owned glow the strip uses:
@@ -440,7 +494,7 @@ export default function ArcCarousel({
                         pointerEvents: "none",
                       }}
                     />
-                    <PublicationsDisplay luminance={pubLuminance} />
+                    <holder.Display luminance={pubLuminance} />
                   </div>
                 ) : (
                   /* Neutral placeholder. Real work replaces the child. */
@@ -456,7 +510,7 @@ export default function ArcCarousel({
                 )}
               </HoverCard>
 
-              {isPublications && (
+              {holder && (
                 /* THE LABEL. ReelStrip's own project-name block (see its
                    "THE HOVER INFO BLOCK" comment) is the source of truth
                    here, matched rather than approximated: identical
@@ -495,7 +549,7 @@ export default function ArcCarousel({
                       "0 0 1px rgba(255,255,255,0.5), 0 0 20px rgba(255,255,255,0.24), 0 2px 22px rgba(0,0,0,0.55)",
                   }}
                 >
-                  Publications
+                  {holder.label}
                 </div>
               )}
             </div>
