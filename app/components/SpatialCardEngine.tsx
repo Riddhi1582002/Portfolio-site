@@ -20,7 +20,13 @@
 // file only ever receives already-loadable `Object3D` roots.
 
 import type * as THREEModule from "three";
-import { addRocks, makeFadedFloor } from "./sceneRocks";
+import { addRocks, makeFadedFloor, type RockPlacement } from "./sceneRocks";
+
+/** The publications card's own pair, and the fallback for `rocks: true`. */
+const DEFAULT_ROCKS: RockPlacement[] = [
+  { file: "rock.glb", pos: [2.05, -1.09, 0.15], rot: [-0.3, 1.4, 0.5], scale: 0.088 },
+  { file: "rock.glb", pos: [-1.1, -1.17, 0.95], rot: [0.4, 2.3, 0.2], scale: 0.1 },
+];
 
 /** The shape any spatial-card item must supply — the composition/hierarchy
  *  data, not the asset itself. `id` only needs to be unique within one
@@ -60,9 +66,10 @@ export type SpatialCardOptions = {
    *  something or hanging in front of it. */
   floorY: number;
   /** Dark irregular stones at the base, echoing a physical still-life.
-   *  Publications keeps these on; a category with no reason for them can
-   *  turn them off rather than inherit a Publications-specific prop. */
-  rocks: boolean;
+   *  `true` uses this engine's default pair; an array places them
+   *  explicitly, which is how each card on the ring gets stones of its
+   *  own rather than the same two in the same two spots every time. */
+  rocks: boolean | RockPlacement[];
 };
 
 export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
@@ -172,6 +179,9 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   );
 
   if (opt.rocks) {
+    const placements: RockPlacement[] = Array.isArray(opt.rocks)
+      ? opt.rocks
+      : DEFAULT_ROCKS;
     // Staged as the reference does: one rock at the back right for the
     // smallest piece to stand against and to close the gap beneath it, one
     // forward and left, on the surface in front of the group — the SAME
@@ -180,10 +190,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     // scale/rotation/position rather than different rock files." Async —
     // see addRocks — so this fires and forgets rather than blocking the
     // rest of the synchronous setup.
-    void addRocks(THREE, group, [
-      { file: "rock.glb", pos: [2.05, -1.09, 0.15], rot: [-0.3, 1.4, 0.5], scale: 0.088 },
-      { file: "rock.glb", pos: [-1.1, -1.17, 0.95], rot: [0.4, 2.3, 0.2], scale: 0.1 },
-    ]);
+    void addRocks(THREE, group, placements);
   }
 
   type Loaded = { item: T; node: import("three").Object3D };

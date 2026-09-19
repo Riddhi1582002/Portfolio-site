@@ -32,6 +32,9 @@ import HoverCard from "./HoverCard";
 import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
 import CampaignsDisplay, { preloadCampaigns } from "./CampaignsDisplay";
 import ReceptionTvDisplay, { preloadReceptionTv } from "./ReceptionTvDisplay";
+import InformationalDesignDisplay, {
+  preloadInformationalDesign,
+} from "./InformationalDesignDisplay";
 
 export const ARC_CARD_COUNT = 9;
 /**
@@ -58,6 +61,12 @@ const CARD_HOLDERS: CardHolder[] = [
   { index: 0, label: "Publications", href: "/publications", Display: PublicationsDisplay },
   { index: 1, label: "Campaigns / Social", href: "/campaigns", Display: CampaignsDisplay },
   { index: 2, label: "Reception TV", href: "/reception-tv", Display: ReceptionTvDisplay },
+  {
+    index: 3,
+    label: "Informational Design",
+    href: "/informational-design",
+    Display: InformationalDesignDisplay,
+  },
 ];
 
 const holderAt = (i: number) => CARD_HOLDERS.find((h) => h.index === i) ?? null;
@@ -141,6 +150,7 @@ export default function ArcCarousel({
     preloadPublications();
     preloadCampaigns();
     preloadReceptionTv();
+    preloadInformationalDesign();
   }, []);
 
   // THE PUBLICATIONS CARD'S HOVER AND CLICK, MEASURED IN PLAIN 2D — NOT
