@@ -32,7 +32,7 @@
 // GSAP only, on the site's existing timeline system.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import Link from "next/link";
+import CurtainLink from "./CurtainLink";
 import gsap from "gsap";
 import { INFORMATIONAL_DESIGN, JACKET, LEAFLETS } from "./informationalDesignAssets";
 
@@ -388,9 +388,9 @@ export default function InformationalDesignView() {
             gap: 18,
           }}
         >
-          <Link href="/work/graphic-design" style={backLinkStyle}>
+          <CurtainLink href="/work/graphic-design" style={backLinkStyle}>
             <span aria-hidden>←</span> Back
-          </Link>
+          </CurtainLink>
           <div>
             <div style={{ ...eyebrowStyle, marginBottom: 10 }}>04</div>
             <h1

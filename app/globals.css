@@ -79,3 +79,17 @@ body::-webkit-scrollbar {
   --glow-shadow-opacity: 0.4;
   --glow-blur: 40px;
 }
+
+/* THE CURTAIN'S FIRST FRAME.
+   Set by the inline script in the document head when the previous page
+   raised a curtain, and removed by the Curtain component the moment it has
+   a real element in its place. Nothing animates here: this exists purely so
+   the page is already covered when it paints. */
+html[data-curtain="1"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  background: #000;
+  pointer-events: none;
+}

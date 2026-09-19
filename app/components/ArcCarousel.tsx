@@ -28,10 +28,11 @@
 
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import gsap from "gsap";
+import { CURTAIN_OUT_S, curtainOut } from "../lib/curtain";
 import HoverCard from "./HoverCard";
 import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
 import CampaignsDisplay, { preloadCampaigns } from "./CampaignsDisplay";
-import ReceptionTvDisplay, { preloadReceptionTv } from "./ReceptionTvDisplay";
+import ReceptionScreenDisplay, { preloadReceptionScreen } from "./ReceptionScreenDisplay";
 import InformationalDesignDisplay, {
   preloadInformationalDesign,
 } from "./InformationalDesignDisplay";
@@ -42,7 +43,7 @@ export const ARC_CARD_COUNT = 9;
  *
  * The first three pieces on the arc each carry a real 3D display rather
  * than a placeholder — the publications standing in a lit case, the
- * campaigns posts staged as a printed stack, the reception-TV pieces as
+ * campaigns posts staged as a printed stack, the reception-screen pieces as
  * physical 16:9 panels. Everything about a holder that is not its own
  * contents is shared: the case, the glow, the label, the hover, and the
  * click transition into its page all come from this one table. Every
@@ -60,7 +61,7 @@ type CardHolder = {
 const CARD_HOLDERS: CardHolder[] = [
   { index: 0, label: "Publications", href: "/publications", Display: PublicationsDisplay },
   { index: 1, label: "Campaigns / Social", href: "/campaigns", Display: CampaignsDisplay },
-  { index: 2, label: "Reception TV", href: "/reception-tv", Display: ReceptionTvDisplay },
+  { index: 2, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
   {
     index: 3,
     label: "Informational Design",
@@ -149,7 +150,7 @@ export default function ArcCarousel({
   useEffect(() => {
     preloadPublications();
     preloadCampaigns();
-    preloadReceptionTv();
+    preloadReceptionScreen();
     preloadInformationalDesign();
   }, []);
 
@@ -196,11 +197,6 @@ export default function ArcCarousel({
   // whatever the parent's own transform is doing, so the enlarge can run
   // without first silencing the scroll-driven ring underneath it.
   const innerRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  // A whole-viewport cover the transition fades in behind the growing
-  // card, so the cut to the freshly loaded /publications page (dark
-  // itself) lands on a screen that is already most of the way there
-  // rather than as a hard flash from the bright ring to black.
-  const transitionOverlayRef = useRef<HTMLDivElement | null>(null);
   /** Which holder's transition is running, if any — only that card is
    *  promoted above its ring neighbours while it grows. */
   const [transitioningIndex, setTransitioningIndex] = useState<number | null>(null);
@@ -266,33 +262,37 @@ export default function ArcCarousel({
       // Disabled so the timeline tracks real elapsed time throughout.
       gsap.ticker.lagSmoothing(0);
       const inner = innerRefs.current[holder.index];
-      const overlay = transitionOverlayRef.current;
-      const tl = gsap.timeline({
-        // The actual navigation. `router.push` fired without throwing from
-        // this exact handler but never changed the URL — see the note
-        // this replaced, still true, so this is still a real navigation to
-        // the existing route rather than a client transition; it just now
-        // fires once the enlarge has had its second, not the instant the
-        // card is clicked.
-        onComplete: () => window.location.assign(holder.href),
-      });
-      if (overlay) {
-        tl.to(overlay, { opacity: 1, duration: 1, ease: "power2.inOut" }, 0);
-      }
+      // A CURTAIN, not a fade. The black rectangle that used to fade in
+      // over the enlarging card had no direction: it dimmed this page and
+      // then the next one was simply there, which is why the two sides
+      // never read as one move. The panel sweeps UP across the viewport
+      // instead, the navigation happens behind it, and the destination
+      // page — every one of them, via the root layout's Curtain — picks
+      // the same edge up and carries it off. See app/lib/curtain.ts.
+      //
+      // The actual navigation. `router.push` fired without throwing from
+      // this exact handler but never changed the URL — see the note this
+      // replaced, still true, so this is still a real navigation to the
+      // existing route rather than a client transition; it fires once the
+      // curtain has covered the page, not the instant the card is clicked.
+      const tl = curtainOut(() => window.location.assign(holder.href));
       if (inner) {
+        // Still travelling as the curtain passes over it: the card is
+        // last seen moving toward the reader, not sitting still behind a
+        // fade. Same duration as the wipe, so it is covered exactly as it
+        // finishes rather than being cut off mid-move.
         tl.to(
           inner,
           {
             scale: 1.55,
             y: -18,
-            duration: 1,
-            ease: "power2.inOut",
+            duration: CURTAIN_OUT_S,
+            ease: "power2.out",
             transformOrigin: "50% 50%",
           },
           0
         );
       }
-      if (!overlay && !inner) tl.to({}, { duration: 1 });
     };
     window.addEventListener("pointermove", onMove);
     document.addEventListener("pointerleave", onDocLeave);
@@ -566,24 +566,6 @@ export default function ArcCarousel({
           </div>
         );
       })}
-
-      {/* THE TRANSITION COVER. Fixed rather than scoped to the ring, so it
-          sits over the whole page (the bulb, the other cards, everything)
-          while the clicked card grows in front of it — opacity 0 and
-          non-interactive until a click starts the timeline above, which
-          fades it in over the same second the card enlarges over. */}
-      <div
-        ref={transitionOverlayRef}
-        aria-hidden
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 900,
-          background: "#000",
-          opacity: 0,
-          pointerEvents: "none",
-        }}
-      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-// THE RECEPTION TV PROJECT PAGE.
+// THE RECEPTION SCREEN PROJECT PAGE.
 //
 // ONE BODY OF WORK. There are no categories here, no tabs and no
 // subsections: the stills and the motion pieces run as a single sequence
@@ -22,8 +22,8 @@
 // the gallery this project belongs to, and the work.
 
 import { useEffect, useRef } from "react";
-import Link from "next/link";
-import { RECEPTION_PIECES, type ReceptionPiece } from "./receptionTvAssets";
+import CurtainLink from "./CurtainLink";
+import { RECEPTION_PIECES, type ReceptionPiece } from "./receptionScreenAssets";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 
@@ -76,7 +76,7 @@ function ReceptionVideo({ piece }: { piece: ReceptionPiece }) {
   );
 }
 
-export default function ReceptionTvView() {
+export default function ReceptionScreenView() {
   return (
     <div className="relative w-full bg-black text-white" style={{ fontFamily: SANS, minHeight: "100dvh" }}>
       <div className="rtv-shell" style={{ display: "flex", minHeight: "100dvh" }}>
@@ -92,9 +92,9 @@ export default function ReceptionTvView() {
             gap: 22,
           }}
         >
-          <Link href="/work/graphic-design" style={backLinkStyle}>
+          <CurtainLink href="/work/graphic-design" style={backLinkStyle}>
             <span aria-hidden>←</span> Back
-          </Link>
+          </CurtainLink>
           <h1
             style={{
               margin: 0,
@@ -104,7 +104,7 @@ export default function ReceptionTvView() {
               lineHeight: 1.08,
             }}
           >
-            Reception TV
+            Reception Screen
           </h1>
           <p
             style={{

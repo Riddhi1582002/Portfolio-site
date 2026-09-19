@@ -1,6 +1,6 @@
 "use client";
 
-// THE RECEPTION TV CARD — the third holder on the ring.
+// THE RECEPTION SCREEN CARD — the third holder on the ring.
 //
 // Screen pieces, staged as screens: several actual 16:9 visuals standing
 // as physical panels on the same lit surface, one a step forward and
@@ -11,7 +11,7 @@
 
 import { useMemo } from "react";
 import ArtworkStackDisplay, { preloadStack, type StackPiece } from "./ArtworkStackDisplay";
-import { RECEPTION_CARD_PIECES } from "./receptionTvAssets";
+import { RECEPTION_CARD_PIECES } from "./receptionScreenAssets";
 
 const D = Math.PI / 180;
 const FLOOR_Y = -1.35;
@@ -64,7 +64,7 @@ const SLOTS: Omit<StackPiece, "src" | "aspect">[] = [
   },
 ];
 
-export const RECEPTION_TV_CARD_PIECES: StackPiece[] = RECEPTION_CARD_PIECES.map(
+export const RECEPTION_SCREEN_CARD_PIECES: StackPiece[] = RECEPTION_CARD_PIECES.map(
   (piece, i) => ({
     ...SLOTS[Math.min(i, SLOTS.length - 1)],
     id: `rtv-${piece.n}`,
@@ -73,11 +73,11 @@ export const RECEPTION_TV_CARD_PIECES: StackPiece[] = RECEPTION_CARD_PIECES.map(
   })
 );
 
-export function preloadReceptionTv() {
-  preloadStack(RECEPTION_TV_CARD_PIECES);
+export function preloadReceptionScreen() {
+  preloadStack(RECEPTION_SCREEN_CARD_PIECES);
 }
 
-export default function ReceptionTvDisplay({
+export default function ReceptionScreenDisplay({
   luminance = 1,
   reduced = false,
 }: {
@@ -90,11 +90,11 @@ export default function ReceptionTvDisplay({
   );
   return (
     <ArtworkStackDisplay
-      pieces={RECEPTION_TV_CARD_PIECES}
+      pieces={RECEPTION_SCREEN_CARD_PIECES}
       luminance={luminance}
       reduced={reduced}
       options={options}
-      dataAttr="data-reception-tv"
+      dataAttr="data-reception-screen"
     />
   );
 }

@@ -1,4 +1,4 @@
-// THE SUPPLIED RECEPTION TV FILES, AS DELIVERED.
+// THE SUPPLIED RECEPTION SCREEN FILES, AS DELIVERED.
 //
 // One body of work, in one sequence — there are no categories here and no
 // subsections. Static pieces and motion pieces sit in the same list, in

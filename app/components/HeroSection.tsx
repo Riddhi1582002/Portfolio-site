@@ -18,6 +18,7 @@ import { Flip } from "gsap/Flip";
 import { ScrollSmoother } from "gsap/ScrollSmoother";
 import { NAME_FLIP_ID, setPendingNameFlip, warmNameFlipFont } from "../lib/nameFlip";
 import DepthCards from "./DepthCards";
+import CurtainLink from "./CurtainLink";
 import { SMOOTHER_ACTIVE } from "./SmoothScroll";
 import {
   HOME_FINAL_PARAM,
@@ -1835,12 +1836,15 @@ export default function HeroSection() {
           >
             {HOME_NAV_LINKS.map((item) => (
               // A real navigation, not a scroll jump: each category is its
-              // own route now, holding that beat and nothing below it. A
-              // plain anchor rather than next/link on purpose — this page
-              // owns a ScrollSmoother, a pinned ScrollTrigger, live WebGL
-              // contexts and a per-frame clock, and handing to a category
-              // as a client transition left those alive underneath it.
-              <a
+              // own route now, holding that beat and nothing below it —
+              // and it is entered through the same curtain the ring's
+              // cards use, so every way into a piece of work is the same
+              // move. CurtainLink is a plain anchor under the wipe, not
+              // next/link, on purpose: this page owns a ScrollSmoother, a
+              // pinned ScrollTrigger, live WebGL contexts and a per-frame
+              // clock, and handing to a category as a client transition
+              // left all of those alive underneath it.
+              <CurtainLink
                 key={item.key}
                 href={HOME_SECTION_HREF[item.key]}
                 className="relative inline-block before:absolute before:bottom-0 before:left-0 before:h-px before:w-full before:origin-right before:scale-x-0 before:bg-white before:transition-transform before:duration-200 before:ease-[cubic-bezier(0.4,0,0.2,1)] before:content-[''] hover:before:origin-left hover:before:scale-x-100 focus:before:origin-left focus:before:scale-x-100"
@@ -1856,7 +1860,7 @@ export default function HeroSection() {
                 }}
               >
                 {item.label}
-              </a>
+              </CurtainLink>
             ))}
           </div>
 

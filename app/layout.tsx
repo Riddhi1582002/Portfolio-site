@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Curtain from "./components/Curtain";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,8 +38,25 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           href="/model/moth-final.glb"
           crossOrigin="anonymous"
         />
+        {/* THE CURTAIN, BEFORE THE FIRST PAINT. A page arrived at through
+            a card's wipe has to already be covered when it paints — a
+            React effect runs several frames later, and those frames are
+            the flash of unmasked page the wipe exists to hide. This is the
+            earliest a page can know, so it is where the cover is raised;
+            Curtain below takes it over and sweeps it off. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var r=sessionStorage.getItem('curtainIn');" +
+              "if(r&&Date.now()-Number(r)<8000)" +
+              "document.documentElement.setAttribute('data-curtain','1');}catch(e){}",
+          }}
+        />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Curtain />
+      </body>
     </html>
   );
 }

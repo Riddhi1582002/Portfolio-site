@@ -24,6 +24,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import usePinnedPane from "./usePinnedPane";
+import CurtainLink from "./CurtainLink";
 import { HOME_FINAL_PARAM, HOME_FINAL_VALUE } from "./homeSections";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
@@ -95,9 +96,9 @@ export default function CategoryStage({
           // the hand-off, and as navigations that intermittently never
           // completed at all. A document navigation tears the old page
           // down completely, which is what isolation means here.
-          <a href={HOME_FINAL_HREF} style={backStyle}>
+          <CurtainLink href={HOME_FINAL_HREF} style={backStyle}>
             <span aria-hidden>←</span> Back
-          </a>
+          </CurtainLink>
         )}
       </div>
     </div>
