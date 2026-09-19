@@ -208,6 +208,7 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
   const ambient = new THREE.AmbientLight(0x9fb0cc, 0.42);
   scene.add(ambient);
 
+
   const group = new THREE.Group();
   scene.add(group);
 
@@ -221,14 +222,15 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
   const floor = makeFadedFloor(THREE, {
     size: 26,
     y: opt.floorY,
-    // METALNESS IS NEAR ZERO ON PURPOSE. This scene carries no environment
-    // map, and on a MeshStandardMaterial metalness without one subtracts
-    // diffuse and supplies no reflection to replace it — at 0.3 it rendered
-    // the floor to within a hair of black, which is the "flat black
-    // rectangle" this display must not be. The sheen the reference has
-    // under the pieces comes from a low roughness catching the key light
-    // instead, and the albedo is lifted to match: the surface has to be a
-    // dark warm grey AFTER tone mapping, not before it.
+    // METALNESS IS NEAR ZERO ON PURPOSE. This floor carries no environment
+    // map — the one this scene gained is scoped to the stones alone, see
+    // addRocks — and on a MeshStandardMaterial metalness without one
+    // subtracts diffuse and supplies no reflection to replace it: at 0.3 it
+    // rendered the floor to within a hair of black, which is the "flat
+    // black rectangle" this display must not be. The sheen the reference
+    // has under the pieces comes from a low roughness catching the key
+    // light instead, and the albedo is lifted to match: the surface has to
+    // be a dark warm grey AFTER tone mapping, not before it.
     color: 0x453b32,
     core: 0.45,
     roughness: 0.24,
@@ -258,10 +260,18 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
     // scale/rotation/position — per the brief's "use the same supplied GLB
     // at different scale/rotation/position rather than different rock
     // files," not two different sculpted files.
-    void addRocks(THREE, group, [
-      { file: "rock.glb", pos: [1.3, opt.floorY + 0.22, -1.15], rot: [-0.2, 1.9, 0.4], scale: 0.075 },
-      { file: "rock.glb", pos: [-4.55, opt.floorY + 0.28, -1.9], rot: [0.3, 2.6, 0.2], scale: 0.095 },
-    ]);
+    // The renderer goes in so the stones get an environment to reflect —
+    // scoped to them alone, so the floor and the publications' own covers
+    // render exactly as they did. See addRocks and getStoneEnvironment.
+    void addRocks(
+      THREE,
+      group,
+      [
+        { file: "rock.glb", pos: [1.3, opt.floorY + 0.22, -1.15], rot: [-0.2, 1.9, 0.4], scale: 0.075 },
+        { file: "rock.glb", pos: [-4.55, opt.floorY + 0.28, -1.9], rot: [0.3, 2.6, 0.2], scale: 0.095 },
+      ],
+      renderer
+    );
   }
 
   type Loaded = {

@@ -160,6 +160,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   const ambient = new THREE.AmbientLight(0x9fb0cc, 0.42);
   scene.add(ambient);
 
+
   const group = new THREE.Group();
   scene.add(group);
 
@@ -190,7 +191,10 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     // scale/rotation/position rather than different rock files." Async —
     // see addRocks — so this fires and forgets rather than blocking the
     // rest of the synchronous setup.
-    void addRocks(THREE, group, placements);
+    // The renderer goes in so the stones get an environment to reflect —
+    // scoped to them alone, so nothing else in this case changes. See
+    // addRocks and getStoneEnvironment.
+    void addRocks(THREE, group, placements, renderer);
   }
 
   type Loaded = { item: T; node: import("three").Object3D };
