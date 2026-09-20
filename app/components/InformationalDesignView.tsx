@@ -336,6 +336,13 @@ export default function InformationalDesignView() {
   const drag = useRef<{ x: number; railX: number; t: number; vx: number; moved: boolean } | null>(
     null
   );
+  // Which pointer the stage has captured, if any. Capture is taken only
+  // once a drag has actually started, never on pointer-down — and that is
+  // not a refinement. A captured pointer retargets the CLICK that follows
+  // it to the capturing element, so with capture taken on press the
+  // leaflets' own buttons never received a click at all: a leaflet could
+  // be dragged past, and could not be opened.
+  const captured = useRef<number | null>(null);
   const onPointerDown = (e: React.PointerEvent) => {
     if (phase !== "open" || !railRef.current) return;
     gsap.killTweensOf(railRef.current);
@@ -346,13 +353,23 @@ export default function InformationalDesignView() {
       vx: 0,
       moved: false,
     };
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d || !railRef.current) return;
     const dx = e.clientX - d.x;
-    if (Math.abs(dx) > 3) d.moved = true;
+    if (Math.abs(dx) > 3 && !d.moved) {
+      d.moved = true;
+      // Now it is a drag, so the pointer is worth holding on to: the hand
+      // can leave the stage and the run still follows it.
+      try {
+        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+        captured.current = e.pointerId;
+      } catch {
+        // Capture can be refused (the pointer is already gone); the drag
+        // simply ends at the stage's edge instead of following past it.
+      }
+    }
     const now = performance.now();
     if (now > d.t) {
       d.vx = dx / (now - d.t);
@@ -362,9 +379,17 @@ export default function InformationalDesignView() {
     }
     gsap.set(railRef.current, { x: d.railX });
   };
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
     const d = drag.current;
     drag.current = null;
+    if (captured.current != null) {
+      try {
+        (e.currentTarget as Element).releasePointerCapture(captured.current);
+      } catch {
+        // Already released with the pointer itself.
+      }
+      captured.current = null;
+    }
     if (!d || !railRef.current) return;
     if (!d.moved) return;
     const x = (gsap.getProperty(railRef.current, "x") as number) || 0;
@@ -440,6 +465,11 @@ export default function InformationalDesignView() {
         >
           <div
             ref={stageRef}
+            // Handles for the measurement pass: which phase the run is in
+            // and which leaflet it is on, read straight off the DOM rather
+            // than inferred from where things happen to have landed.
+            data-id-phase={phase}
+            data-id-active={active}
             style={{
               position: "relative",
               flex: "1 1 auto",
@@ -450,7 +480,19 @@ export default function InformationalDesignView() {
               perspective: 2000,
               // The run is wider than the jacket on purpose; it is clipped
               // here so it can never widen the document itself.
-              overflow: "hidden",
+              //
+              // CLIP, not HIDDEN, and the difference is not cosmetic.
+              // `overflow: hidden` still makes this a scroll CONTAINER —
+              // it just hides the scrollbar — so when a leaflet out at the
+              // end of the run is clicked, the browser scrolls it into
+              // view. Measured at 390px wide: the stage ended up at
+              // scrollLeft 114 and scrollTop 84, which slid the whole
+              // composition under the clip with no scrollbar to put it
+              // back. That is what made the centred spread hang off the
+              // left edge, BACK land 22px from where the leaflet left, and
+              // the closed jacket sit 84px higher than it started.
+              // `overflow: clip` clips without ever becoming scrollable.
+              overflow: "clip",
             }}
           >
             <div
@@ -508,6 +550,10 @@ export default function InformationalDesignView() {
                         ref={(el) => {
                           slotRefs.current[i] = el;
                         }}
+                        // A handle for the measurement pass, which checks
+                        // that BACK returns a leaflet to the exact box it
+                        // left and that closing restores the initial state.
+                        data-id-slot={i}
                         style={{
                           position: "absolute",
                           left: -leafW / 2,
