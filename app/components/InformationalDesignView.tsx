@@ -40,7 +40,12 @@ const SANS = "'Neue Montreal', system-ui, sans-serif";
 
 /** Carousel spacing, as a share of one leaflet's width. Restrained: the
  *  neighbours sit close enough to read as one short run of sheets. */
-const STEP = 0.62;
+// How far apart the leaflets stand in the run, as a share of one leaflet's
+// width. At 0.62 each sheet buried well over a third of the next and the
+// collection read as a deck being shuffled; at 0.86 they overlap by a
+// hand's width — enough to be a collection rather than a row of separate
+// things, little enough that every neighbour is legible.
+const STEP = 0.86;
 /** Gap between a centred leaflet's two pages, same units. */
 const PAGE_GAP = 0.04;
 
@@ -55,6 +60,8 @@ export default function InformationalDesignView() {
 
   const stageRef = useRef<HTMLDivElement>(null);
   const coverRef = useRef<HTMLDivElement>(null);
+  /** The whole folded object, so the group can sit centred in both states. */
+  const jacketRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const slotRefs = useRef<(HTMLDivElement | null)[]>([]);
   const backRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -87,22 +94,37 @@ export default function InformationalDesignView() {
   }, []);
 
   const narrow = box.w > 0 && box.w < 760;
-  // The jacket: one panel closed, the two-panel spread open.
+  // THE JACKET IS ONE FOLDED SHEET, and the box it lives in is always the
+  // full spread — two panels wide — because the fold does not change the
+  // sheet's size, only which half of it you can see. Closed, the object
+  // occupies the RIGHT panel and the left one is empty; the group is
+  // shifted right by half a panel so it still sits centred on the stage.
+  // Open, the cover has swung into the left panel and the shift is zero.
+  // Nothing about this animates a WIDTH: growing a box sideways is what
+  // made the two supplied spreads read as unrelated flat cards.
   const jacketH = Math.max(180, Math.min(box.h * 0.8, narrow ? 340 : 500));
-  const closedW = jacketH * (JACKET.panelW / JACKET.panelH);
-  const openW = jacketH * (JACKET.spreadW / JACKET.spreadH);
+  const panelW = jacketH * (JACKET.panelW / JACKET.panelH);
+  const spreadW = jacketH * (JACKET.spreadW / JACKET.spreadH);
+  /** The shut object occupies the RIGHT panel of the spread's box, so its
+   *  middle is half a panel right of the box's middle. The group is moved
+   *  the other way by that much to put it back on the stage's centre. */
+  const closedShift = -panelW / 2;
   // A leaflet keeps its own A4 proportion exactly, always.
   const leafH = jacketH * 0.72;
   const leafW = leafH * (LEAFLETS[0].w / LEAFLETS[0].h);
   const step = leafW * STEP;
   const pageGap = leafW * PAGE_GAP;
 
-  // STORED: the leaflet reaches down into the band, and only its head
-  // stands proud of the jacket's top edge.
-  const storedY = -6;
-  // RAISED: clear of the band's top edge, so it has visibly come out of
-  // the opening it was in.
-  const raisedY = -jacketH * 0.17;
+  // STORED: sitting on the floor of the pocket, which is the jacket's own
+  // bottom edge. A leaflet is taller than the band is deep — that is true
+  // of the real object — so its head stands above the band and its body is
+  // behind it. Nothing is visible while the jacket is shut because the
+  // cover is over it; this is the state the cover opens ONTO.
+  const storedY = jacketH - leafH - jacketH * 0.015;
+  // RAISED: lifted clear of the band, foot just overlapping its top edge,
+  // so it reads as having come out of the opening it was in rather than
+  // having been somewhere else all along.
+  const raisedY = JACKET.pocketTop * jacketH - leafH - jacketH * 0.04;
   // CENTRED: the picked-up leaflet sits in the middle of the stage, big
   // enough to read, with room for its second page beside it.
   const centredScale = Math.max(
@@ -128,8 +150,21 @@ export default function InformationalDesignView() {
   /** Where a slot sits in the carousel run, before any centring. */
   const slotX = useCallback((i: number) => i * step, [step]);
 
-  /** The rail offset that puts leaflet `i` in the middle of the stage. */
-  const railX = useCallback((i: number) => -i * step, [step]);
+  /**
+   * The rail offset that puts leaflet `i` in the middle of the STAGE.
+   *
+   * The rail hangs at the centre of the RIGHT panel, because that is where
+   * the pocket is and a leaflet has to come out of the pocket. Once the
+   * run is out and open, though, it is the thing being looked at and
+   * belongs on the stage's own centre line — which is half a panel to the
+   * left of where it started. That half-panel is the lift itself: the
+   * stack rises out of the pocket and comes forward onto the centre, one
+   * move, rather than fanning out where it happened to be stored.
+   */
+  const railX = useCallback(
+    (i: number) => -i * step - panelW / 2,
+    [step, panelW]
+  );
 
   // ── OPEN ─────────────────────────────────────────────────────────────
   const open = useCallback(() => {
@@ -140,28 +175,42 @@ export default function InformationalDesignView() {
     const s = slots();
     const tl = gsap.timeline({ onComplete: () => (busyRef.current = false) });
 
-    // 1. The cover folds open on the spine. It is a real two-sided panel
-    //    (front cover on one face, back cover on the other), so it ends
-    //    lying open to the left rather than vanishing.
+    // 1. THE FRONT LEAF BENDS BACK ON THE FOLD. One turn about one edge —
+    //    the fold, at the spread's centre — and nothing slides. It is a
+    //    real two-sided panel: the front cover on the face you have been
+    //    looking at, the inside spread's left half on its reverse, so at
+    //    the end it is lying open with the interior showing rather than
+    //    having disappeared.
     if (coverRef.current) {
-      tl.to(coverRef.current, { rotateY: -180, duration: 0.86, ease: EASE_IO }, 0);
+      tl.to(coverRef.current, { rotateY: -180, duration: 0.88, ease: EASE_IO }, 0);
     }
-    // 2. The leaflets rise out of the pocket. Short stagger, no overshoot:
-    //    they are being lifted, not thrown.
+    // 1b. And the object slides back to centre as it widens. Closed, it is
+    //     one panel and sits in the right half of the spread's box with a
+    //     half-panel shift keeping it centred on the stage; open, it is
+    //     two panels and the shift is gone. The two are tied together so
+    //     the FOLD stays put on screen while the cover swings off it —
+    //     which is what makes it read as hinged rather than translated.
+    if (jacketRef.current) {
+      tl.to(jacketRef.current, { x: 0, duration: 0.88, ease: EASE_IO }, 0);
+    }
+    // 2. The leaflets rise out of the pocket, as a stack: one short
+    //    stagger, no overshoot, no fan yet. They are being lifted, not
+    //    thrown, and the pocket band is still in front of them the whole
+    //    way up, so they are coming OUT of it.
     tl.to(
       s,
-      { y: raisedY, duration: 0.7, ease: EASE_OUT, stagger: 0.055 },
-      0.42
+      { y: raisedY, duration: 0.72, ease: EASE_OUT, stagger: 0.05 },
+      0.54
     );
     // 3. Only once out do they open into the run, which is what keeps the
     //    movement from reading as passing through the jacket's walls.
     tl.to(
       s,
-      { x: (i: number) => slotX(i), duration: 0.72, ease: EASE_OUT, stagger: 0.045 },
-      0.62
+      { x: (i: number) => slotX(i), duration: 0.74, ease: EASE_OUT, stagger: 0.04 },
+      0.86
     );
     if (railRef.current) {
-      tl.to(railRef.current, { x: railX(0), duration: 0.72, ease: EASE_OUT }, 0.62);
+      tl.to(railRef.current, { x: railX(0), duration: 0.74, ease: EASE_OUT }, 0.86);
     }
   }, [raisedY, slotX, railX]);
 
@@ -203,17 +252,28 @@ export default function InformationalDesignView() {
     if (railRef.current) {
       tl.to(railRef.current, { x: 0, duration: 0.5, ease: EASE_IO }, t0);
     }
-    // 2. And drops back down into the pocket.
+    // 2. And slides back DOWN INTO the pocket — the same travel as the
+    //    rise, reversed, with the band in front of them throughout, so
+    //    they go into the opening rather than behind the artwork.
     tl.to(
       s,
-      { y: storedY, duration: 0.52, ease: "power2.in", stagger: { each: 0.04, from: "end" } },
-      t0 + 0.26
+      { y: storedY, duration: 0.56, ease: "power2.in", stagger: { each: 0.04, from: "end" } },
+      t0 + 0.28
     );
-    // 3. The cover folds back over them.
+    // 3. The front leaf bends back over them on the same fold, and the
+    //    object narrows to one panel again — the shift returning as the
+    //    cover comes back, exactly as they left together.
     if (coverRef.current) {
-      tl.to(coverRef.current, { rotateY: 0, duration: 0.8, ease: EASE_IO }, t0 + 0.46);
+      tl.to(coverRef.current, { rotateY: 0, duration: 0.86, ease: EASE_IO }, t0 + 0.52);
     }
-  }, [storedY, raisedY, slotX]);
+    if (jacketRef.current) {
+      tl.to(
+        jacketRef.current,
+        { x: closedShift, duration: 0.86, ease: EASE_IO },
+        t0 + 0.52
+      );
+    }
+  }, [storedY, raisedY, slotX, closedShift]);
 
   // ── PICK ONE UP / PUT IT BACK ────────────────────────────────────────
   const centre = useCallback(
@@ -300,7 +360,32 @@ export default function InformationalDesignView() {
     if (railRef.current) {
       gsap.set(railRef.current, { x: p === "closed" ? 0 : railX(a) });
     }
-  }, [storedY, raisedY, centredY, centredScale, leafW, pageGap, slotX, railX, box.w, box.h]);
+    // THE FOLDED OBJECT ITSELF. Shut, it is one panel sitting in the right
+    // half of the spread's box, so the group is moved half a panel left to
+    // put it back on the stage's centre; open, it is the whole spread and
+    // there is nothing to correct. Parked here as well as animated —
+    // without this the very first frame of a visit had the jacket a half
+    // panel right of where closing it again would put it, so the state you
+    // started in and the state you came back to were not the same one.
+    if (jacketRef.current) {
+      gsap.set(jacketRef.current, { x: p === "closed" ? closedShift : 0 });
+    }
+    if (coverRef.current) {
+      gsap.set(coverRef.current, { rotateY: p === "closed" ? 0 : -180 });
+    }
+  }, [
+    storedY,
+    raisedY,
+    centredY,
+    centredScale,
+    leafW,
+    pageGap,
+    slotX,
+    railX,
+    closedShift,
+    box.w,
+    box.h,
+  ]);
 
   // ── CAROUSEL NAVIGATION ──────────────────────────────────────────────
   const goTo = useCallback(
@@ -496,31 +581,104 @@ export default function InformationalDesignView() {
             }}
           >
             <div
+              ref={jacketRef}
               style={{
-                position: "relative",
-                width: phase === "closed" ? closedW : openW,
+                // CENTRED BY POSITION, not by the stage's flexbox.
+                //
+                // The open spread is two panels wide and on a phone that is
+                // wider than the stage. `justify-content: center` will not
+                // centre an item it cannot fit: browsers fall back to
+                // start-alignment rather than let content overflow off the
+                // start edge, where it could never be scrolled to. Measured
+                // at 390px, that put the whole object 78px right of where
+                // it belonged, which is why a leaflet opened for reading
+                // ran off the right-hand edge. Half the box, offset by half
+                // its own width, cannot do that.
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                marginLeft: -spreadW / 2,
+                marginTop: -jacketH / 2,
+                width: spreadW,
                 height: jacketH,
-                transition: "width 860ms cubic-bezier(0.65,0,0.35,1)",
                 transformStyle: "preserve-3d",
               }}
             >
-              {/* 1. THE INSIDE FACE. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={JACKET.inside}
-                alt=""
+              {/* 1. THE FIXED LEAF — the half that never moves.
+                     ─────────────────────────────────────────────────────
+                     A folder is ONE SHEET with a fold down the middle. The
+                     supplied outside spread is back cover LEFT, front
+                     cover RIGHT; folding it puts the front cover face-out
+                     over the back one, with the fold at the closed
+                     object's LEFT edge. So the leaf that stays put is the
+                     one whose OUTSIDE is the back cover — and its inside
+                     face is the RIGHT half of the supplied inside spread,
+                     because looking at the inside of a sheet swaps left
+                     and right. That is why this shows the right half and
+                     the cover's reverse (below) shows the left: it is the
+                     same sheet, seen from the other side.
+
+                     It sits in the RIGHT panel, which is where the closed
+                     object is. */}
+              <div
                 style={{
                   position: "absolute",
-                  inset: 0,
-                  width: "100%",
+                  left: panelW,
+                  top: 0,
+                  width: panelW,
                   height: "100%",
-                  objectFit: "fill",
-                  opacity: phase === "closed" ? 0 : centredActive ? 0.3 : 1,
+                  transformStyle: "preserve-3d",
+                  opacity: centredActive ? 0.3 : 1,
                   transition: "opacity 420ms ease",
                   borderRadius: 3,
                   boxShadow: "0 40px 90px rgba(0,0,0,0.75)",
                 }}
-              />
+              >
+                {/* The inside face: the right half of the inside spread,
+                    shown by giving the image the spread's width and
+                    sliding it a panel to the left. Not a crop of the file
+                    and not a second asset — the same supplied spread, with
+                    one half of it outside the box. */}
+                <div style={{ position: "absolute", inset: 0, overflow: "clip", borderRadius: 3 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={JACKET.inside}
+                    alt=""
+                    style={{
+                      position: "absolute",
+                      left: -panelW,
+                      top: 0,
+                      width: spreadW,
+                      // Tailwind's preflight caps every img at max-width
+                      // 100%, which quietly squeezed this spread-wide
+                      // image back down into its panel-wide box — so both
+                      // halves of the inside spread were being drawn into
+                      // the space for one, at half scale, instead of one
+                      // half being clipped out.
+                      maxWidth: "none",
+                      height: "100%",
+                      objectFit: "fill",
+                      backfaceVisibility: "hidden",
+                    }}
+                  />
+                </div>
+                {/* And its outside: the back cover, facing away. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={JACKET.backCover}
+                  alt=""
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "fill",
+                    backfaceVisibility: "hidden",
+                    transform: "rotateY(180deg)",
+                    borderRadius: 3,
+                  }}
+                />
+              </div>
 
               {/* 2. THE LEAFLETS — between the inside face and the pocket
                      band, which is what makes them stored. */}
@@ -531,7 +689,13 @@ export default function InformationalDesignView() {
                 onPointerLeave={onPointerUp}
                 style={{
                   position: "absolute",
-                  inset: 0,
+                  // IN THE POCKET, which is in the fixed leaf — so the run
+                  // starts from the right panel and not from the middle of
+                  // a spread that is not open yet.
+                  left: panelW,
+                  top: 0,
+                  width: panelW,
+                  height: "100%",
                   // Above the cover and the band once a leaflet has been
                   // picked up — a slot's own z-index only orders it within
                   // THIS layer, so without this the cover painted over it.
@@ -563,15 +727,15 @@ export default function InformationalDesignView() {
                           transformOrigin: "50% 50%",
                           zIndex: isCentred ? 9 : isActive ? 4 : 3,
                           willChange: "transform",
-                          // On the SLOT, so both of the sheet's pages dim
-                          // together; on the front page alone it left the
-                          // back one at full brightness.
-                          opacity:
-                            phase === "closed" || isActive || isCentred
-                              ? 1
-                              : centredActive
-                                ? 0.1
-                                : 0.68,
+                          // FULLY OPAQUE, always — a leaflet is a printed
+                          // sheet and a printed sheet is not translucent.
+                          // Depth in the run is carried by overlap and by
+                          // scale, never by fading the neighbours out,
+                          // which is what made the collection read as
+                          // ghosts of itself. The one exception is while
+                          // a leaflet is being READ: the rest step back
+                          // out of the way rather than competing with it.
+                          opacity: centredActive && !isCentred ? 0.12 : 1,
                           transition: "opacity 380ms ease",
                         }}
                       >
@@ -659,18 +823,24 @@ export default function InformationalDesignView() {
                 </div>
               </div>
 
-              {/* 3. THE POCKET BAND, drawn over the leaflets. */}
+              {/* 3. THE POCKET, drawn over the leaflets — which is the
+                     whole of what makes them STORED rather than lying on
+                     top of the artwork. The band is the bottom strip of
+                     the same inside spread, same right half, so its edge
+                     lines up with the face behind it exactly. It is never
+                     hidden: the pocket is part of the inside face, and
+                     with the cover shut the cover is over both. */}
               <div
                 aria-hidden
                 style={{
                   position: "absolute",
-                  left: 0,
-                  right: 0,
+                  left: panelW,
+                  width: panelW,
                   top: `${JACKET.pocketTop * 100}%`,
                   bottom: 0,
                   zIndex: 5,
-                  overflow: "hidden",
-                  opacity: phase === "closed" ? 0 : centredActive ? 0.3 : 1,
+                  overflow: "clip",
+                  opacity: centredActive ? 0.3 : 1,
                   transition: "opacity 420ms ease",
                   borderRadius: "0 0 3px 3px",
                   pointerEvents: "none",
@@ -682,9 +852,10 @@ export default function InformationalDesignView() {
                   alt=""
                   style={{
                     position: "absolute",
-                    left: 0,
+                    left: -panelW,
                     top: `-${(JACKET.pocketTop / (1 - JACKET.pocketTop)) * 100}%`,
-                    width: "100%",
+                    width: spreadW,
+                    maxWidth: "none",
                     height: `${100 / (1 - JACKET.pocketTop)}%`,
                     objectFit: "fill",
                   }}
@@ -701,20 +872,33 @@ export default function InformationalDesignView() {
                 />
               </div>
 
-              {/* 4. THE COVER — a real two-sided panel folding on its
-                     spine, so it ends lying open rather than vanishing. */}
+              {/* 4. THE MOVING LEAF — the front cover, hinged on the fold.
+                     ─────────────────────────────────────────────────────
+                     It occupies the RIGHT panel, exactly over the fixed
+                     leaf, and its hinge is its own LEFT edge — which is
+                     the fold, at the spread's centre line. It stays there:
+                     nothing about opening moves this panel sideways. It
+                     only turns, about that one edge, and at 180 degrees it
+                     is lying flat in the left panel, face down, which is
+                     where an opened folder's front cover actually is.
+
+                     Two faces of one panel. Front: the supplied front
+                     cover. Reverse: the LEFT half of the inside spread —
+                     the other half of the sheet whose right half the fixed
+                     leaf carries. Drawn pre-rotated so it reads the right
+                     way round once the panel has turned over. */}
               <div
                 ref={coverRef}
                 style={{
                   position: "absolute",
-                  left: phase === "closed" ? 0 : "50%",
+                  left: panelW,
                   top: 0,
-                  width: closedW,
+                  width: panelW,
                   height: "100%",
                   zIndex: 7,
                   transformOrigin: "left center",
                   transformStyle: "preserve-3d",
-                  transition: "left 860ms cubic-bezier(0.65,0,0.35,1), opacity 420ms ease",
+                  transition: "opacity 420ms ease",
                   opacity: centredActive ? 0.3 : 1,
                   pointerEvents: "none",
                 }}
@@ -734,22 +918,40 @@ export default function InformationalDesignView() {
                     boxShadow: "0 40px 100px rgba(0,0,0,0.8)",
                   }}
                 />
-                {/* The other face of the same panel. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={JACKET.backCover}
-                  alt=""
+                {/* The reverse of the same panel: the inside spread's
+                    LEFT half, which is what this leaf shows once it has
+                    turned over. */}
+                <div
                   style={{
                     position: "absolute",
                     inset: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "fill",
+                    overflow: "clip",
                     backfaceVisibility: "hidden",
                     transform: "rotateY(180deg)",
                     borderRadius: 3,
                   }}
-                />
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={JACKET.inside}
+                    alt=""
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      width: spreadW,
+                      // Tailwind's preflight caps every img at max-width
+                      // 100%, which quietly squeezed this spread-wide
+                      // image back down into its panel-wide box — so both
+                      // halves of the inside spread were being drawn into
+                      // the space for one, at half scale, instead of one
+                      // half being clipped out.
+                      maxWidth: "none",
+                      height: "100%",
+                      objectFit: "fill",
+                    }}
+                  />
+                </div>
               </div>
             </div>
 
