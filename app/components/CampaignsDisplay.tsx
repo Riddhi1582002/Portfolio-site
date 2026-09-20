@@ -15,6 +15,7 @@
 
 import { useMemo } from "react";
 import ArtworkStackDisplay, { preloadStack, type StackPiece } from "./ArtworkStackDisplay";
+import type { RockPlacement } from "./sceneRocks";
 import { DEPT_POSTS, EMPLOYEE_POSTS } from "./campaignsAssets";
 
 const D = Math.PI / 180;
@@ -40,7 +41,7 @@ export const CAMPAIGN_CARD_PIECES: StackPiece[] = [
     aspect: 1,
     height: 1.74,
     scale: 1,
-    pos: [-1.44, at(1.74), -1.05],
+    pos: [-1.3, at(1.74), -1.05],
     rot: [-3 * D, 15 * D, -4 * D],
     lift: [-0.05, 0.1, 0.06],
     turn: [0, 3 * D, 0],
@@ -53,7 +54,7 @@ export const CAMPAIGN_CARD_PIECES: StackPiece[] = [
     aspect: 1,
     height: 1.82,
     scale: 1,
-    pos: [1.42, at(1.82), -0.78],
+    pos: [1.32, at(1.82), -0.8],
     rot: [-2 * D, -16 * D, 3 * D],
     lift: [0.05, 0.11, 0.06],
     turn: [0, -3 * D, 0],
@@ -66,7 +67,7 @@ export const CAMPAIGN_CARD_PIECES: StackPiece[] = [
     aspect: 1,
     height: 1.54,
     scale: 1,
-    pos: [-1.08, at(1.54, 0.06), 0.16],
+    pos: [-1.16, at(1.54, 0.06), 0.2],
     rot: [-4 * D, 11 * D, 5 * D],
     lift: [-0.06, 0.13, 0.1],
     turn: [0, 2.5 * D, 0],
@@ -80,12 +81,20 @@ export const CAMPAIGN_CARD_PIECES: StackPiece[] = [
     aspect: 1,
     height: 2.08,
     scale: 1,
-    pos: [0.2, at(2.08, 0.1), 1.02],
+    pos: [0.28, at(2.08, 0.1), 1.04],
     rot: [-3 * D, -4 * D, -1.5 * D],
     lift: [0.02, 0.16, 0.16],
     turn: [0, -1.5 * D, 0],
     parallax: 1,
   },
+];
+
+// This card's own stones, out at the margins the composition leaves
+// empty. Same supplied rock.glb, same role — weight at the base — just
+// not across the front of the piece the eye is meant to land on.
+const ROCKS: RockPlacement[] = [
+  { file: "rock.glb", pos: [2.16, -1.1, 0.5], rot: [-0.3, 1.4, 0.5], scale: 0.084 },
+  { file: "rock.glb", pos: [-1.98, -1.16, 0.86], rot: [0.4, 2.3, 0.2], scale: 0.096 },
 ];
 
 export function preloadCampaigns() {
@@ -100,8 +109,13 @@ export default function CampaignsDisplay({
   reduced?: boolean;
 }) {
   // Stable across renders: the engine remounts if this identity changes.
+  // THE SAME LENS AND THE SAME DISTANCE AS THE PUBLICATIONS CARD. At 12.6
+  // this group sat small and adrift in the middle of its frame while the
+  // card beside it filled its own — which is most of why this one read as
+  // the weaker of the two. Nothing about the staging was wrong; the camera
+  // was simply further away.
   const options = useMemo(
-    () => ({ fov: 26, camZ: 12.6, camY: 0.18, floorY: FLOOR_Y, rocks: true }),
+    () => ({ fov: 26, camZ: 10.6, camY: 0.2, floorY: FLOOR_Y, rocks: ROCKS }),
     []
   );
   return (
