@@ -50,7 +50,42 @@ const SANS = "'Neue Montreal', system-ui, sans-serif";
 
 /** Deep enough to read set type on a rasterised A4 page, not just to peer. */
 const ZOOM_LEVELS = [1, 1.6, 2.4, 3.6, 5];
-const TURN_MS = 520;
+// HOW EACH FORMAT TURNS.
+//
+// The move is the same idea for all of them — the artefact stays put and
+// the next sheet is laid over it from its own edge — but the SIZE of it is
+// a property of what is being read, and forcing one publication's motion
+// onto the others is how a viewer stops belonging to the thing in it.
+//
+//   travel  how far the arriving sheet moves behind its own leading edge,
+//           as a share of the stage's width. Small: this is the weight of
+//           the sheet, not a journey across the screen.
+//   lift    how much larger the arriving sheet starts. A printed spread
+//           is lifted off the pile and set down, so it comes from slightly
+//           nearer the reader; a single sheet barely does.
+//   recede  how far the covered sheet settles back under it.
+//   dim     how far the covered sheet falls into shadow.
+type TurnProfile = { ms: number; travel: number; lift: number; recede: number; dim: number };
+
+const TURN: Record<string, TurnProfile> = {
+  // SNEH SAGAR — a set of selected pages, read one at a time. The book
+  // holds absolutely still and the next page arrives across it: the least
+  // travel of any of them, the least lift, and a shallow settle, so what
+  // changes is the page and not the object.
+  book: { ms: 560, travel: 0.06, lift: 1.0, recede: 0.988, dim: 0.62 },
+  // BROCHURES — every supplied page is already a printed spread, and a
+  // spread is a physically bigger thing to move. It comes off the pile
+  // with a real lift and layers over the one before it; the covered spread
+  // drops further back and further into shadow, which is the depth the
+  // reference reads as.
+  spreadCollection: { ms: 620, travel: 0.085, lift: 1.045, recede: 0.965, dim: 0.5 },
+  // THE NEWSLETTER — a sheet, not a spread: a smaller lift than a
+  // brochure, a longer edge travel than the book.
+  page: { ms: 560, travel: 0.075, lift: 1.022, recede: 0.978, dim: 0.56 },
+  // POLICY DOCUMENTS — read, not browsed. The quietest of the four: almost
+  // no lift, the shortest travel, and the covered sheet barely moves.
+  collection: { ms: 500, travel: 0.05, lift: 1.012, recede: 0.99, dim: 0.66 },
+};
 
 /** One thing the reader looks at. A brochure's page is already a printed
  *  spread, so a "page" here is always exactly one supplied image. */
@@ -78,6 +113,8 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   // A brochure page is a printed spread already, so it is drawn wide;
   // a book's facing pair is drawn as two pages meeting at a gutter.
   const isWidePage = content?.viewer.kind === "spreadCollection";
+  /** This publication's own page change — see TURN. */
+  const turn = TURN[content?.viewer.kind ?? "page"] ?? TURN.page;
 
   const views = useMemo(() => (activeDoc ? buildViews(activeDoc) : []), [activeDoc]);
 
@@ -115,13 +152,28 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     [viewIndex, views]
   );
 
-  // THE PAGE CHANGE: one page slides out while the next slides in behind
-  // it, along a straight horizontal line. No rotation, no fold, no
-  // perspective — none of these publications is a bound book, and a page
-  // curl on a newsletter or a policy document is a metaphor for something
-  // that is not there. It is also not a crossfade: both sheets are
-  // travelling, which is what makes it read as movement rather than as one
-  // picture being swapped for another.
+  // THE PAGE CHANGE: A SHEET IS LAID OVER THE ONE BEFORE IT.
+  //
+  // What this replaces sent both sheets travelling most of the stage's
+  // width in opposite directions. Whatever the easing, a whole picture
+  // leaving the frame while another arrives is a slideshow: the artefact
+  // itself moves, so there is nothing for the reader to hold on to, and
+  // nothing about it says these two pages belong to one object.
+  //
+  // The artefact is ANCHORED now, and the change happens at its EDGE. The
+  // incoming sheet is uncovered from its leading edge — a clip that opens
+  // across it — with a short travel behind that edge so it reads as being
+  // laid down rather than dissolved in. The outgoing sheet does not go
+  // anywhere: it settles back a little and falls into shadow as the new
+  // one covers it. That is what turning to the next page in a physical
+  // document looks like, and it keeps the page in exactly the same place
+  // on screen throughout, which is what makes the reading position hold.
+  //
+  // No rotation, no fold, no curl. Not one of these is a bound volume —
+  // Sneh Sagar is a set of selected pages, a brochure's page is a printed
+  // spread already, and a newsletter, a handbook and a policy document are
+  // read a sheet at a time — so a page-curl would be a metaphor for
+  // something that is not there.
   useLayoutEffect(() => {
     if (!mountedRef.current) {
       mountedRef.current = true;
@@ -131,28 +183,56 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     const incoming = currentLayerRef.current;
     const outgoing = prevLayerRef.current;
     const dir = prevView.dir;
-    const travel = (stageRef.current?.getBoundingClientRect().width ?? 600) * 0.62;
     const done = () => {
       turningRef.current = false;
       setPrevView(null);
+      if (incoming) gsap.set(incoming, { clearProps: "clipPath,transform,filter" });
     };
     if (!incoming && !outgoing) {
       done();
       return;
     }
+    const width = stageRef.current?.getBoundingClientRect().width ?? 600;
     const tl = gsap.timeline({ onComplete: done });
-    const dur = TURN_MS / 1000;
+    const dur = turn.ms / 1000;
     if (outgoing) {
-      gsap.set(outgoing, { x: 0, zIndex: 3 });
+      // Stays put. Only settles back and darkens, which is what being
+      // covered by something looks like.
+      gsap.set(outgoing, { x: 0, zIndex: 2, scale: 1, filter: "brightness(1)" });
       tl.to(
         outgoing,
-        { x: dir === 1 ? -travel : travel, duration: dur, ease: "power3.inOut" },
+        {
+          scale: turn.recede,
+          filter: `brightness(${turn.dim})`,
+          duration: dur,
+          ease: "power2.out",
+        },
         0
       );
     }
     if (incoming) {
-      gsap.set(incoming, { x: dir === 1 ? travel : -travel, zIndex: 2 });
-      tl.to(incoming, { x: 0, duration: dur, ease: "power3.inOut" }, 0);
+      // Leading edge first: coming from the right (dir 1), the sheet is
+      // uncovered from ITS right edge inward, so the edge that arrives is
+      // the edge you would see arriving.
+      const closed = dir === 1 ? "inset(0% 0% 0% 100%)" : "inset(0% 100% 0% 0%)";
+      gsap.set(incoming, {
+        zIndex: 3,
+        clipPath: closed,
+        x: dir === 1 ? width * turn.travel : -width * turn.travel,
+        scale: turn.lift,
+        transformOrigin: "50% 50%",
+      });
+      tl.to(
+        incoming,
+        {
+          clipPath: "inset(0% 0% 0% 0%)",
+          x: 0,
+          scale: 1,
+          duration: dur,
+          ease: "power3.out",
+        },
+        0
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewIndex, docIndex]);
@@ -221,7 +301,13 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     if (d.paging) {
       // The current page follows the hand, so the slide that finishes the
       // gesture is continuous with it rather than a separate animation.
-      if (currentLayerRef.current) gsap.set(currentLayerRef.current, { x: dx * 0.7 });
+      if (currentLayerRef.current) // DAMPED, and heavily. The sheet is anchored; a drag is the reader
+      // taking hold of its edge, not pushing the whole document across the
+      // desk. It moves enough to answer the hand and no further, and the
+      // change itself happens on release.
+      gsap.set(currentLayerRef.current, {
+        x: Math.max(-72, Math.min(72, dx * 0.26)),
+      });
       return;
     }
     setPan(clampPan(d.panX + dx, d.panY + (e.clientY - d.y), zoom));
