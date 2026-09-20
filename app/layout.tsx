@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Curtain from "./components/Curtain";
+import PageReveal from "./components/PageReveal";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,24 +38,31 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           href="/model/moth-final.glb"
           crossOrigin="anonymous"
         />
-        {/* THE CURTAIN, BEFORE THE FIRST PAINT. A page arrived at through
-            a card's wipe has to already be covered when it paints — a
-            React effect runs several frames later, and those frames are
-            the flash of unmasked page the wipe exists to hide. This is the
-            earliest a page can know, so it is where the cover is raised;
-            Curtain below takes it over and sweeps it off. */}
+        {/* CLOSED BEFORE THE FIRST PAINT. A page arrived at through the
+            transition has to already be at its closed aperture when it
+            paints — a React effect runs several frames later, and those
+            frames are the flash of unmasked page the transition exists to
+            prevent. This is the earliest a page can know; PageReveal below
+            takes that closed state over and opens it. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var r=sessionStorage.getItem('curtainIn');" +
+              "try{var r=sessionStorage.getItem('pageReveal');" +
               "if(r&&Date.now()-Number(r)<8000)" +
-              "document.documentElement.setAttribute('data-curtain','1');}catch(e){}",
+              "document.documentElement.setAttribute('data-reveal','1');}catch(e){}",
           }}
         />
       </head>
       <body className="min-h-full flex flex-col">
-        {children}
-        <Curtain />
+        {/* THE CLIPPED ELEMENT. The page itself is what the aperture opens
+            and closes, so the destination is uncovered rather than having
+            something dealt over it — see app/lib/pageTransition.ts. At
+            rest it carries no clip and no transform, so it is an ordinary
+            wrapper and establishes no containing block. */}
+        <div id="page-frame" className="flex flex-1 flex-col">
+          {children}
+        </div>
+        <PageReveal />
       </body>
     </html>
   );

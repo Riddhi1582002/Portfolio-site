@@ -1,12 +1,11 @@
 "use client";
 
-// A LINK THAT LEAVES THE WAY THE CARDS ARRIVE.
+// A LINK THAT LEAVES THE WAY EVERY PAGE ARRIVES.
 //
-// Going in from a card is a curtain; coming back out used to be a hard
-// cut, which made the two directions feel like different sites. This is
-// the same wipe, on a plain anchor: the panel sweeps up over the page, the
-// navigation happens behind it, and the destination carries the edge off
-// (every page does, via the root layout's Curtain).
+// Going in from a card and coming back out are the same move, in opposite
+// directions: the page closes to its centre line, the navigation happens
+// behind it, and the destination opens from the same line. See
+// app/lib/pageTransition.ts.
 //
 // Deliberately a real navigation rather than a client transition — the
 // pages this joins own WebGL contexts, pinned ScrollTriggers and per-frame
@@ -15,9 +14,9 @@
 // the browser's own handling untouched.
 
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
-import { curtainOut } from "../lib/curtain";
+import { pageOut } from "../lib/pageTransition";
 
-export default function CurtainLink({
+export default function TransitionLink({
   href,
   style,
   className,
@@ -33,7 +32,7 @@ export default function CurtainLink({
       return;
     }
     e.preventDefault();
-    curtainOut(() => window.location.assign(href));
+    pageOut(() => window.location.assign(href));
   };
   return (
     <a href={href} style={style} className={className} onClick={onClick}>

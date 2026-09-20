@@ -24,7 +24,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import usePinnedPane from "./usePinnedPane";
-import CurtainLink from "./CurtainLink";
+import TransitionLink from "./TransitionLink";
 import { HOME_FINAL_PARAM, HOME_FINAL_VALUE } from "./homeSections";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
@@ -38,17 +38,53 @@ export default function CategoryStage({
   lengthVh,
   children,
   showBack = true,
+  startProgress = 0,
 }: {
   /** This category's scroll length, in viewport heights. */
   lengthVh: number;
   children: (progress: number) => ReactNode;
   /** False where the category draws its own way home (the gallery does). */
   showBack?: boolean;
+  /**
+   * WHERE THE CATEGORY OPENS, as a share of its own track.
+   *
+   * Not every beat begins at its own progress 0. Graphic Design's track
+   * starts with the cord descending and the bulb arriving, which is a
+   * hand-off from the beat that used to precede it on the homepage — as a
+   * destination in its own right, it should open ON the carousel of cards
+   * around the bulb, which is what the link is for. The whole track is
+   * still there to scroll back through; this only decides where the
+   * reader is put down.
+   */
+  startProgress?: number;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const [progress, setProgress] = useState(0);
   usePinnedPane(trackRef, paneRef);
+
+  // OPENING POSITION. After layout, and after ScrollTrigger has measured
+  // the pin, so the track's full height exists before a share of it means
+  // anything. Instant, never eased: easing here would scrub the whole
+  // lead-in on the way past, which is the replay this is avoiding.
+  useEffect(() => {
+    if (startProgress <= 0) return;
+    let raf = 0;
+    const place = () => {
+      const el = trackRef.current;
+      if (!el) return;
+      const total = el.scrollHeight - window.innerHeight;
+      if (total <= 0) {
+        raf = requestAnimationFrame(place);
+        return;
+      }
+      window.scrollTo(0, Math.round(total * startProgress));
+    };
+    raf = requestAnimationFrame(() => {
+      raf = requestAnimationFrame(place);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [startProgress]);
 
   useEffect(() => {
     let raf = 0;
@@ -96,9 +132,9 @@ export default function CategoryStage({
           // the hand-off, and as navigations that intermittently never
           // completed at all. A document navigation tears the old page
           // down completely, which is what isolation means here.
-          <CurtainLink href={HOME_FINAL_HREF} style={backStyle}>
+          <TransitionLink href={HOME_FINAL_HREF} style={backStyle}>
             <span aria-hidden>←</span> Back
-          </CurtainLink>
+          </TransitionLink>
         )}
       </div>
     </div>

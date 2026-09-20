@@ -30,7 +30,7 @@
 // the gallery this project belongs to, and the work.
 
 import { useEffect, useRef } from "react";
-import CurtainLink from "./CurtainLink";
+import TransitionLink from "./TransitionLink";
 import { RECEPTION_PIECES, type ReceptionPiece } from "./receptionScreenAssets";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
@@ -101,9 +101,9 @@ export default function ReceptionScreenView() {
     <div className="relative w-full bg-black text-white" style={{ fontFamily: SANS }}>
       <div className="rs-shell">
         <header className="rs-head">
-          <CurtainLink href="/work/graphic-design" style={backLinkStyle}>
+          <TransitionLink href="/work/graphic-design" style={backLinkStyle}>
             <span aria-hidden>←</span> Back
-          </CurtainLink>
+          </TransitionLink>
           <h1 className="rs-title">Reception Screen</h1>
           <p className="rs-desc">{DESCRIPTION}</p>
         </header>

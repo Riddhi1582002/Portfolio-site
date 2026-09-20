@@ -36,7 +36,7 @@
 // inside a modal that owns the whole screen.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import CurtainLink from "./CurtainLink";
+import TransitionLink from "./TransitionLink";
 import { useRouter } from "next/navigation";
 import gsap from "gsap";
 import {
@@ -335,9 +335,9 @@ export default function PublicationViewer({ slug }: { slug: string }) {
             scrollbarWidth: "none",
           }}
         >
-          <CurtainLink href="/publications" style={backLinkStyle}>
+          <TransitionLink href="/publications" style={backLinkStyle}>
             <span aria-hidden>←</span> Back
-          </CurtainLink>
+          </TransitionLink>
 
           <div>
             <div style={{ ...eyebrowStyle, marginBottom: 10 }}>{number}</div>

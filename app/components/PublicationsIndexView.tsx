@@ -13,9 +13,9 @@
 // there is nothing to open yet).
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import CurtainLink from "./CurtainLink";
+import TransitionLink from "./TransitionLink";
 import { useRouter } from "next/navigation";
-import { curtainOut } from "../lib/curtain";
+import { pageOut } from "../lib/pageTransition";
 import PublicationsIndexDisplay, {
   INDEX_PUBLICATIONS,
 } from "./PublicationsIndexDisplay";
@@ -74,12 +74,12 @@ export default function PublicationsIndexView() {
   // [slug]).
   const onFocusComplete = useCallback(
     (id: string) => {
-      // The same curtain the ring's cards raise, so index -> publication
+      // The same transition the ring's cards run, so index -> publication
       // is the same move as card -> index rather than a different one:
       // the focused object has taken the frame, the wipe sweeps up over
       // it, and the publication's own page carries the edge off. See
-      // app/lib/curtain.ts.
-      curtainOut(() => router.push(`/publications/${id}`));
+      // app/lib/pageTransition.ts.
+      pageOut(() => router.push(`/publications/${id}`));
     },
     [router]
   );
@@ -166,7 +166,7 @@ export default function PublicationsIndexView() {
           gap: 10,
         }}
       >
-        <CurtainLink
+        <TransitionLink
           href="/work/graphic-design"
           style={{
             fontFamily: SANS,
@@ -180,7 +180,7 @@ export default function PublicationsIndexView() {
           }}
         >
           Back
-        </CurtainLink>
+        </TransitionLink>
         <h1
           style={{
             margin: 0,

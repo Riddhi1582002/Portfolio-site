@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import InfiniteCanvas from "./InfiniteCanvas";
-import CurtainLink from "./CurtainLink";
+import TransitionLink from "./TransitionLink";
 import { HOME_FINAL_HREF, backStyle } from "./CategoryStage";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
@@ -35,7 +35,7 @@ export default function ArtCategoryView() {
   // A document navigation, for the reason CategoryStage's own Back gives.
   const goHome = useCallback(() => {
     // The return gesture has already played its own full camera move, so
-    // it hands over directly rather than raising a second curtain over it.
+    // it hands over directly rather than running a second aperture over it.
     window.location.assign(HOME_FINAL_HREF);
   }, []);
 
@@ -57,9 +57,9 @@ export default function ArtCategoryView() {
         visible
         onReturnHome={goHome}
       />
-      <CurtainLink href={HOME_FINAL_HREF} style={backStyle}>
+      <TransitionLink href={HOME_FINAL_HREF} style={backStyle}>
         <span aria-hidden>←</span> Back
-      </CurtainLink>
+      </TransitionLink>
     </div>
   );
 }

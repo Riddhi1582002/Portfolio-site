@@ -24,7 +24,7 @@
 // and opening it shows every slide in order at its own proportions.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import CurtainLink from "./CurtainLink";
+import TransitionLink from "./TransitionLink";
 import {
   CAROUSELS,
   DEPT_POSTS,
@@ -111,9 +111,9 @@ export default function CampaignsView() {
         >
           {/* Back goes to the gallery this project sits in — the homepage's
               Graphic Design beat — not to the top of the homepage. */}
-          <CurtainLink href="/work/graphic-design" style={backLinkStyle}>
+          <TransitionLink href="/work/graphic-design" style={backLinkStyle}>
             <span aria-hidden>←</span> Back
-          </CurtainLink>
+          </TransitionLink>
           <h1
             style={{
               margin: 0,

@@ -28,7 +28,7 @@
 
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import gsap from "gsap";
-import { CURTAIN_OUT_S, curtainOut } from "../lib/curtain";
+import { OUT_S as TRANSITION_OUT_S, pageOut } from "../lib/pageTransition";
 import HoverCard from "./HoverCard";
 import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
 import CampaignsDisplay, { preloadCampaigns } from "./CampaignsDisplay";
@@ -262,31 +262,31 @@ export default function ArcCarousel({
       // Disabled so the timeline tracks real elapsed time throughout.
       gsap.ticker.lagSmoothing(0);
       const inner = innerRefs.current[holder.index];
-      // A CURTAIN, not a fade. The black rectangle that used to fade in
-      // over the enlarging card had no direction: it dimmed this page and
-      // then the next one was simply there, which is why the two sides
-      // never read as one move. The panel sweeps UP across the viewport
-      // instead, the navigation happens behind it, and the destination
-      // page — every one of them, via the root layout's Curtain — picks
-      // the same edge up and carries it off. See app/lib/curtain.ts.
+      // THE APERTURE CLOSES ON THE CARD. Not a fade (which has no
+      // direction, so the two sides never read as one move) and not a
+      // panel crossing the frame (which covers the work on its way past).
+      // This page closes to its own centre line with the card still
+      // travelling inside it, and the destination opens from that same
+      // line — every page does, via the root layout's PageReveal. See
+      // app/lib/pageTransition.ts.
       //
       // The actual navigation. `router.push` fired without throwing from
       // this exact handler but never changed the URL — see the note this
       // replaced, still true, so this is still a real navigation to the
       // existing route rather than a client transition; it fires once the
-      // curtain has covered the page, not the instant the card is clicked.
-      const tl = curtainOut(() => window.location.assign(holder.href));
+      // page has closed, not the instant the card is clicked.
+      const tl = pageOut(() => window.location.assign(holder.href));
       if (inner) {
-        // Still travelling as the curtain passes over it: the card is
+        // Still travelling as the aperture closes over it: the card is
         // last seen moving toward the reader, not sitting still behind a
-        // fade. Same duration as the wipe, so it is covered exactly as it
-        // finishes rather than being cut off mid-move.
+        // fade. Same duration, so it is covered exactly as it finishes
+        // rather than being cut off mid-move.
         tl.to(
           inner,
           {
             scale: 1.55,
             y: -18,
-            duration: CURTAIN_OUT_S,
+            duration: TRANSITION_OUT_S,
             ease: "power2.out",
             transformOrigin: "50% 50%",
           },
