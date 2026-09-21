@@ -90,6 +90,32 @@ export type SpatialCardOptions = {
    * frame without re-authoring a single placement.
    */
   contentScale: number;
+  /**
+   * WHICH OBJECT IS BEING LOOKED AT, if any — the id of one item, or null.
+   *
+   * Read every frame rather than watched, and eased on this engine's own
+   * clock alongside hover and arrival, because those three all move the
+   * same holder and the last one to write a frame would otherwise win. A
+   * caller tweening `node.position` from outside loses that race on the
+   * very next tick; a ref here cannot.
+   */
+  focusRef?: { current: string | null };
+  /**
+   * AN ENVIRONMENT FOR THE WHOLE SCENE, at this intensity, or absent for
+   * none.
+   *
+   * Off by default, and deliberately: the cards that stage printed work
+   * must render the supplied artwork exactly as delivered, and a
+   * scene-wide environment lifts it — which is why the stones get theirs
+   * scoped to their own material instead.
+   *
+   * A card staging GLASS AND METAL is the opposite case. Transparent glass
+   * with nothing to reflect does not read as glass at all; it comes out
+   * flat white, which is exactly what a clear bottle looked like here
+   * before this existed. There the environment is not a lift, it is the
+   * material.
+   */
+  environment?: number;
 };
 
 export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
@@ -373,9 +399,43 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   }
 
   if (opt.lightbox) buildLightbox(THREE, scene, opt);
+
+  // AN ENVIRONMENT, where this scene's materials need one to be materials
+  // at all — see SpatialCardOptions.environment.
+  let envCancelled = false;
+  let releaseEnv: (() => void) | null = null;
+  if (opt.environment) {
+    const intensity = opt.environment;
+    void import("three/examples/jsm/environments/RoomEnvironment.js")
+      .then(({ RoomEnvironment }) => {
+        if (envCancelled || disposed) return;
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const target = pmrem.fromScene(new RoomEnvironment(), 0.04);
+        pmrem.dispose();
+        scene.environment = target.texture;
+        scene.environmentIntensity = intensity;
+        releaseEnv = () => {
+          scene.environment = null;
+          target.texture.dispose();
+        };
+      })
+      .catch(() => {
+        // No environment is the old look, not a broken one.
+      });
+  }
   // Applied to the group itself rather than to each object, so hover,
   // parallax and every authored position keep their relationship exactly.
   if (opt.contentScale !== 1) group.scale.setScalar(opt.contentScale);
+
+  /** What each material was authored as, before the arrival fade touched
+   *  it — so the fade can put it back rather than flattening it. */
+  const authored = new Map<
+    import("three").Material,
+    { transparent: boolean; opacity: number }
+  >();
+
+  /** Per-object focus, eased. Keyed by the item's own id. */
+  const focusAmount = new Map<string, number>();
 
   type Loaded = { item: T; node: import("three").Object3D };
   const loaded: Loaded[] = [];
@@ -495,36 +555,72 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     const arrive = arriveT * arriveT * (3 - 2 * arriveT);
 
     for (const { item, node } of loaded) {
+      // THE ARRIVAL FADE, and putting back exactly what it found.
+      //
+      // This used to end by forcing every material it had touched to
+      // transparent = false, opacity = 1 — which is right for artwork that
+      // was opaque to begin with and destroys anything that was not. A
+      // clear bottle's glass is authored at 28% opacity; switched to
+      // opaque it renders as white plastic, which is precisely what the
+      // Logos card's bottles looked like. Each material's own two values
+      // are remembered the first time it is faded and restored when the
+      // fade is over, so a material ends the way it was authored.
       if (arrive < 1) {
         node.traverse((o) => {
           const mesh = o as import("three").Mesh;
           if (!mesh.isMesh) return;
-          const mat = mesh.material as import("three").MeshStandardMaterial;
-          if (!mat) return;
-          mat.transparent = true;
-          mat.opacity = arrive;
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const m of mats) {
+            const mat = m as import("three").MeshStandardMaterial;
+            if (!mat) continue;
+            if (!authored.has(mat)) {
+              authored.set(mat, { transparent: mat.transparent, opacity: mat.opacity });
+            }
+            const was = authored.get(mat)!;
+            mat.transparent = true;
+            mat.opacity = was.opacity * arrive;
+          }
         });
-      } else {
+      } else if (authored.size) {
         node.traverse((o) => {
           const mesh = o as import("three").Mesh;
           if (!mesh.isMesh) return;
-          const mat = mesh.material as import("three").MeshStandardMaterial;
-          if (mat?.transparent) {
-            mat.transparent = false;
-            mat.opacity = 1;
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const m of mats) {
+            const mat = m as import("three").MeshStandardMaterial;
+            const was = mat && authored.get(mat);
+            if (!was) continue;
+            mat.transparent = was.transparent;
+            mat.opacity = was.opacity;
+            authored.delete(mat);
           }
         });
       }
+      // FOCUS, eased here rather than tweened from outside — see focusRef.
+      let f = focusAmount.get(String(item.id)) ?? 0;
+      if (opt.focusRef) {
+        const target = opt.focusRef.current === item.id ? 1 : 0;
+        f += (target - f) * (1 - Math.exp(-dt / 260));
+        focusAmount.set(String(item.id), f);
+      }
+      // Forward and up for the one in focus, a touch back for the rest:
+      // attention rather than a jump.
+      const fy = 0.12 * f;
+      const fz = 0.42 * f - (opt.focusRef ? 0.1 * (1 - f) : 0);
+
       node.position.set(
         item.pos[0] + item.lift[0] * h,
-        item.pos[1] + item.lift[1] * h + (1 - arrive) * 0.22,
-        item.pos[2] + (item.lift[2] + opt.groupLiftZ * item.parallax) * h
+        item.pos[1] + item.lift[1] * h + fy + (1 - arrive) * 0.22,
+        item.pos[2] + (item.lift[2] + opt.groupLiftZ * item.parallax) * h + fz
       );
       node.rotation.set(
         item.rot[0] + item.turn[0] * h,
         item.rot[1] + item.turn[1] * h,
         item.rot[2] + item.turn[2] * h
       );
+      if (opt.focusRef) {
+        node.scale.setScalar(item.scale * (1 + 0.05 * f - 0.03 * (1 - f)));
+      }
     }
 
     group.rotation.y = (px - 0.5) * 2 * opt.parallaxYaw * h;
@@ -543,6 +639,8 @@ export function mountSpatialCard<T extends SpatialCardObject>(
 
   return () => {
     disposed = true;
+    envCancelled = true;
+    releaseEnv?.();
     cancelAnimationFrame(raf);
     io.disconnect();
     window.removeEventListener("resize", resize);

@@ -33,6 +33,7 @@ import HoverCard from "./HoverCard";
 import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
 import CampaignsDisplay, { preloadCampaigns } from "./CampaignsDisplay";
 import ReceptionScreenDisplay, { preloadReceptionScreen } from "./ReceptionScreenDisplay";
+import LogosDisplay, { preloadLogos } from "./LogosDisplay";
 import InformationalDesignDisplay, {
   preloadInformationalDesign,
 } from "./InformationalDesignDisplay";
@@ -59,11 +60,12 @@ type CardHolder = {
 };
 
 const CARD_HOLDERS: CardHolder[] = [
-  { index: 0, label: "Publications", href: "/publications", Display: PublicationsDisplay },
-  { index: 1, label: "Campaigns / Social", href: "/campaigns", Display: CampaignsDisplay },
-  { index: 2, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
+  { index: 0, label: "Logos", href: "/logos", Display: LogosDisplay },
+  { index: 1, label: "Publications", href: "/publications", Display: PublicationsDisplay },
+  { index: 2, label: "Campaigns / Social", href: "/campaigns", Display: CampaignsDisplay },
+  { index: 3, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
   {
-    index: 3,
+    index: 4,
     label: "Informational Design",
     href: "/informational-design",
     Display: InformationalDesignDisplay,
@@ -151,6 +153,7 @@ export default function ArcCarousel({
     preloadPublications();
     preloadCampaigns();
     preloadReceptionScreen();
+    preloadLogos();
     preloadInformationalDesign();
   }, []);
 
