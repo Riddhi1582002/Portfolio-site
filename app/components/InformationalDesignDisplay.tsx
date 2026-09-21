@@ -76,10 +76,19 @@ export const INFORMATIONAL_CARD_PIECES: StackPiece[] = [
 // THIS CARD'S OWN STONES — three, not two, and on the opposite side to
 // the campaigns card's pair, so no two holders on the ring are staged the
 // same way. Same supplied rock, same material.
+// THE STONES SIT INSIDE THE CASE.
+//
+// They did not. The lightbox panel is two units half-wide at z = -1.62,
+// and every card had put its stones at |x| around two — but a stone is
+// nearer the lens than the panel is, so it projects WIDER than the panel
+// does and every one of them landed outside the frame, on the black.
+// The limit is the panel's own edge carried forward to the stone's depth,
+// |x| + r <= 2 * (camZ - z) / (camZ + 1.62), taken at about six sevenths
+// so they are clearly within it rather than touching it.
 const ROCKS: RockPlacement[] = [
-  { file: "rock-02.glb", pos: [-2.04, -1.04, 0.55], rot: [0.2, 0.6, -0.35], scale: 0.128 },
-  { file: "rock-02.glb", pos: [-1.3, -1.25, 1.12], rot: [-0.45, 2.9, 0.75], scale: 0.076 },
-  { file: "rock-02.glb", pos: [1.96, -1.13, 0.34], rot: [0.5, 1.9, 0.2], scale: 0.094 },
+  { file: "rock-02.glb", pos: [-0.9, -1.04, 0.55], rot: [0.2, 0.6, -0.35], scale: 0.128 },
+  { file: "rock-02.glb", pos: [-1.04, -1.25, 1.12], rot: [-0.45, 2.9, 0.75], scale: 0.076 },
+  { file: "rock-02.glb", pos: [1.07, -1.13, 0.34], rot: [0.5, 1.9, 0.2], scale: 0.094 },
 ];
 
 export function preloadInformationalDesign() {

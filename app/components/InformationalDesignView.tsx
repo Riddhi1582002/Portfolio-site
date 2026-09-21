@@ -739,6 +739,45 @@ export default function InformationalDesignView() {
                           transition: "opacity 380ms ease",
                         }}
                       >
+                        {/* WHICH DEPARTMENT THIS ONE IS.
+                            The rail already names the leaflet at the
+                            centre, but a run of nine covers is a set of
+                            thumbnails, and a thumbnail you cannot name
+                            without first sliding it to the middle is not
+                            doing a thumbnail's job. The name rides the
+                            slot, so it travels with its own leaflet.
+
+                            ABOVE, not below: below is where the jacket's
+                            own inside spread and the pocket band are, and
+                            a caption there would be printed over the
+                            artwork. It goes while a leaflet is being read,
+                            where the rail names it anyway and the slot's
+                            own scale would blow the type up with it. */}
+                        <div
+                          aria-hidden
+                          style={{
+                            position: "absolute",
+                            bottom: "100%",
+                            left: 0,
+                            right: 0,
+                            marginBottom: 12,
+                            textAlign: "center",
+                            fontSize: 10,
+                            fontWeight: 500,
+                            letterSpacing: "0.13em",
+                            textTransform: "uppercase",
+                            lineHeight: 1.35,
+                            color: isActive
+                              ? "rgba(255,255,255,0.8)"
+                              : "rgba(255,255,255,0.34)",
+                            opacity: phase === "open" ? 1 : 0,
+                            transition: "opacity 320ms ease, color 320ms ease",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {l.title}
+                        </div>
+
                         {/* THE BACK PAGE, behind the front until the
                             leaflet is picked up. */}
                         <div

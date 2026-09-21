@@ -81,7 +81,15 @@ const OBJECTS: LogoObject[] = [
     glb: glbOf("orient-industries"),
     scale: 0.96,
     pos: [1.36, FLOOR_Y + 0.32, 1.42],
-    rot: [-72 * D, -0.22, 4 * D],
+    // FACE UP, NOT FACE DOWN. The card is modelled lying flat in XZ with
+    // its printed side a paper's thickness above it on the +Y face
+    // (orient_industries_logo at y = 0.021, over a slab that stops at
+    // 0.0175). Rotating -72 degrees about X turns that face away from the
+    // lens, so what the composition showed was the blank underside of a
+    // business card — a cream rectangle with nothing on it, in a project
+    // whose whole subject is the mark printed on it. Tipping it the other
+    // way stands it up towards the reader with the artwork outwards.
+    rot: [72 * D, -0.22, 4 * D],
     lift: [0.04, 0.06, 0.08],
     turn: [0, -1.8 * D, 0],
     parallax: 0.9,
@@ -90,10 +98,18 @@ const OBJECTS: LogoObject[] = [
 
 // A third stone here, and all three placed differently from the card's
 // two: same supplied rock, a composition of its own.
+// THE STONES SIT INSIDE THE CASE — same correction as the cards.
+//
+// A stone is nearer the lens than the panel behind it, so it projects
+// wider than the panel does: at |x| around two and a half these were all
+// outside the frame, on the black. The limit is the panel's own edge
+// carried forward to the stone's depth, |x| + r <= half * (camZ - z) /
+// (camZ + 1.62), taken at about six sevenths of it. The third stone was
+// also BEHIND the panel, where an opaque sheet hid it completely.
 const ROCKS: RockPlacement[] = [
-  { file: "rock-02.glb", pos: [-2.42, -1.28, 1.06], rot: [0.26, 0.9, -0.24], scale: 0.104 },
-  { file: "rock-02.glb", pos: [2.5, -1.26, 0.18], rot: [-0.3, 2.3, 0.36], scale: 0.082 },
-  { file: "rock-02.glb", pos: [0.32, -1.32, -2.1], rot: [0.12, 1.7, -0.1], scale: 0.062 },
+  { file: "rock-02.glb", pos: [-1.19, -1.28, 1.06], rot: [0.26, 0.9, -0.24], scale: 0.104 },
+  { file: "rock-02.glb", pos: [1.42, -1.26, 0.18], rot: [-0.3, 2.3, 0.36], scale: 0.082 },
+  { file: "rock-02.glb", pos: [0.32, -1.32, -1.3], rot: [0.12, 1.7, -0.1], scale: 0.062 },
 ];
 
 export default function LogosStill({ focusId }: { focusId: string }) {

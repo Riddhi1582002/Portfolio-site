@@ -89,7 +89,15 @@ export const LOGOS_CARD_OBJECTS: LogoObject[] = [
     glb: glbOf("orient-industries"),
     scale: 0.82,
     pos: [1.22, FLOOR_Y + 0.3, 1.22],
-    rot: [-72 * D, -0.24, 5 * D],
+    // FACE UP, NOT FACE DOWN. The card is modelled lying flat in XZ with
+    // its printed side a paper's thickness above it on the +Y face
+    // (orient_industries_logo at y = 0.021, over a slab that stops at
+    // 0.0175). Rotating -72 degrees about X turns that face away from the
+    // lens, so what the composition showed was the blank underside of a
+    // business card — a cream rectangle with nothing on it, in a project
+    // whose whole subject is the mark printed on it. Tipping it the other
+    // way stands it up towards the reader with the artwork outwards.
+    rot: [72 * D, -0.24, 5 * D],
     lift: [0.04, 0.06, 0.08],
     turn: [0, -2 * D, 0],
     parallax: 0.86,
@@ -99,9 +107,18 @@ export const LOGOS_CARD_OBJECTS: LogoObject[] = [
 // This card's own stones: one at the near left where the bottles do not
 // reach, one further back on the right under the tanker's shadow. Same
 // supplied rock, a different arrangement from every other card's.
+// THE STONES SIT INSIDE THE CASE.
+//
+// They did not. The lightbox panel is two units half-wide at z = -1.62,
+// and every card had put its stones at |x| around two — but a stone is
+// nearer the lens than the panel is, so it projects WIDER than the panel
+// does and every one of them landed outside the frame, on the black.
+// The limit is the panel's own edge carried forward to the stone's depth,
+// |x| + r <= 2 * (camZ - z) / (camZ + 1.62), taken at about six sevenths
+// so they are clearly within it rather than touching it.
 const ROCKS: RockPlacement[] = [
-  { file: "rock-02.glb", pos: [-2.02, -1.14, 0.94], rot: [0.3, 1.1, -0.2], scale: 0.088 },
-  { file: "rock-02.glb", pos: [2.24, -1.12, -0.28], rot: [-0.25, 2.5, 0.4], scale: 0.072 },
+  { file: "rock-02.glb", pos: [-1.0, -1.14, 0.94], rot: [0.3, 1.1, -0.2], scale: 0.088 },
+  { file: "rock-02.glb", pos: [1.28, -1.12, -0.9], rot: [-0.25, 2.5, 0.4], scale: 0.072 },
 ];
 
 // ── LOADING ─────────────────────────────────────────────────────────────
@@ -156,6 +173,39 @@ export function loadLogoRoot(glb: string): Promise<import("three").Object3D> {
                 // label is the whole point. Lifted to full so the supplied
                 // texture reads as itself; the texture is untouched.
                 if (mat?.map && mat.color) mat.color.setRGB(1, 1, 1);
+                // AND THE ARTWORK HAS TO FACE WHICHEVER WAY WE LOOK AT IT.
+                //
+                // Every mark in these files is its own paper-thin mesh laid
+                // on the object — orient_industries_logo sitting on
+                // orient_industries_card, geometry_3 on the tanker's flank —
+                // and all of them arrived single-sided. A single-sided plane
+                // seen from behind draws nothing, which is why the business
+                // card rendered as a blank cream rectangle at the angle the
+                // composition props it at, and why the tanker's mark never
+                // appeared at all. A decal with no thickness has no back for
+                // double-siding to contradict.
+                if (mat?.map) {
+                  mat.side = THREE.DoubleSide;
+                  // THE CARD'S MARK IS AUTHORED UPSIDE DOWN.
+                  //
+                  // orient_industries_logo is a plane a paper's thickness
+                  // above the card's slab, on its +Y face — so the card has
+                  // to be tipped +72 degrees, not -72, or the opaque slab
+                  // is in front of its own artwork and the card renders as
+                  // a blank cream rectangle. Turned that way up, the mark
+                  // comes out inverted: the plane's V axis runs opposite to
+                  // the image's. Flipping the SAMPLING in V puts it back.
+                  // Measured, not assumed — a horizontal flip and a 180
+                  // degree turn were both tried against a zoom of the card
+                  // and both still read backwards. The image is untouched.
+                  if (glb.endsWith("orient-card.glb")) {
+                    mat.map.wrapS = THREE.RepeatWrapping;
+                    mat.map.wrapT = THREE.RepeatWrapping;
+                    mat.map.repeat.set(1, -1);
+                    mat.map.offset.set(0, 1);
+                    mat.map.needsUpdate = true;
+                  }
+                }
               }
             });
             resolve(root);

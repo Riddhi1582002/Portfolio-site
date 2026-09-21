@@ -91,9 +91,18 @@ export const APPLICATION_OBJECTS: AppObject[] = [
 // This card's own stones — a plinth under the group on the right, one
 // forward and left where the jerrycan does not reach. Same supplied rock,
 // an arrangement of its own.
+// THE STONES SIT INSIDE THE CASE.
+//
+// They did not. The lightbox panel is two units half-wide at z = -1.62,
+// and every card had put its stones at |x| around two — but a stone is
+// nearer the lens than the panel is, so it projects WIDER than the panel
+// does and every one of them landed outside the frame, on the black.
+// The limit is the panel's own edge carried forward to the stone's depth,
+// |x| + r <= 2 * (camZ - z) / (camZ + 1.62), taken at about six sevenths
+// so they are clearly within it rather than touching it.
 const ROCKS: RockPlacement[] = [
-  { file: "rock-02.glb", pos: [1.92, -1.16, -0.5], rot: [0.18, 2.1, 0.22], scale: 0.094 },
-  { file: "rock-02.glb", pos: [-2.18, -1.12, 1.12], rot: [-0.22, 0.8, -0.3], scale: 0.076 },
+  { file: "rock-02.glb", pos: [1.17, -1.16, -0.5], rot: [0.18, 2.1, 0.22], scale: 0.094 },
+  { file: "rock-02.glb", pos: [-1.02, -1.12, 1.12], rot: [-0.22, 0.8, -0.3], scale: 0.076 },
 ];
 
 let loaderPromise: Promise<{

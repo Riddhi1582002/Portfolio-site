@@ -83,7 +83,7 @@ const CELL_H = 4880.14;
  * generator); `details`, when supplied, is the only other text a card
  * ever shows, and only in the hover/focused info gradient (see ArtCard).
  */
-type Piece = {
+export type Piece = {
   id: string;
   x: number;
   y: number;
@@ -103,7 +103,7 @@ type Piece = {
 // farthest from the nearest same-medium piece. One rectangle is left
 // reserved and empty (see GAP), the clear space the return transition
 // flies through.
-const PIECES: Piece[] = [
+export const PIECES: Piece[] = [
   { id: "graphite-or-charcoal-polish-20250804-080226299", x: 566.05, y: 4336.9, w: 286.84, h: 411.94, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20250804-080226299.jpg" },
   { id: "acrylics-polish-20231227-171248659", x: 355.35, y: 2174.36, w: 257.46, h: 386.8, medium: "Acrylics", src: "/art/acrylics/polish-20231227-171248659.jpg" },
   { id: "graphite-or-charcoal-img-20260913-222910", x: 1913.19, y: 62.05, w: 310.89, h: 255.51, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/img-20260913-222910.jpg" },

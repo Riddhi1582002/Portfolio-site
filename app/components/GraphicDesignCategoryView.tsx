@@ -7,8 +7,10 @@
 // (Publications, Campaigns/Social, Informational Design, the Reception
 // screen) are unchanged; each of those pages comes back here.
 
+import { useEffect } from "react";
 import CategoryStage from "./CategoryStage";
 import CordSection from "./CordSection";
+import { preloadBulb } from "./BulbModel";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 
@@ -32,6 +34,20 @@ const FIRST_CARD_ARC_P = ARC_LEAD / (ARC_CARD_COUNT - 1 + ARC_LEAD * 2);
 const OPEN_AT = CORD_ARC_START + FIRST_CARD_ARC_P * (1 - CORD_ARC_START);
 
 export default function GraphicDesignCategoryView() {
+  // THE BULB'S BYTES, STARTED AT ONCE.
+  //
+  // preloadBulb existed already, but only the homepage ever called it, so
+  // arriving here directly — which is what every Back link from the six
+  // project pages does — meant the 2.3MB GLB and three code-split chunks
+  // were not fetched until the beat itself mounted and asked for them.
+  // That wait is the bulb appearing late that this route was reported
+  // for. Not deferred to an idle callback the way the homepage defers it:
+  // there the bulb is several screens below the fold and must not compete
+  // with first paint, whereas here its beat is what the route opens on.
+  useEffect(() => {
+    void preloadBulb();
+  }, []);
+
   return (
     <CategoryStage lengthVh={CORD_VH} startProgress={OPEN_AT}>
       {(progress) => <CordSection progress={progress} sans={SANS} visible />}

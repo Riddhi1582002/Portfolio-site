@@ -92,9 +92,18 @@ export const CAMPAIGN_CARD_PIECES: StackPiece[] = [
 // This card's own stones, out at the margins the composition leaves
 // empty. Same supplied rock, same role — weight at the base — just
 // not across the front of the piece the eye is meant to land on.
+// THE STONES SIT INSIDE THE CASE.
+//
+// They did not. The lightbox panel is two units half-wide at z = -1.62,
+// and every card had put its stones at |x| around two — but a stone is
+// nearer the lens than the panel is, so it projects WIDER than the panel
+// does and every one of them landed outside the frame, on the black.
+// The limit is the panel's own edge carried forward to the stone's depth,
+// |x| + r <= 2 * (camZ - z) / (camZ + 1.62), taken at about six sevenths
+// so they are clearly within it rather than touching it.
 const ROCKS: RockPlacement[] = [
-  { file: "rock-02.glb", pos: [2.16, -1.1, 0.5], rot: [-0.3, 1.4, 0.5], scale: 0.084 },
-  { file: "rock-02.glb", pos: [-1.98, -1.16, 0.86], rot: [0.4, 2.3, 0.2], scale: 0.096 },
+  { file: "rock-02.glb", pos: [1.07, -1.1, 0.5], rot: [-0.3, 1.4, 0.5], scale: 0.084 },
+  { file: "rock-02.glb", pos: [-0.96, -1.16, 0.86], rot: [0.4, 2.3, 0.2], scale: 0.096 },
 ];
 
 export function preloadCampaigns() {

@@ -113,9 +113,18 @@ export const RECEPTION_SCREEN_CARD_PIECES: StackPiece[] = SLOTS.map((slot, i) =>
 // rock, same role (weight at the base, something for the group to
 // stand against), moved out to the margins this composition actually
 // leaves empty.
+// THE STONES SIT INSIDE THE CASE.
+//
+// They did not. The lightbox panel is two units half-wide at z = -1.62,
+// and every card had put its stones at |x| around two — but a stone is
+// nearer the lens than the panel is, so it projects WIDER than the panel
+// does and every one of them landed outside the frame, on the black.
+// The limit is the panel's own edge carried forward to the stone's depth,
+// |x| + r <= 2 * (camZ - z) / (camZ + 1.62), taken at about six sevenths
+// so they are clearly within it rather than touching it.
 const ROCKS: RockPlacement[] = [
-  { file: "rock-02.glb", pos: [2.28, -1.1, 0.9], rot: [-0.3, 1.4, 0.5], scale: 0.08 },
-  { file: "rock-02.glb", pos: [-1.96, -1.16, 1.02], rot: [0.4, 2.3, 0.2], scale: 0.092 },
+  { file: "rock-02.glb", pos: [1.03, -1.1, 0.9], rot: [-0.3, 1.4, 0.5], scale: 0.08 },
+  { file: "rock-02.glb", pos: [-0.96, -1.16, 1.02], rot: [0.4, 2.3, 0.2], scale: 0.092 },
 ];
 
 export function preloadReceptionScreen() {
