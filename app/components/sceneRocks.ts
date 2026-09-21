@@ -9,7 +9,10 @@
 // props, never focal points.
 //
 // ONE SUPPLIED GLB, not a procedural shape and not several different rock
-// files. An earlier pass generated stones as a jittered icosahedron —
+// files. The file is rock-02.glb, converted from the supplied rock.obj and
+// normalised to the exact bounding box of the rock it replaces — so every
+// placement and scale already authored in the scenes keeps working, and
+// the swap changes the silhouette and nothing else. An earlier pass generated stones as a jittered icosahedron —
 // deterministic and cheap, but it reads as exactly what it is: a low-poly
 // ball with noise on it, not an eroded natural form (uneven planes,
 // asymmetric silhouette, no two faces the same size). A later pass used two
@@ -24,7 +27,7 @@ import type * as THREEModule from "three";
 
 const ROCK_BASE = "/model/publications";
 
-export type RockFile = "rock.glb";
+export type RockFile = "rock-02.glb";
 
 export type RockPlacement = {
   file: RockFile;

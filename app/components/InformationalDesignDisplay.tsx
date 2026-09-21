@@ -75,11 +75,11 @@ export const INFORMATIONAL_CARD_PIECES: StackPiece[] = [
 
 // THIS CARD'S OWN STONES — three, not two, and on the opposite side to
 // the campaigns card's pair, so no two holders on the ring are staged the
-// same way. Same supplied rock.glb, same material.
+// same way. Same supplied rock, same material.
 const ROCKS: RockPlacement[] = [
-  { file: "rock.glb", pos: [-2.04, -1.04, 0.55], rot: [0.2, 0.6, -0.35], scale: 0.128 },
-  { file: "rock.glb", pos: [-1.3, -1.25, 1.12], rot: [-0.45, 2.9, 0.75], scale: 0.076 },
-  { file: "rock.glb", pos: [1.96, -1.13, 0.34], rot: [0.5, 1.9, 0.2], scale: 0.094 },
+  { file: "rock-02.glb", pos: [-2.04, -1.04, 0.55], rot: [0.2, 0.6, -0.35], scale: 0.128 },
+  { file: "rock-02.glb", pos: [-1.3, -1.25, 1.12], rot: [-0.45, 2.9, 0.75], scale: 0.076 },
+  { file: "rock-02.glb", pos: [1.96, -1.13, 0.34], rot: [0.5, 1.9, 0.2], scale: 0.094 },
 ];
 
 export function preloadInformationalDesign() {
@@ -94,7 +94,7 @@ export default function InformationalDesignDisplay({
   reduced?: boolean;
 }) {
   const options = useMemo(
-    () => ({ fov: 26, camZ: 11.7, camY: 0.16, floorY: FLOOR_Y, rocks: ROCKS }),
+    () => ({ fov: 26, camZ: 11.7, camY: 0.16, contentScale: 0.74, floorY: FLOOR_Y, rocks: ROCKS }),
     []
   );
   return (

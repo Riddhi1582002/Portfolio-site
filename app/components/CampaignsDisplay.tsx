@@ -90,11 +90,11 @@ export const CAMPAIGN_CARD_PIECES: StackPiece[] = [
 ];
 
 // This card's own stones, out at the margins the composition leaves
-// empty. Same supplied rock.glb, same role — weight at the base — just
+// empty. Same supplied rock, same role — weight at the base — just
 // not across the front of the piece the eye is meant to land on.
 const ROCKS: RockPlacement[] = [
-  { file: "rock.glb", pos: [2.16, -1.1, 0.5], rot: [-0.3, 1.4, 0.5], scale: 0.084 },
-  { file: "rock.glb", pos: [-1.98, -1.16, 0.86], rot: [0.4, 2.3, 0.2], scale: 0.096 },
+  { file: "rock-02.glb", pos: [2.16, -1.1, 0.5], rot: [-0.3, 1.4, 0.5], scale: 0.084 },
+  { file: "rock-02.glb", pos: [-1.98, -1.16, 0.86], rot: [0.4, 2.3, 0.2], scale: 0.096 },
 ];
 
 export function preloadCampaigns() {
@@ -115,7 +115,7 @@ export default function CampaignsDisplay({
   // the weaker of the two. Nothing about the staging was wrong; the camera
   // was simply further away.
   const options = useMemo(
-    () => ({ fov: 26, camZ: 10.6, camY: 0.2, floorY: FLOOR_Y, rocks: ROCKS }),
+    () => ({ fov: 26, camZ: 10.6, camY: 0.2, contentScale: 0.7, floorY: FLOOR_Y, rocks: ROCKS }),
     []
   );
   return (

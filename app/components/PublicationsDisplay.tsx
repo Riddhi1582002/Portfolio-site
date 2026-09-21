@@ -457,6 +457,7 @@ export default function PublicationsDisplay({
         hoverOutTau: HOVER_OUT_TAU,
         pointerTau: POINTER_TAU,
         compositionArriveMs: COMPOSITION_ARRIVE_MS,
+        contentScale: 0.74,
         rocks: true,
       });
     })().catch((err) => {

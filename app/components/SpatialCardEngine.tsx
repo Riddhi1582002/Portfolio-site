@@ -24,8 +24,8 @@ import { addRocks, makeFadedFloor, type RockPlacement } from "./sceneRocks";
 
 /** The publications card's own pair, and the fallback for `rocks: true`. */
 const DEFAULT_ROCKS: RockPlacement[] = [
-  { file: "rock.glb", pos: [2.05, -1.09, 0.15], rot: [-0.3, 1.4, 0.5], scale: 0.088 },
-  { file: "rock.glb", pos: [-1.1, -1.17, 0.95], rot: [0.4, 2.3, 0.2], scale: 0.1 },
+  { file: "rock-02.glb", pos: [2.05, -1.09, 0.15], rot: [-0.3, 1.4, 0.5], scale: 0.088 },
+  { file: "rock-02.glb", pos: [-1.1, -1.17, 0.95], rot: [0.4, 2.3, 0.2], scale: 0.1 },
 ];
 
 /** The shape any spatial-card item must supply — the composition/hierarchy
@@ -70,6 +70,26 @@ export type SpatialCardOptions = {
    *  explicitly, which is how each card on the ring gets stones of its
    *  own rather than the same two in the same two spots every time. */
   rocks: boolean | RockPlacement[];
+  /**
+   * THE LIGHTBOX — the display case every card on this ring is staged
+   * inside. Half-width of its inner opening in scene units; the panel,
+   * the rim and the corner radius all follow from it, so one number moves
+   * the whole case and every card keeps the same one. Null leaves the card
+   * without a case, which is what the index page's wide floor display
+   * wants.
+   */
+  lightbox: number | null;
+  /**
+   * HOW MUCH OF THE CASE THE WORK TAKES UP.
+   *
+   * A uniform scale on the whole object group, applied about the case's
+   * own centre. The compositions were authored before there was a case to
+   * put them in, so they are sized to the card rather than to the opening
+   * — and the case has to read on all four sides, which it cannot if the
+   * work grows out of it. This fits a card's existing arrangement into the
+   * frame without re-authoring a single placement.
+   */
+  contentScale: number;
 };
 
 export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
@@ -85,7 +105,162 @@ export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
   compositionArriveMs: 420,
   floorY: -1.35,
   rocks: true,
+  // Sized against what the card actually shows. At fov 26 and camZ 10.4
+  // the card's face is about 4.8 units across; the case sits back at
+  // z = -1.62, where the same angle covers about 5.55 — so a half-width of
+  // 2.0 puts the case at roughly seven tenths of the card, which is the
+  // reference's proportion and leaves the dark border the composition
+  // needs on all four sides.
+  lightbox: 2.0,
+  contentScale: 1,
 };
+
+
+// ── THE LIGHTBOX ────────────────────────────────────────────────────────
+//
+// Every graphic-design card is one project photographed in the same
+// studio, and this is the studio: a thin, dark, softly-cornered display
+// case with a warm-white illuminated rim, standing behind and around
+// whatever that project is. It is built HERE, once, from one half-width —
+// so a card cannot have its own frame size, its own radius or its own rim
+// colour, and the family holds by construction rather than by everyone
+// remembering the same numbers.
+//
+// It is also the DOMINANT element, which is a compositional rule and not a
+// decorative one: the case is the largest single shape in the frame, it
+// reads on all four sides, and the work is staged INSIDE it. Anything that
+// covers a side of the case is composed wrong.
+//
+// Three parts, all real geometry:
+//
+//   THE PANEL   a dark smoked-acrylic sheet, set back behind the work, so
+//               the case has a face to be a case of rather than being an
+//               outline floating in the dark.
+//   THE RIM     a rounded-square tube swept along the panel's own profile.
+//               Emissive warm white, so it is a light in the scene and not
+//               a stroke drawn on it.
+//   THE SPILL   the rim's own light landing on the panel: a soft radial
+//               falloff, additive, just inside the opening.
+//
+// Nothing here casts a shadow — a case lit along its edge does not throw
+// one — and nothing here receives the key. Both would flatten it.
+
+function roundedSquare(THREE: typeof THREEModule, half: number, radius: number) {
+  const s = new THREE.Shape();
+  const r = Math.min(radius, half);
+  s.moveTo(-half + r, -half);
+  s.lineTo(half - r, -half);
+  s.quadraticCurveTo(half, -half, half, -half + r);
+  s.lineTo(half, half - r);
+  s.quadraticCurveTo(half, half, half - r, half);
+  s.lineTo(-half + r, half);
+  s.quadraticCurveTo(-half, half, -half, half - r);
+  s.lineTo(-half, -half + r);
+  s.quadraticCurveTo(-half, -half, -half + r, -half);
+  return s;
+}
+
+function buildLightbox(
+  THREE: typeof THREEModule,
+  scene: import("three").Scene,
+  opt: SpatialCardOptions
+) {
+  const half = opt.lightbox as number;
+  // Proportions taken off the reference: a generous corner, a rim thin
+  // enough to read as a light rather than a border, and the panel set well
+  // back so the work stands clear of it.
+  const radius = half * 0.19;
+  const rimR = half * 0.012;
+  const panelZ = -1.62;
+
+  const box = new THREE.Group();
+  box.position.z = panelZ;
+
+  // THE PANEL. Barely lighter than the background and quite glossy, so it
+  // holds the rim's reflection along its inner edge the way smoked acrylic
+  // does, and stays nearly black everywhere else.
+  const panel = new THREE.Mesh(
+    new THREE.ShapeGeometry(roundedSquare(THREE, half, radius), 16),
+    new THREE.MeshStandardMaterial({
+      color: 0x0b0a0a,
+      roughness: 0.34,
+      metalness: 0.12,
+      side: THREE.DoubleSide,
+    })
+  );
+  box.add(panel);
+
+  // THE RIM. A tube swept along the same rounded square, standing a little
+  // proud of the panel. Emissive rather than lit: it is the source.
+  const path = new THREE.CurvePath<import("three").Vector3>();
+  const pts = roundedSquare(THREE, half, radius).getPoints(96);
+  for (let i = 0; i < pts.length - 1; i++) {
+    path.add(
+      new THREE.LineCurve3(
+        new THREE.Vector3(pts[i].x, pts[i].y, 0),
+        new THREE.Vector3(pts[i + 1].x, pts[i + 1].y, 0)
+      )
+    );
+  }
+  const rim = new THREE.Mesh(
+    new THREE.TubeGeometry(path, 320, rimR, 10, true),
+    new THREE.MeshStandardMaterial({
+      color: 0xfff0d8,
+      emissive: new THREE.Color(0xffe9c9),
+      emissiveIntensity: 2.4,
+      roughness: 0.4,
+      metalness: 0,
+    })
+  );
+  rim.position.z = 0.035;
+  box.add(rim);
+
+  // THE SPILL. What the rim throws onto the panel it is mounted on —
+  // brightest at the edge, gone by a third of the way in. A canvas
+  // gradient rather than a light, because a real light here would also
+  // strike the work standing in front of the panel, and the work is lit by
+  // the key from above.
+  const N = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = N;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const g = ctx.createRadialGradient(N / 2, N / 2, N * 0.2, N / 2, N / 2, N * 0.72);
+    // Tight to the edge and gone well before the middle: this is the rim's
+    // light landing on the panel it is mounted on, not a glow filling the
+    // case. Anything wider washes the dark the composition is built on.
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(0.58, "rgba(0,0,0,0)");
+    g.addColorStop(0.86, "rgba(96,68,38,0.22)");
+    g.addColorStop(1, "rgba(214,176,124,0.52)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, N, N);
+    const tex = new THREE.CanvasTexture(canvas);
+    const spill = new THREE.Mesh(
+      new THREE.ShapeGeometry(roundedSquare(THREE, half * 0.995, radius), 16),
+      new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+    );
+    // ShapeGeometry has no UVs that match its own bounds, so the gradient
+    // is mapped onto the panel's box rather than onto each triangle.
+    const pos = spill.geometry.attributes.position;
+    const uv = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+      uv[i * 2] = (pos.getX(i) / (half * 2)) + 0.5;
+      uv[i * 2 + 1] = (pos.getY(i) / (half * 2)) + 0.5;
+    }
+    spill.geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    spill.position.z = 0.02;
+    box.add(spill);
+  }
+
+  scene.add(box);
+}
 
 /**
  * Mounts the whole card — renderer, lights, group, floor, optional rocks,
@@ -186,7 +361,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     // Staged as the reference does: one rock at the back right for the
     // smallest piece to stand against and to close the gap beneath it, one
     // forward and left, on the surface in front of the group — the SAME
-    // supplied rock.glb both times, just a different scale/rotation/
+    // supplied rock both times, just a different scale/rotation/
     // position, per the brief's "use the same supplied GLB at different
     // scale/rotation/position rather than different rock files." Async —
     // see addRocks — so this fires and forgets rather than blocking the
@@ -196,6 +371,11 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     // addRocks and getStoneEnvironment.
     void addRocks(THREE, group, placements, renderer);
   }
+
+  if (opt.lightbox) buildLightbox(THREE, scene, opt);
+  // Applied to the group itself rather than to each object, so hover,
+  // parallax and every authored position keep their relationship exactly.
+  if (opt.contentScale !== 1) group.scale.setScalar(opt.contentScale);
 
   type Loaded = { item: T; node: import("three").Object3D };
   const loaded: Loaded[] = [];

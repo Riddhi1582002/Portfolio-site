@@ -256,7 +256,7 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
     // same as a publication's own geometry — so unlike the floor below,
     // this is NOT pushed onto `ownedGeometry`/`ownedMaterials`: that cache
     // has to survive this mount's own cleanup for the next mount to reuse.
-    // The SAME supplied rock.glb both times, just a different
+    // The SAME supplied rock both times, just a different
     // scale/rotation/position — per the brief's "use the same supplied GLB
     // at different scale/rotation/position rather than different rock
     // files," not two different sculpted files.
@@ -267,8 +267,8 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
       THREE,
       group,
       [
-        { file: "rock.glb", pos: [1.3, opt.floorY + 0.22, -1.15], rot: [-0.2, 1.9, 0.4], scale: 0.075 },
-        { file: "rock.glb", pos: [-4.55, opt.floorY + 0.28, -1.9], rot: [0.3, 2.6, 0.2], scale: 0.095 },
+        { file: "rock-02.glb", pos: [1.3, opt.floorY + 0.22, -1.15], rot: [-0.2, 1.9, 0.4], scale: 0.075 },
+        { file: "rock-02.glb", pos: [-4.55, opt.floorY + 0.28, -1.9], rot: [0.3, 2.6, 0.2], scale: 0.095 },
       ],
       renderer
     );
