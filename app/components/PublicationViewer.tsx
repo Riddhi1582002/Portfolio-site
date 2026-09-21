@@ -39,6 +39,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import TransitionLink from "./TransitionLink";
 import { useRouter } from "next/navigation";
 import gsap from "gsap";
+import { createPageBend, type PageBendHandle } from "./pageBend";
 import {
   COVER_SRC,
   PUBLICATION_CONTENT,
@@ -50,42 +51,35 @@ const SANS = "'Neue Montreal', system-ui, sans-serif";
 
 /** Deep enough to read set type on a rasterised A4 page, not just to peer. */
 const ZOOM_LEVELS = [1, 1.6, 2.4, 3.6, 5];
-// HOW EACH FORMAT TURNS.
+// HOW MUCH EACH FORMAT BENDS.
 //
-// The move is the same idea for all of them — the artefact stays put and
-// the next sheet is laid over it from its own edge — but the SIZE of it is
-// a property of what is being read, and forcing one publication's motion
-// onto the others is how a viewer stops belonging to the thing in it.
+// The motion is the same for all of them — the sheet pivots on its spine
+// and curves away — but HOW FAR it curves is a property of the paper. A
+// printed spread off a brochure is a bigger, floppier thing than a policy
+// sheet, and giving them all one number is how a viewer stops belonging
+// to the thing inside it.
 //
-//   travel  how far the arriving sheet moves behind its own leading edge,
-//           as a share of the stage's width. Small: this is the weight of
-//           the sheet, not a journey across the screen.
-//   lift    how much larger the arriving sheet starts. A printed spread
-//           is lifted off the pile and set down, so it comes from slightly
-//           nearer the reader; a single sheet barely does.
-//   recede  how far the covered sheet settles back under it.
-//   dim     how far the covered sheet falls into shadow.
-type TurnProfile = { ms: number; travel: number; lift: number; recede: number; dim: number };
+//   beta    peak curl in radians, at the middle of the turn. Small
+//           numbers read as stiff card; larger ones as a limp page.
+type BendProfile = { beta: number };
 
-const TURN: Record<string, TurnProfile> = {
-  // SNEH SAGAR — a set of selected pages, read one at a time. The book
-  // holds absolutely still and the next page arrives across it: the least
-  // travel of any of them, the least lift, and a shallow settle, so what
-  // changes is the page and not the object.
-  book: { ms: 560, travel: 0.06, lift: 1.0, recede: 0.988, dim: 0.62 },
+const BEND: Record<string, BendProfile> = {
+  // SNEH SAGAR — selected pages of a tribute book, held flat and turned
+  // with care. Barely more than a stiffened lift.
+  book: { beta: 0.32 },
   // BROCHURES — every supplied page is already a printed spread, and a
-  // spread is a physically bigger thing to move. It comes off the pile
-  // with a real lift and layers over the one before it; the covered spread
-  // drops further back and further into shadow, which is the depth the
-  // reference reads as.
-  spreadCollection: { ms: 620, travel: 0.085, lift: 1.045, recede: 0.965, dim: 0.5 },
-  // THE NEWSLETTER — a sheet, not a spread: a smaller lift than a
-  // brochure, a longer edge travel than the book.
-  page: { ms: 560, travel: 0.075, lift: 1.022, recede: 0.978, dim: 0.56 },
-  // POLICY DOCUMENTS — read, not browsed. The quietest of the four: almost
-  // no lift, the shortest travel, and the covered sheet barely moves.
-  collection: { ms: 500, travel: 0.05, lift: 1.012, recede: 0.99, dim: 0.66 },
+  // spread is the largest, most flexible sheet here. It carries the
+  // deepest curl of the four.
+  spreadCollection: { beta: 0.42 },
+  // THE NEWSLETTER — a sheet, not a spread.
+  page: { beta: 0.36 },
+  // POLICY DOCUMENTS — read, not browsed. The stiffest and quietest.
+  collection: { beta: 0.3 },
 };
+
+/** A turn in flight. `auto` marks one started by an arrow or a key, which
+ *  commits itself; a dragged turn waits for the hand to let go. */
+type Turn = { dir: 1 | -1; from: number; to: number; auto: boolean };
 
 /** One thing the reader looks at. A brochure's page is already a printed
  *  spread, so a "page" here is always exactly one supplied image. */
@@ -118,13 +112,13 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   // a portrait sheet, and this is the line that stops one of them being
   // drawn in the other's frame.
   const isWidePage = activeDoc?.wide ?? content?.viewer.kind === "spreadCollection";
-  /** This publication's own page change — see TURN. */
-  const turn = TURN[content?.viewer.kind ?? "page"] ?? TURN.page;
+  /** This publication's own curl — see BEND. */
+  const bendProfile = BEND[content?.viewer.kind ?? "page"] ?? BEND.page;
 
   const views = useMemo(() => (activeDoc ? buildViews(activeDoc) : []), [activeDoc]);
 
   const [viewIndex, setViewIndex] = useState(0);
-  const [prevView, setPrevView] = useState<{ view: View; dir: 1 | -1 } | null>(null);
+  const [turn_, setTurn] = useState<Turn | null>(null);
   const [zoomIdx, setZoomIdx] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -132,128 +126,180 @@ export default function PublicationViewer({ slug }: { slug: string }) {
 
   const zoom = ZOOM_LEVELS[zoomIdx];
   const turningRef = useRef(false);
-  const mountedRef = useRef(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const currentLayerRef = useRef<HTMLDivElement>(null);
-  const prevLayerRef = useRef<HTMLDivElement>(null);
+  /** The 3D context the bending leaf is added to. */
+  const layerHostRef = useRef<HTMLDivElement>(null);
+  const bendRef = useRef<PageBendHandle | null>(null);
+  /** The live turn position, kept off React so a drag can write it every
+   *  frame without re-rendering the page underneath. */
+  const tRef = useRef(0);
+  const turnRef = useRef<Turn | null>(null);
 
   const view = views[viewIndex];
+  // While a turn is in flight the page on the stage is not necessarily the
+  // current one — see the turn block below.
+  const beneathView =
+    (turn_ ? views[turn_.dir === 1 ? turn_.to : turn_.from] : view) ?? view;
   const viewIndexRef = useRef(viewIndex);
   useEffect(() => {
     viewIndexRef.current = viewIndex;
   }, [viewIndex]);
 
-  // ── TURNING ───────────────────────────────────────────────────────────
-  const goToView = useCallback(
-    (next: number) => {
-      if (!views.length) return;
-      const clamped = Math.min(views.length - 1, Math.max(0, next));
-      if (clamped === viewIndex || turningRef.current) return;
+  // ── TURNING: THE SHEET ACTUALLY BENDS ─────────────────────────────────
+  //
+  // What this replaces slid the incoming page in behind an opening clip.
+  // It was honest about POSITION — the artefact never moved — but a sheet
+  // that arrives by being un-masked is not a sheet arriving. It had no
+  // thickness and no reverse, and at any speed it read as a slideshow
+  // wipe laid over a photograph of a page.
+  //
+  // The leaf is a real curved surface now. The geometry is in pageBend.ts,
+  // adapted from Meng To's Sketchbook: a chain of nested strips whose
+  // tangent sweeps through an arc, so the page bends progressively across
+  // its width instead of pivoting like a flat door. What matters here is
+  // that the leaf pivots on the SPINE — its left edge — which gives the
+  // two directions their shapes:
+  //
+  //   next   the outgoing page IS the leaf. It bends away to the left and
+  //          uncovers the incoming page, which was lying beneath it all
+  //          along.
+  //   prev   the incoming page is the leaf, starting folded back off-frame
+  //          and coming down over the page being left behind.
+  //
+  // One number drives both. `t` runs 0 (flat over the page) to 1 (turned
+  // fully away), forward for next and backward for prev, which is why a
+  // drag can be handed straight to it and why commit and revert are the
+  // same tween to different ends.
+  //
+  // THE REVERSE CARRIES THE OTHER PAGE. The back of the sheet you are
+  // turning is the next page of the document — these are printed pages in
+  // order, so that is literally true — and pageBend samples it from the
+  // opposite edge so it reads the right way round once flipped. Past 90
+  // degrees the leaf lies to the left of the spine and the stage's own
+  // overflow clips it, which is what stops the incoming page ever being
+  // visible twice at once.
+  const beginTurn = useCallback(
+    (dir: 1 | -1, auto: boolean) => {
+      if (turningRef.current) return false;
+      const from = viewIndexRef.current;
+      const to = from + dir;
+      if (to < 0 || to >= views.length) return false;
       turningRef.current = true;
-      setPrevView({ view: views[viewIndex], dir: clamped > viewIndex ? 1 : -1 });
-      setViewIndex(clamped);
-      setPan({ x: 0, y: 0 });
+      tRef.current = dir === 1 ? 0 : 1;
+      const t: Turn = { dir, from, to, auto };
+      // Written here, not in an effect: useLayoutEffect builds the leaf
+      // and may commit it in the same tick, and it reads this.
+      turnRef.current = t;
+      setTurn(t);
+      return true;
     },
-    [viewIndex, views]
+    [views.length]
   );
 
-  // THE PAGE CHANGE: A SHEET IS LAID OVER THE ONE BEFORE IT.
-  //
-  // What this replaces sent both sheets travelling most of the stage's
-  // width in opposite directions. Whatever the easing, a whole picture
-  // leaving the frame while another arrives is a slideshow: the artefact
-  // itself moves, so there is nothing for the reader to hold on to, and
-  // nothing about it says these two pages belong to one object.
-  //
-  // The artefact is ANCHORED now, and the change happens at its EDGE. The
-  // incoming sheet is uncovered from its leading edge — a clip that opens
-  // across it — with a short travel behind that edge so it reads as being
-  // laid down rather than dissolved in. The outgoing sheet does not go
-  // anywhere: it settles back a little and falls into shadow as the new
-  // one covers it. That is what turning to the next page in a physical
-  // document looks like, and it keeps the page in exactly the same place
-  // on screen throughout, which is what makes the reading position hold.
-  //
-  // No rotation, no fold, no curl. Not one of these is a bound volume —
-  // Sneh Sagar is a set of selected pages, a brochure's page is a printed
-  // spread already, and a newsletter, a handbook and a policy document are
-  // read a sheet at a time — so a page-curl would be a metaphor for
-  // something that is not there.
-  useLayoutEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
-    if (!prevView) return;
-    const incoming = currentLayerRef.current;
-    const outgoing = prevLayerRef.current;
-    const dir = prevView.dir;
-    const done = () => {
+  /** Run the turn to its end (commit) or back where it came from. */
+  const settle = useCallback((commit: boolean) => {
+    const t = turnRef.current;
+    if (!t) return;
+    const bend = bendRef.current;
+    const target = commit === (t.dir === 1) ? 1 : 0;
+    const finish = () => {
+      if (commit) {
+        setViewIndex(t.to);
+        viewIndexRef.current = t.to;
+        setPan({ x: 0, y: 0 });
+      }
+      turnRef.current = null;
+      setTurn(null);
       turningRef.current = false;
-      setPrevView(null);
-      if (incoming) gsap.set(incoming, { clearProps: "clipPath,transform,filter" });
     };
-    if (!incoming && !outgoing) {
-      done();
+    if (!bend) {
+      finish();
       return;
     }
-    const width = stageRef.current?.getBoundingClientRect().width ?? 600;
-    const tl = gsap.timeline({ onComplete: done });
-    const dur = turn.ms / 1000;
-    if (outgoing) {
-      // Stays put. Only settles back and darkens, which is what being
-      // covered by something looks like.
-      gsap.set(outgoing, { x: 0, zIndex: 2, scale: 1, filter: "brightness(1)" });
-      tl.to(
-        outgoing,
-        {
-          scale: turn.recede,
-          filter: `brightness(${turn.dim})`,
-          duration: dur,
-          ease: "power2.out",
-        },
-        0
-      );
+    const o = { v: tRef.current };
+    gsap.to(o, {
+      v: target,
+      // Whatever is left of the turn, at a steady tempo — a page half
+      // pulled over should not take as long as one starting from flat.
+      duration: Math.max(0.26, Math.abs(target - o.v) * 0.66),
+      ease: "power3.out",
+      onUpdate: () => {
+        tRef.current = o.v;
+        bend.setT(o.v);
+      },
+      onComplete: finish,
+    });
+  }, []);
+
+  // THE LEAF ITSELF. Built once per turn, from the page box the beneath
+  // layer is actually rendering at — measured in layout coordinates, not
+  // screen ones, so it stays correct while the stage is zoomed.
+  useLayoutEffect(() => {
+    if (!turn_) return;
+    const host = layerHostRef.current;
+    const img = currentLayerRef.current?.querySelector("img");
+    const frontSrc = (turn_.dir === 1 ? views[turn_.from] : views[turn_.to])?.pages[0];
+    const backSrc = (turn_.dir === 1 ? views[turn_.to] : views[turn_.from])?.pages[0];
+    if (!host || !(img instanceof HTMLImageElement) || !frontSrc || !backSrc) {
+      turningRef.current = false;
+      turnRef.current = null;
+      setTurn(null);
+      return;
     }
-    if (incoming) {
-      // Leading edge first: coming from the right (dir 1), the sheet is
-      // uncovered from ITS right edge inward, so the edge that arrives is
-      // the edge you would see arriving.
-      const closed = dir === 1 ? "inset(0% 0% 0% 100%)" : "inset(0% 100% 0% 0%)";
-      gsap.set(incoming, {
-        zIndex: 3,
-        clipPath: closed,
-        x: dir === 1 ? width * turn.travel : -width * turn.travel,
-        scale: turn.lift,
-        transformOrigin: "50% 50%",
-      });
-      tl.to(
-        incoming,
-        {
-          clipPath: "inset(0% 0% 0% 0%)",
-          x: 0,
-          scale: 1,
-          duration: dur,
-          ease: "power3.out",
-        },
-        0
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewIndex, docIndex]);
+    const bend = createPageBend({
+      host,
+      x: img.offsetLeft,
+      y: img.offsetTop,
+      width: img.offsetWidth,
+      height: img.offsetHeight,
+      frontSrc,
+      backSrc,
+      beta: bendProfile.beta,
+      zIndex: 6,
+    });
+    bend.setT(tRef.current);
+    bendRef.current = bend;
+    if (turn_.auto) settle(true);
+    return () => {
+      bend.destroy();
+      bendRef.current = null;
+    };
+  }, [turn_, views, settle, bendProfile.beta]);
+
+  const goToView = useCallback(
+    (next: number) => {
+      if (!views.length || turningRef.current) return;
+      const clamped = Math.min(views.length - 1, Math.max(0, next));
+      const cur = viewIndexRef.current;
+      if (clamped === cur) return;
+      if (Math.abs(clamped - cur) === 1) {
+        beginTurn(clamped > cur ? 1 : -1, true);
+        return;
+      }
+      // A jump of more than one page is not a page turn. Bending a single
+      // sheet to cross ten of them would be a lie about the document, so
+      // the thumbnails and the overview simply go there.
+      setViewIndex(clamped);
+      viewIndexRef.current = clamped;
+      setPan({ x: 0, y: 0 });
+    },
+    [views.length, beginTurn]
+  );
 
   // Switching documents inside a collection starts that document at its
   // own first page rather than carrying the previous one's position over.
   const selectDoc = useCallback(
     (i: number) => {
-      if (i === docIndex) return;
-      setPrevView(views[viewIndex] ? { view: views[viewIndex], dir: 1 } : null);
+      if (i === docIndex || turningRef.current) return;
+      // Not a page turn — a different document. Bending a sheet out of one
+      // brochure into another would claim they are bound together.
       setDocIndex(i);
       setViewIndex(0);
+      viewIndexRef.current = 0;
       setPan({ x: 0, y: 0 });
-      turningRef.current = true;
     },
-    [docIndex, viewIndex, views]
+    [docIndex]
   );
 
   // ── ZOOM + PAN ────────────────────────────────────────────────────────
@@ -275,61 +321,95 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   );
 
   // ONE POINTER, TWO JOBS, decided by whether the page is zoomed: zoomed
-  // in, a drag pans the page; at fit, it pulls the page across to the next
-  // one. Both are the same gesture doing the obvious thing at that zoom.
-  const dragState = useRef<{
-    x: number;
-    y: number;
-    panX: number;
-    panY: number;
-    paging: boolean;
+  // in, a drag pans the page; at fit, it takes hold of the sheet's edge
+  // and bends it. Both are the same gesture doing the obvious thing at
+  // that zoom.
+  //
+  // THE HAND DRIVES THE TURN DIRECTLY. The drag does not "trigger" an
+  // animation when it ends — it writes the leaf's angle every frame, and
+  // letting go only decides which end the remainder runs to. Which half
+  // of the page was grabbed picks the direction, the way it does on a
+  // real one.
+  const panRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const dragRef = useRef<{
+    dir: 1 | -1;
+    x0: number;
+    w: number;
     moved: number;
+    vel: number;
+    tPrev: number;
   } | null>(null);
+
   const onPointerDown = (e: React.PointerEvent) => {
+    if (zoomIdx > 0) {
+      panRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      setDragging(true);
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      return;
+    }
     if (turningRef.current) return;
-    dragState.current = {
-      x: e.clientX,
-      y: e.clientY,
-      panX: pan.x,
-      panY: pan.y,
-      paging: zoomIdx === 0,
+    // No text selection and no native image drag: either one makes the
+    // browser cancel the pointer mid-gesture and take the turn with it.
+    e.preventDefault();
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect || !rect.width) return;
+    const dir: 1 | -1 = (e.clientX - rect.left) / rect.width > 0.5 ? 1 : -1;
+    if (!beginTurn(dir, false)) return;
+    dragRef.current = {
+      dir,
+      x0: e.clientX,
+      w: rect.width,
       moved: 0,
+      vel: 0,
+      tPrev: performance.now(),
     };
     setDragging(true);
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
+
   const onPointerMove = (e: React.PointerEvent) => {
-    const d = dragState.current;
-    if (!d) return;
-    const dx = e.clientX - d.x;
-    d.moved = dx;
-    if (d.paging) {
-      // The current page follows the hand, so the slide that finishes the
-      // gesture is continuous with it rather than a separate animation.
-      if (currentLayerRef.current) // DAMPED, and heavily. The sheet is anchored; a drag is the reader
-      // taking hold of its edge, not pushing the whole document across the
-      // desk. It moves enough to answer the hand and no further, and the
-      // change itself happens on release.
-      gsap.set(currentLayerRef.current, {
-        x: Math.max(-72, Math.min(72, dx * 0.26)),
-      });
+    const pr = panRef.current;
+    if (pr) {
+      setPan(clampPan(pr.panX + (e.clientX - pr.x), pr.panY + (e.clientY - pr.y), zoom));
       return;
     }
-    setPan(clampPan(d.panX + dx, d.panY + (e.clientY - d.y), zoom));
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.x0;
+    d.moved = Math.max(d.moved, Math.abs(dx));
+    // Pulling left turns forward. The leaf follows the hand across about
+    // two thirds of the page's width, so a full turn is a deliberate
+    // gesture rather than a flick of the wrist.
+    const adv = Math.max(0, Math.min(1, (d.dir === 1 ? -dx : dx) / (d.w * 0.62)));
+    const t = d.dir === 1 ? adv : 1 - adv;
+    const now = performance.now();
+    d.vel = (t - tRef.current) / Math.max(0.001, (now - d.tPrev) / 1000);
+    d.tPrev = now;
+    tRef.current = t;
+    bendRef.current?.setT(t);
   };
+
   const endDrag = () => {
-    const d = dragState.current;
-    dragState.current = null;
-    setDragging(false);
-    if (!d?.paging) return;
-    const rect = stageRef.current?.getBoundingClientRect();
-    const threshold = Math.max(40, (rect?.width ?? 400) * 0.12);
-    if (Math.abs(d.moved) > threshold) {
-      goToView(viewIndexRef.current + (d.moved < 0 ? 1 : -1));
-    } else if (currentLayerRef.current) {
-      // Not far enough: it settles back where it was.
-      gsap.to(currentLayerRef.current, { x: 0, duration: 0.32, ease: "power2.out" });
+    if (panRef.current) {
+      panRef.current = null;
+      setDragging(false);
+      return;
     }
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d) return;
+    setDragging(false);
+    // A tap on one side of the page turns it, the way tapping the edge of
+    // a book does.
+    if (d.moved < 6) {
+      settle(true);
+      return;
+    }
+    // Past the halfway mark, or thrown hard enough that stopping it would
+    // feel like the page being taken back out of your hand.
+    const progress = d.dir === 1 ? tRef.current : 1 - tRef.current;
+    const speed = d.dir === 1 ? d.vel : -d.vel;
+    settle(progress > 0.42 || (speed > 1.1 && progress > 0.12));
   };
 
   useEffect(() => {
@@ -601,7 +681,10 @@ export default function PublicationViewer({ slug }: { slug: string }) {
 
           {/* THE ARTEFACT. Arrows sit outside the zoom surface so they
               keep working at every zoom level. */}
-          <div style={{ position: "relative", flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div
+            className="pub-stagerow"
+            style={{ position: "relative", flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
             <button
               type="button"
               onClick={() => goToView(viewIndex - 1)}
@@ -623,10 +706,13 @@ export default function PublicationViewer({ slug }: { slug: string }) {
 
             <div
               ref={stageRef}
+              className="pub-stage"
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={endDrag}
+              onPointerCancel={endDrag}
               onPointerLeave={endDrag}
+              onDragStart={(e) => e.preventDefault()}
               style={{
                 position: "relative",
                 width: "100%",
@@ -636,6 +722,8 @@ export default function PublicationViewer({ slug }: { slug: string }) {
                 overflow: "hidden",
                 perspective: 2200,
                 touchAction: "pan-y",
+                userSelect: "none",
+                WebkitUserSelect: "none",
                 cursor: dragging ? "grabbing" : "grab",
               }}
             >
@@ -648,14 +736,16 @@ export default function PublicationViewer({ slug }: { slug: string }) {
                   transformOrigin: "50% 50%",
                   transition: dragging ? "none" : "transform 340ms cubic-bezier(0.22,1,0.36,1)",
                 }}
+                ref={layerHostRef}
               >
-                {prevView && (
-                  <div ref={prevLayerRef} style={layerStyle}>
-                    {renderPages(prevView.view)}
-                  </div>
-                )}
+                {/* ONE PAGE IS DRAWN, and it is whichever one is lying
+                    underneath the leaf: the page being turned TO while
+                    going forward, the page being left behind while going
+                    back. The leaf itself is not React's — pageBend adds it
+                    to this same 3D context, because a drag writes its
+                    angle every frame and nothing here should re-render. */}
                 <div ref={currentLayerRef} style={layerStyle}>
-                  {renderPages(view)}
+                  {renderPages(beneathView)}
                 </div>
               </div>
             </div>
@@ -821,7 +911,26 @@ export default function PublicationViewer({ slug }: { slug: string }) {
             border-bottom: 1px solid rgba(255,255,255,0.08);
             overflow: visible !important;
           }
-          .pub-main { min-height: 78dvh; }
+          /* !important, like every other rule in this block, because
+             .pub-main carries an inline min-height of 0 — the thing that
+             lets it shrink inside the desktop flex column. A stylesheet
+             rule loses to that, so without this the main column had no
+             height at all on a phone, the artefact row collapsed to zero
+             and the page being read was invisible. */
+          .pub-main { min-height: 78dvh !important; }
+          /* AND THE ROW INSIDE IT NEEDS A HEIGHT OF ITS OWN. The stage is
+             height:100%, which against an auto-height parent resolves to
+             nothing, and the page image inside is height:100% of THAT — so
+             the whole artefact collapsed to a zero-high box and a reader on
+             a phone saw the rail, the controls and the thumbnails with
+             nothing between them. Growing to fill the column only works
+             while the column has spare room to give. */
+          .pub-stagerow { min-height: 56dvh !important; }
+          /* The stage is told its height outright rather than inheriting a
+             percentage of a row that only has a MIN height: a percentage
+             against a parent whose height is still auto resolves to auto,
+             which is the collapse described above all over again. */
+          .pub-stage { height: 56dvh !important; }
         }
       `}</style>
     </div>
