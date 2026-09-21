@@ -22,6 +22,9 @@ export type PublicationDoc = {
   pageCount: number;
   /** Built from the count — see pagesOf(). */
   pages: string[];
+  /** True where a page of this document is a printed landscape spread;
+   *  false where it is a single portrait sheet. See `doc`. */
+  wide?: boolean;
 };
 
 export type PublicationViewerSpec =
@@ -56,8 +59,25 @@ function pagesOf(base: string, count: number): string[] {
   );
 }
 
-function doc(id: string, title: string, base: string, pageCount: number): PublicationDoc {
-  return { id, title, pageCount, pages: pagesOf(base, pageCount) };
+/**
+ * `wide` is a property of the DOCUMENT, not of the publication it sits in.
+ *
+ * The brochures collection holds two kinds of thing: the Mining and
+ * Turnkey PDFs, whose every page is a printed landscape spread, and the
+ * Nutran covers, which are single A4 portrait sheets. Deciding the page
+ * shape from the publication's kind — as this did — draws one of those two
+ * wrong, and letterboxing a portrait cover into a spread-shaped frame is
+ * what that looked like. Omitted, it still falls back to the kind, so
+ * nothing else has to state what was already true of it.
+ */
+function doc(
+  id: string,
+  title: string,
+  base: string,
+  pageCount: number,
+  wide?: boolean
+): PublicationDoc {
+  return { id, title, pageCount, pages: pagesOf(base, pageCount), wide };
 }
 
 const SNEH_SAGAR = doc(
@@ -109,6 +129,10 @@ export const PUBLICATION_CONTENT: Record<string, PublicationContent> = {
           "/publications/brochures/turnkey-projects/pages",
           11
         ),
+        // Single-sheet covers, not spreads — hence `wide: false`. One
+        // page each, because one page is what was supplied.
+        doc("nutran-a", "Nutran A", "/publications/brochures/nutran-a/pages", 1, false),
+        doc("nutran-b", "Nutran B", "/publications/brochures/nutran-b/pages", 1, false),
       ],
     },
   },

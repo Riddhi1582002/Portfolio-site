@@ -79,6 +79,24 @@ export const RECEPTION_PIECES: ReceptionPiece[] = [
     w: 1920,
     h: 1080,
   },
+  // SUPPLIED LATER, and appended rather than interleaved: the numbered
+  // series above fixes its own order, and these two carry no number to
+  // place them by. Putting them anywhere inside it would be a guess about
+  // sequence that nothing supplied supports.
+  {
+    id: "rs-pat-on-the-back",
+    kind: "image",
+    src: "/reception-screen/pat-on-the-back.jpg",
+    w: 1920,
+    h: 1080,
+  },
+  {
+    id: "rs-posh",
+    kind: "image",
+    src: "/reception-screen/posh.jpg",
+    w: 1920,
+    h: 1080,
+  },
 ];
 
 /** What a still composition can actually stage: the images, plus a motion

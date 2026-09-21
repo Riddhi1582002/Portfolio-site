@@ -112,7 +112,12 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   const isBook = content?.viewer.kind === "book";
   // A brochure page is a printed spread already, so it is drawn wide;
   // a book's facing pair is drawn as two pages meeting at a gutter.
-  const isWidePage = content?.viewer.kind === "spreadCollection";
+  // The ACTIVE DOCUMENT decides its own page shape, falling back to the
+  // publication's kind where it does not say — see `doc` in
+  // publicationsContent. A collection can hold both a landscape spread and
+  // a portrait sheet, and this is the line that stops one of them being
+  // drawn in the other's frame.
+  const isWidePage = activeDoc?.wide ?? content?.viewer.kind === "spreadCollection";
   /** This publication's own page change — see TURN. */
   const turn = TURN[content?.viewer.kind ?? "page"] ?? TURN.page;
 
@@ -490,7 +495,13 @@ export default function PublicationViewer({ slug }: { slug: string }) {
                       style={{
                         display: "block",
                         width: "100%",
-                        aspectRatio: content.viewer.kind === "spreadCollection" ? "3 / 2" : "1 / 1.414",
+                        // Each document's OWN shape, so a portrait cover
+                        // in a collection of spreads is not reserved a
+                        // landscape box and letterboxed into it.
+                        aspectRatio:
+                          (d.wide ?? content.viewer.kind === "spreadCollection")
+                            ? "3 / 2"
+                            : "1 / 1.414",
                         overflow: "hidden",
                         borderRadius: 3,
                         border:
