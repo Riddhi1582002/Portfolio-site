@@ -5,29 +5,30 @@
 // ONE PHYSICAL OBJECT, ONE CONTINUOUS MECHANISM:
 //
 //   closed jacket -> the cover folds open on its spine -> the leaflets
-//   rise out of the pocket -> they settle into a short horizontal run ->
-//   one is picked up, comes to the centre and opens out into its two
-//   actual pages -> it goes back to the exact place it came from -> the
-//   run gathers -> the leaflets go back down into the pocket -> closed.
+//   rise out of the pocket and fan out like a hand of cards -> a name for
+//   each one appears underneath -> choosing a name draws that leaflet out
+//   from under the front one in the fan and brings it forward -> clicking
+//   it turns it over, front to back and back again -> "back" reverses the
+//   whole path into the exact place in the fan it came from -> the fan
+//   closes, the leaflets go down into the pocket -> closed.
 //
-// HOW "INSIDE" IS REAL HERE, since that is what decides whether any of
-// this reads: the band across the bottom of the supplied inside spread —
-// the machinery photograph and the navy panel — IS the pocket. It is
-// drawn a second time as its own layer ABOVE the leaflets, so a stored
-// leaflet is genuinely occluded by it. A leaflet can only appear by
-// travelling up through that opening, and can only disappear by going
-// back down through it.
+// HOW "INSIDE" IS REAL HERE: the band across the bottom of the supplied
+// inside spread — the machinery photograph and the navy panel — IS the
+// pocket. It is drawn a second time as its own layer ABOVE the leaflets,
+// so the foot of every leaflet in the fan is genuinely behind it. The fan
+// is solved so that every leaflet crosses the band's top edge inside the
+// right-hand panel: nothing ever shows below that line where there is no
+// pocket to be in.
 //
 // NOTHING EVER CHANGES CONTAINER. Every leaflet lives in one slot for the
-// whole life of the page — stored, carousel and centred are three
-// transforms of that same element, so "back to its exact carousel
-// position" is not a re-layout, it is the same tween run backwards. That
-// is also why nothing fades: fading is what you reach for when the thing
-// on screen is not the thing you started with.
+// whole life of the page — stored, fanned and picked are transforms of
+// that same element, so "back to its exact place in the fan" is the same
+// numbers the fan was built from, not a re-layout.
 //
-// The second page opens out from BEHIND the first rather than replacing
-// it, so front and back are two real sheets being separated, not one
-// sheet flipping.
+// ORDER IS STACKING, and the draw-out depends on it. The slots, the pocket
+// band and the cover share one stacking context, so a leaflet can sit
+// behind the band while it is in the fan and in front of everything once
+// it is picked, with no other element in between changing.
 //
 // GSAP only, on the site's existing timeline system.
 
@@ -38,45 +39,74 @@ import { INFORMATIONAL_DESIGN, JACKET, LEAFLETS } from "./informationalDesignAss
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 
-/** Carousel spacing, as a share of one leaflet's width. Restrained: the
- *  neighbours sit close enough to read as one short run of sheets. */
-// How far apart the leaflets stand in the run, as a share of one leaflet's
-// width. At 0.62 each sheet buried well over a third of the next and the
-// collection read as a deck being shuffled; at 0.86 they overlap by a
-// hand's width — enough to be a collection rather than a row of separate
-// things, little enough that every neighbour is legible.
-const STEP = 0.86;
-/** Gap between a centred leaflet's two pages, same units. */
-const PAGE_GAP = 0.04;
+// THE FAN. Each leaflet turns about one point low in the pocket, from the
+// back one — furthest over, towards the fold — to the front one, nearly
+// upright. The numbers were solved, not picked: across the whole range,
+// every leaflet's two edges cross the band's top inside the right panel,
+// its foot stays inside the jacket and its head stays below the jacket's
+// top edge. Change one and re-check all four.
+const FAN_FROM = -32;
+const FAN_TO = -1;
+/** The pivot, as a fraction of a leaflet: near its bottom-left corner. */
+const PIVOT_X = 0.1;
+const PIVOT_Y = 0.9;
+/** The fan's own offset in the pocket, as fractions of the jacket height. */
+const FAN_DX = 0.08;
+const FAN_Y = 0.19;
+/** How far a chosen leaflet rises clear of the front one, of its height. */
+const RISE = 0.4;
+/** How far a leaflet lifts in the fan when its name is pointed at. */
+const LIFT = 0.035;
+/** The rest of the fan, while one leaflet is being read. */
+const DIM = 0.08;
+/** The jacket itself, while one leaflet is being read. */
+const JACKET_DIM = 0.3;
+
+// Stacking, in the jacket's one context. Fan order is back-to-front; the
+// band sits over every leaflet in the fan; the cover is over everything
+// while shut and under the leaflets once it has turned past its spine.
+const Z_FAN = 10;
+const Z_BAND = 50;
+const Z_COVER_SHUT = 60;
+const Z_COVER_OPEN = 5;
+const Z_PICKED = 100;
 
 const EASE_OUT = "power3.out";
 const EASE_IO = "power2.inOut";
 
-type Phase = "closed" | "open" | "centred";
+type Phase = "closed" | "open" | "picked";
+type Pose = { x: number; y: number; rotation: number; scale: number };
+
+const N = LEAFLETS.length;
+const FRONT = N - 1;
+const zFan = (i: number) => Z_FAN + i * 2;
+/** Directly under the front leaflet, over every other one. */
+const Z_UNDER_FRONT = zFan(FRONT) - 1;
 
 export default function InformationalDesignView() {
   const [phase, setPhase] = useState<Phase>("closed");
   const [active, setActive] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  /** The names appear once the fan has settled, not while it is opening. */
+  const [chipsIn, setChipsIn] = useState(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const coverRef = useRef<HTMLDivElement>(null);
   /** The whole folded object, so the group can sit centred in both states. */
   const jacketRef = useRef<HTMLDivElement>(null);
-  const railRef = useRef<HTMLDivElement>(null);
+  const fixedRef = useRef<HTMLDivElement>(null);
+  const bandRef = useRef<HTMLDivElement>(null);
+  const coverFaceRefs = useRef<(HTMLElement | null)[]>([]);
   const slotRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const backRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const flipRefs = useRef<(HTMLDivElement | null)[]>([]);
   const busyRef = useRef(false);
   const phaseRef = useRef<Phase>("closed");
   const activeRef = useRef(0);
+  const flippedRef = useRef(false);
+  /** What was asked for while something else was still moving. */
+  const pendingRef = useRef<number | "close" | null>(null);
 
-  useEffect(() => {
-    phaseRef.current = phase;
-  }, [phase]);
-  useEffect(() => {
-    activeRef.current = active;
-  }, [active]);
-
-  const centredActive = phase === "centred";
+  const picked = phase === "picked";
 
   // ── THE OBJECT'S MEASUREMENTS ────────────────────────────────────────
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -100,20 +130,15 @@ export default function InformationalDesignView() {
   // occupies the RIGHT panel and the left one is empty; the group is
   // shifted right by half a panel so it still sits centred on the stage.
   // Open, the cover has swung into the left panel and the shift is zero.
-  // Nothing about this animates a WIDTH: growing a box sideways is what
-  // made the two supplied spreads read as unrelated flat cards.
   const jacketH = Math.max(180, Math.min(box.h * 0.8, narrow ? 340 : 500));
   const panelW = jacketH * (JACKET.panelW / JACKET.panelH);
   const spreadW = jacketH * (JACKET.spreadW / JACKET.spreadH);
-  /** The shut object occupies the RIGHT panel of the spread's box, so its
-   *  middle is half a panel right of the box's middle. The group is moved
-   *  the other way by that much to put it back on the stage's centre. */
   const closedShift = -panelW / 2;
   // A leaflet keeps its own A4 proportion exactly, always.
   const leafH = jacketH * 0.72;
   const leafW = leafH * (LEAFLETS[0].w / LEAFLETS[0].h);
-  const step = leafW * STEP;
-  const pageGap = leafW * PAGE_GAP;
+  /** A slot's own left edge in the right panel: centred in it. */
+  const slotLeft = panelW / 2 - leafW / 2;
 
   // STORED: sitting on the floor of the pocket, which is the jacket's own
   // bottom edge. A leaflet is taller than the band is deep — that is true
@@ -121,50 +146,67 @@ export default function InformationalDesignView() {
   // behind it. Nothing is visible while the jacket is shut because the
   // cover is over it; this is the state the cover opens ONTO.
   const storedY = jacketH - leafH - jacketH * 0.015;
-  // RAISED: lifted clear of the band, foot just overlapping its top edge,
-  // so it reads as having come out of the opening it was in rather than
-  // having been somewhere else all along.
-  const raisedY = JACKET.pocketTop * jacketH - leafH - jacketH * 0.04;
-  // CENTRED: the picked-up leaflet sits in the middle of the stage, big
-  // enough to read, with room for its second page beside it.
-  const centredScale = Math.max(
+  // PICKED: the chosen leaflet in the middle of the stage, big enough to
+  // read. The slot sits at the top of the jacket box and is shorter than
+  // it, so centring it means moving it DOWN by half the difference; and the
+  // open spread's middle is half a panel left of the pocket's.
+  const pickScale = Math.max(
     1,
-    Math.min(
-      (box.h * 0.9) / leafH,
-      // Both pages, side by side, have to fit the stage — the binding
-      // measurement, and the one that was missing when the spread ran off
-      // the right-hand edge.
-      (box.w * 0.9) / (leafW * 2 + pageGap),
-      narrow ? 1.3 : 1.75
-    )
+    Math.min((box.h * 0.9) / leafH, (box.w * 0.86) / leafW, narrow ? 1.5 : 1.9)
   );
-  // The slot sits at the TOP of the jacket box and is shorter than it, so
-  // centring the picked-up sheet in the stage means moving it DOWN by half
-  // the difference — not up. Up is what clipped the spread against the
-  // stage's own top edge.
-  const centredY = (jacketH - leafH) / 2;
+
+  const storedPose: Pose = { x: 0, y: storedY, rotation: 0, scale: 1 };
+  const pickedPose: Pose = {
+    x: -panelW / 2,
+    y: (jacketH - leafH) / 2,
+    rotation: 0,
+    scale: pickScale,
+  };
+
+  /**
+   * Leaflet `i` in the fan. GSAP turns a slot about its own centre, so the
+   * turn about the pivot is done by hand: the centre is carried round the
+   * pivot, and the slot is moved to where the centre ends up.
+   */
+  const fanPose = useCallback(
+    (i: number): Pose => {
+      const th = FAN_FROM + ((FAN_TO - FAN_FROM) * i) / Math.max(1, N - 1);
+      const r = (th * Math.PI) / 180;
+      const left = slotLeft + FAN_DX * jacketH;
+      const top = FAN_Y * jacketH;
+      const px = left + PIVOT_X * leafW;
+      const py = top + PIVOT_Y * leafH;
+      const dx = left + leafW / 2 - px;
+      const dy = top + leafH / 2 - py;
+      const cx = px + dx * Math.cos(r) - dy * Math.sin(r);
+      const cy = py + dx * Math.sin(r) + dy * Math.cos(r);
+      return { x: cx - (slotLeft + leafW / 2), y: cy - leafH / 2, rotation: th, scale: 1 };
+    },
+    [slotLeft, jacketH, leafW, leafH]
+  );
+
+  /** A fan pose moved along the leaflet's own "up" by `d` pixels. */
+  const raise = (p: Pose, d: number): Pose => {
+    const r = (p.rotation * Math.PI) / 180;
+    return { ...p, x: p.x + Math.sin(r) * d, y: p.y - Math.cos(r) * d };
+  };
+  /** Clear of the front leaflet: where a chosen one comes out from under it. */
+  const drawnPose = raise(fanPose(FRONT), RISE * leafH);
 
   // ── HELPERS ──────────────────────────────────────────────────────────
   const slots = () => slotRefs.current.filter(Boolean) as HTMLDivElement[];
+  const jacketParts = () =>
+    [fixedRef.current, bandRef.current, ...coverFaceRefs.current].filter(Boolean) as HTMLElement[];
 
-  /** Where a slot sits in the carousel run, before any centring. */
-  const slotX = useCallback((i: number) => i * step, [step]);
-
-  /**
-   * The rail offset that puts leaflet `i` in the middle of the STAGE.
-   *
-   * The rail hangs at the centre of the RIGHT panel, because that is where
-   * the pocket is and a leaflet has to come out of the pocket. Once the
-   * run is out and open, though, it is the thing being looked at and
-   * belongs on the stage's own centre line — which is half a panel to the
-   * left of where it started. That half-panel is the lift itself: the
-   * stack rises out of the pocket and comes forward onto the centre, one
-   * move, rather than fanning out where it happened to be stored.
-   */
-  const railX = useCallback(
-    (i: number) => -i * step - panelW / 2,
-    [step, panelW]
-  );
+  // Everything that can be asked for mid-motion is queued rather than
+  // dropped, and run the moment the object comes to rest.
+  const runRef = useRef<(next: number | "close") => void>(() => {});
+  const settle = useCallback(() => {
+    busyRef.current = false;
+    const next = pendingRef.current;
+    pendingRef.current = null;
+    if (next != null) runRef.current(next);
+  }, []);
 
   // ── OPEN ─────────────────────────────────────────────────────────────
   const open = useCallback(() => {
@@ -173,167 +215,256 @@ export default function InformationalDesignView() {
     phaseRef.current = "open";
     setPhase("open");
     const s = slots();
-    const tl = gsap.timeline({ onComplete: () => (busyRef.current = false) });
+    const tl = gsap.timeline({
+      onComplete: () => {
+        setChipsIn(true);
+        settle();
+      },
+    });
 
-    // 1. THE FRONT LEAF BENDS BACK ON THE FOLD. One turn about one edge —
-    //    the fold, at the spread's centre — and nothing slides. It is a
-    //    real two-sided panel: the front cover on the face you have been
-    //    looking at, the inside spread's left half on its reverse, so at
-    //    the end it is lying open with the interior showing rather than
-    //    having disappeared.
+    // 1. THE FRONT LEAF BENDS BACK ON THE FOLD — one turn about one edge,
+    //    and the object slides back to centre as it widens, tied together
+    //    so the fold stays put on screen while the cover swings off it.
+    //    Past its spine the cover drops under the leaflets, which are about
+    //    to fan out over its inside face.
     if (coverRef.current) {
       tl.to(coverRef.current, { rotateY: -180, duration: 0.88, ease: EASE_IO }, 0);
+      tl.set(coverRef.current, { zIndex: Z_COVER_OPEN }, 0.44);
     }
-    // 1b. And the object slides back to centre as it widens. Closed, it is
-    //     one panel and sits in the right half of the spread's box with a
-    //     half-panel shift keeping it centred on the stage; open, it is
-    //     two panels and the shift is gone. The two are tied together so
-    //     the FOLD stays put on screen while the cover swings off it —
-    //     which is what makes it read as hinged rather than translated.
     if (jacketRef.current) {
       tl.to(jacketRef.current, { x: 0, duration: 0.88, ease: EASE_IO }, 0);
     }
-    // 2. The leaflets rise out of the pocket, as a stack: one short
-    //    stagger, no overshoot, no fan yet. They are being lifted, not
-    //    thrown, and the pocket band is still in front of them the whole
-    //    way up, so they are coming OUT of it.
+    // 2. The leaflets lift in the pocket together, still upright, the band
+    //    in front of them the whole way.
     tl.to(
       s,
-      { y: raisedY, duration: 0.72, ease: EASE_OUT, stagger: 0.05 },
-      0.54
+      {
+        x: FAN_DX * jacketH,
+        y: FAN_Y * jacketH,
+        rotation: 0,
+        duration: 0.46,
+        ease: EASE_OUT,
+        stagger: 0.03,
+      },
+      0.56
     );
-    // 3. Only once out do they open into the run, which is what keeps the
-    //    movement from reading as passing through the jacket's walls.
+    // 3. And open into the fan about the one point in the pocket, the back
+    //    ones going furthest over.
     tl.to(
       s,
-      { x: (i: number) => slotX(i), duration: 0.74, ease: EASE_OUT, stagger: 0.04 },
+      {
+        x: (i: number) => fanPose(i).x,
+        y: (i: number) => fanPose(i).y,
+        rotation: (i: number) => fanPose(i).rotation,
+        duration: 0.8,
+        ease: EASE_OUT,
+        stagger: 0.035,
+      },
       0.86
     );
-    if (railRef.current) {
-      tl.to(railRef.current, { x: railX(0), duration: 0.74, ease: EASE_OUT }, 0.86);
+  }, [fanPose, jacketH, settle]);
+
+  // ── DRAW ONE OUT / PUT IT BACK ───────────────────────────────────────
+  const pick = useCallback(
+    (i: number) => {
+      if (phaseRef.current !== "open") return;
+      if (busyRef.current) {
+        pendingRef.current = i;
+        return;
+      }
+      const el = slotRefs.current[i];
+      if (!el) return;
+      busyRef.current = true;
+      phaseRef.current = "picked";
+      activeRef.current = i;
+      flippedRef.current = false;
+      setActive(i);
+      setFlipped(false);
+      setPhase("picked");
+      const others = slots().filter((o) => o !== el);
+      const tl = gsap.timeline({ onComplete: settle });
+      let t = 0;
+      // 1. TUCK. At its own place in the stacking order it is under every
+      //    leaflet in front of it, so it slides round BEHIND them to the
+      //    front leaflet's exact pose — where it is completely covered —
+      //    and only then takes the place directly under the front one.
+      //    The front leaflet itself needs no tuck: it is already there.
+      if (i !== FRONT) {
+        const f = fanPose(FRONT);
+        tl.to(el, { x: f.x, y: f.y, rotation: f.rotation, duration: 0.44, ease: EASE_IO }, 0);
+        tl.set(el, { zIndex: Z_UNDER_FRONT }, 0.44);
+        t = 0.44;
+      }
+      // 2. DRAW. Up out from under the front leaflet, along its own edge,
+      //    the way a card is drawn from the back of a hand.
+      tl.to(
+        el,
+        { x: drawnPose.x, y: drawnPose.y, rotation: drawnPose.rotation, duration: 0.46, ease: "power2.out" },
+        t
+      );
+      // The rest of the fan and the jacket step back as it clears, so the
+      // one moment it has to pass in front of the front leaflet happens
+      // over a leaflet that is already mostly gone.
+      // The jacket only dims once they have: the band going translucent
+      // over leaflets that were still fully there would show them standing
+      // behind it and give the pocket away.
+      tl.to(others, { opacity: DIM, duration: 0.3, ease: "power1.out" }, t + 0.05);
+      tl.to(jacketParts(), { opacity: JACKET_DIM, duration: 0.45, ease: "power1.out" }, t + 0.3);
+      // 3. FORWARD, over everything, to the middle of the stage.
+      tl.set(el, { zIndex: Z_PICKED }, t + 0.4);
+      tl.to(
+        el,
+        { ...pickedPose, duration: 0.74, ease: EASE_OUT },
+        t + 0.4
+      );
+    },
+    [fanPose, drawnPose.x, drawnPose.y, drawnPose.rotation, pickedPose.x, pickedPose.y, pickedPose.scale, settle] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const unpick = useCallback(() => {
+    if (phaseRef.current !== "picked" || busyRef.current) return;
+    const i = activeRef.current;
+    const el = slotRefs.current[i];
+    if (!el) return;
+    busyRef.current = true;
+    phaseRef.current = "open";
+    const others = slots().filter((o) => o !== el);
+    const tl = gsap.timeline({
+      onComplete: () => {
+        setPhase("open");
+        settle();
+      },
+    });
+    let t = 0;
+    // Front side up first: it goes back into the fan the way it came out.
+    const flip = flipRefs.current[i];
+    if (flippedRef.current && flip) {
+      flippedRef.current = false;
+      setFlipped(false);
+      tl.to(flip, { rotateY: 0, duration: 0.56, ease: EASE_IO }, 0);
+      t = 0.34;
     }
-  }, [raisedY, slotX, railX]);
+    // Exactly the reverse of the draw: back above the front leaflet...
+    tl.to(
+      el,
+      { ...drawnPose, duration: 0.62, ease: EASE_IO },
+      t
+    );
+    tl.to(jacketParts(), { opacity: 1, duration: 0.5, ease: "power1.inOut" }, t + 0.2);
+    // ...down under it while the fan comes back up around it...
+    tl.set(el, { zIndex: i === FRONT ? zFan(FRONT) : Z_UNDER_FRONT }, t + 0.62);
+    // The fan comes back only once the band is solid again.
+    tl.to(others, { opacity: 1, duration: 0.34, ease: "power1.inOut" }, t + 0.7);
+    const f = fanPose(FRONT);
+    tl.to(el, { x: f.x, y: f.y, rotation: f.rotation, duration: 0.44, ease: EASE_IO }, t + 0.62);
+    // ...and round behind the others to its own place, at its own depth.
+    if (i !== FRONT) {
+      const own = fanPose(i);
+      tl.set(el, { zIndex: zFan(i) }, t + 1.06);
+      tl.to(el, { x: own.x, y: own.y, rotation: own.rotation, duration: 0.46, ease: EASE_IO }, t + 1.06);
+    }
+  }, [fanPose, drawnPose, settle]);
+
+  // ── TURN IT OVER ─────────────────────────────────────────────────────
+  // A real turn: one sheet, front on one face and back on the other.
+  const turn = useCallback(() => {
+    if (phaseRef.current !== "picked" || busyRef.current) return;
+    const flip = flipRefs.current[activeRef.current];
+    if (!flip) return;
+    const next = !flippedRef.current;
+    flippedRef.current = next;
+    setFlipped(next);
+    gsap.to(flip, { rotateY: next ? 180 : 0, duration: 0.8, ease: EASE_IO, overwrite: true });
+  }, []);
 
   // ── CLOSE ────────────────────────────────────────────────────────────
   const close = useCallback(() => {
-    if (busyRef.current || phaseRef.current === "closed") return;
+    if (phaseRef.current === "picked") {
+      // Back into the fan first, so the gather always starts from the
+      // same shape.
+      pendingRef.current = "close";
+      unpick();
+      return;
+    }
+    if (busyRef.current || phaseRef.current !== "open") return;
     busyRef.current = true;
-    const s = slots();
-    const wasCentred = phaseRef.current === "centred";
     phaseRef.current = "closed";
+    setChipsIn(false);
+    const s = slots();
     const tl = gsap.timeline({
       onComplete: () => {
-        busyRef.current = false;
         setPhase("closed");
         setActive(0);
+        settle();
       },
     });
-    // If one was centred it first goes back to the run, so the gather
-    // always starts from the same shape.
-    if (wasCentred) {
-      const el = slotRefs.current[activeRef.current];
-      const back = backRefs.current[activeRef.current];
-      if (back) tl.to(back, { x: 0, duration: 0.34, ease: EASE_IO }, 0);
-      if (el) {
-        tl.to(
-          el,
-          { x: slotX(activeRef.current), y: raisedY, scale: 1, duration: 0.46, ease: EASE_IO },
-          0.08
-        );
-      }
-    }
-    const t0 = wasCentred ? 0.4 : 0;
-    // 1. The run gathers back into a single stack over the opening.
+    // 1. The fan closes back into one upright stack...
     tl.to(
       s,
-      { x: 0, duration: 0.5, ease: EASE_IO, stagger: { each: 0.04, from: "end" } },
-      t0
+      {
+        x: FAN_DX * jacketH,
+        y: FAN_Y * jacketH,
+        rotation: 0,
+        duration: 0.52,
+        ease: EASE_IO,
+        stagger: { each: 0.03, from: "end" },
+      },
+      0
     );
-    if (railRef.current) {
-      tl.to(railRef.current, { x: 0, duration: 0.5, ease: EASE_IO }, t0);
-    }
-    // 2. And slides back DOWN INTO the pocket — the same travel as the
-    //    rise, reversed, with the band in front of them throughout, so
-    //    they go into the opening rather than behind the artwork.
+    // 2. ...which goes back down into the pocket...
     tl.to(
       s,
-      { y: storedY, duration: 0.56, ease: "power2.in", stagger: { each: 0.04, from: "end" } },
-      t0 + 0.28
+      { x: 0, y: storedY, duration: 0.5, ease: "power2.in", stagger: { each: 0.03, from: "end" } },
+      0.5
     );
-    // 3. The front leaf bends back over them on the same fold, and the
-    //    object narrows to one panel again — the shift returning as the
-    //    cover comes back, exactly as they left together.
+    // 3. ...and the front leaf bends back over them on the same fold,
+    //    coming back over the leaflets as it passes its spine.
     if (coverRef.current) {
-      tl.to(coverRef.current, { rotateY: 0, duration: 0.86, ease: EASE_IO }, t0 + 0.52);
+      tl.to(coverRef.current, { rotateY: 0, duration: 0.86, ease: EASE_IO }, 0.72);
+      tl.set(coverRef.current, { zIndex: Z_COVER_SHUT }, 0.72 + 0.43);
     }
     if (jacketRef.current) {
-      tl.to(
-        jacketRef.current,
-        { x: closedShift, duration: 0.86, ease: EASE_IO },
-        t0 + 0.52
-      );
+      tl.to(jacketRef.current, { x: closedShift, duration: 0.86, ease: EASE_IO }, 0.72);
     }
-  }, [storedY, raisedY, slotX, closedShift]);
+  }, [storedY, jacketH, closedShift, unpick, settle]);
 
-  // ── PICK ONE UP / PUT IT BACK ────────────────────────────────────────
-  const centre = useCallback(
+  // What a chosen name does depends on what is already out.
+  const choose = useCallback(
     (i: number) => {
-      if (busyRef.current || phaseRef.current !== "open") return;
-      busyRef.current = true;
-      phaseRef.current = "centred";
-      setPhase("centred");
-      const el = slotRefs.current[i];
-      const back = backRefs.current[i];
-      const tl = gsap.timeline({ onComplete: () => (busyRef.current = false) });
-      if (el) {
-        // It travels from its own place in the run to the middle — the
-        // same element, so putting it back lands on the same numbers.
-        tl.to(
-          el,
-          {
-            x: slotX(i) - ((leafW + pageGap) * centredScale) / 2,
-            y: centredY,
-            scale: centredScale,
-            duration: 0.72,
-            ease: EASE_OUT,
-          },
-          0
-        );
+      // On a phone the names sit below the object; bring the stage back
+      // into view so the draw-out is seen, not just its result.
+      const st = stageRef.current?.getBoundingClientRect();
+      if (st && (st.top < 0 || st.bottom > window.innerHeight)) {
+        stageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-      if (railRef.current) {
-        tl.to(railRef.current, { x: railX(i), duration: 0.72, ease: EASE_OUT }, 0);
+      if (busyRef.current) {
+        pendingRef.current = i;
+        return;
       }
-      // The second page comes out from behind the first rather than
-      // replacing it: two sheets being separated, never one turning over.
-      if (back) {
-        tl.to(back, { x: leafW + pageGap, duration: 0.62, ease: EASE_OUT }, 0.28);
+      if (phaseRef.current === "open") pick(i);
+      else if (phaseRef.current === "picked" && i !== activeRef.current) {
+        pendingRef.current = i;
+        unpick();
       }
     },
-    [slotX, railX, leafW, pageGap, centredScale, centredY]
+    [pick, unpick]
   );
 
-  const uncentre = useCallback(
-    (i: number) => {
-      if (busyRef.current || phaseRef.current !== "centred") return;
-      busyRef.current = true;
-      phaseRef.current = "open";
-      setPhase("open");
-      const el = slotRefs.current[i];
-      const back = backRefs.current[i];
-      const tl = gsap.timeline({ onComplete: () => (busyRef.current = false) });
-      // Exactly the reverse: the pages close back together first, then it
-      // returns to its own slot in the run.
-      if (back) tl.to(back, { x: 0, duration: 0.42, ease: EASE_IO }, 0);
-      if (el) {
-        tl.to(
-          el,
-          { x: slotX(i), y: raisedY, scale: 1, duration: 0.6, ease: EASE_IO },
-          0.14
-        );
-      }
-    },
-    [slotX, raisedY]
-  );
+  useEffect(() => {
+    runRef.current = (next) => {
+      if (next === "close") close();
+      else choose(next);
+    };
+  }, [close, choose]);
+
+  // Pointing at a name lifts its leaflet a little in the fan.
+  const hover = (i: number, on: boolean) => {
+    if (busyRef.current || phaseRef.current !== "open") return;
+    const el = slotRefs.current[i];
+    if (!el) return;
+    const p = on ? raise(fanPose(i), LIFT * jacketH) : fanPose(i);
+    gsap.to(el, { x: p.x, y: p.y, duration: 0.32, ease: "power2.out", overwrite: true });
+  };
 
   // ── PARKING ──────────────────────────────────────────────────────────
   // Re-park on any size change so every state is the same picture at any
@@ -344,143 +475,44 @@ export default function InformationalDesignView() {
     const p = phaseRef.current;
     const a = activeRef.current;
     s.forEach((el, i) => {
-      const centredOne = p === "centred" && i === a;
+      const isPicked = p === "picked" && i === a;
+      const pose = p === "closed" ? storedPose : isPicked ? pickedPose : fanPose(i);
       gsap.set(el, {
-        x: centredOne
-          ? slotX(i) - ((leafW + pageGap) * centredScale) / 2
-          : p === "closed"
-            ? 0
-            : slotX(i),
-        y: p === "closed" ? storedY : centredOne ? centredY : raisedY,
-        scale: centredOne ? centredScale : 1,
+        ...pose,
+        zIndex: isPicked ? Z_PICKED : zFan(i),
+        opacity: p === "picked" && !isPicked ? DIM : 1,
       });
-      const back = backRefs.current[i];
-      if (back) gsap.set(back, { x: centredOne ? leafW + pageGap : 0 });
+      const flip = flipRefs.current[i];
+      if (flip) {
+        gsap.set(flip, {
+          transformPerspective: 2400,
+          rotateY: isPicked && flippedRef.current ? 180 : 0,
+        });
+      }
     });
-    if (railRef.current) {
-      gsap.set(railRef.current, { x: p === "closed" ? 0 : railX(a) });
-    }
-    // THE FOLDED OBJECT ITSELF. Shut, it is one panel sitting in the right
-    // half of the spread's box, so the group is moved half a panel left to
-    // put it back on the stage's centre; open, it is the whole spread and
-    // there is nothing to correct. Parked here as well as animated —
-    // without this the very first frame of a visit had the jacket a half
-    // panel right of where closing it again would put it, so the state you
-    // started in and the state you came back to were not the same one.
+    gsap.set(jacketParts(), { opacity: p === "picked" ? JACKET_DIM : 1 });
+    // THE FOLDED OBJECT ITSELF — shut, one panel shifted half a panel left
+    // to sit on the stage's centre; open, the whole spread, no shift.
     if (jacketRef.current) {
       gsap.set(jacketRef.current, { x: p === "closed" ? closedShift : 0 });
     }
     if (coverRef.current) {
-      gsap.set(coverRef.current, { rotateY: p === "closed" ? 0 : -180 });
+      gsap.set(coverRef.current, {
+        rotateY: p === "closed" ? 0 : -180,
+        zIndex: p === "closed" ? Z_COVER_SHUT : Z_COVER_OPEN,
+      });
     }
-  }, [
-    storedY,
-    raisedY,
-    centredY,
-    centredScale,
-    leafW,
-    pageGap,
-    slotX,
-    railX,
-    closedShift,
-    box.w,
-    box.h,
-  ]);
-
-  // ── CAROUSEL NAVIGATION ──────────────────────────────────────────────
-  const goTo = useCallback(
-    (i: number) => {
-      if (phaseRef.current !== "open") return;
-      const clamped = Math.min(LEAFLETS.length - 1, Math.max(0, i));
-      setActive(clamped);
-      if (railRef.current) {
-        gsap.to(railRef.current, { x: railX(clamped), duration: 0.56, ease: EASE_OUT });
-      }
-    },
-    [railX]
-  );
+  }, [storedY, pickedPose.x, pickedPose.y, pickedPose.scale, fanPose, closedShift, box.w, box.h]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const p = phaseRef.current;
-      if (p === "centred") {
-        if (e.key === "Escape") uncentre(activeRef.current);
-        return;
-      }
-      if (p !== "open") return;
-      if (e.key === "ArrowLeft") goTo(activeRef.current - 1);
-      else if (e.key === "ArrowRight") goTo(activeRef.current + 1);
-      else if (e.key === "Escape") close();
-      else if (e.key === "Enter") centre(activeRef.current);
+      if (e.key !== "Escape") return;
+      if (phaseRef.current === "picked") unpick();
+      else if (phaseRef.current === "open") close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [goTo, close, centre, uncentre]);
-
-  // Drag with momentum, carried into the snap rather than stopping dead.
-  const drag = useRef<{ x: number; railX: number; t: number; vx: number; moved: boolean } | null>(
-    null
-  );
-  // Which pointer the stage has captured, if any. Capture is taken only
-  // once a drag has actually started, never on pointer-down — and that is
-  // not a refinement. A captured pointer retargets the CLICK that follows
-  // it to the capturing element, so with capture taken on press the
-  // leaflets' own buttons never received a click at all: a leaflet could
-  // be dragged past, and could not be opened.
-  const captured = useRef<number | null>(null);
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (phase !== "open" || !railRef.current) return;
-    gsap.killTweensOf(railRef.current);
-    drag.current = {
-      x: e.clientX,
-      railX: (gsap.getProperty(railRef.current, "x") as number) || 0,
-      t: performance.now(),
-      vx: 0,
-      moved: false,
-    };
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    const d = drag.current;
-    if (!d || !railRef.current) return;
-    const dx = e.clientX - d.x;
-    if (Math.abs(dx) > 3 && !d.moved) {
-      d.moved = true;
-      // Now it is a drag, so the pointer is worth holding on to: the hand
-      // can leave the stage and the run still follows it.
-      try {
-        (e.currentTarget as Element).setPointerCapture(e.pointerId);
-        captured.current = e.pointerId;
-      } catch {
-        // Capture can be refused (the pointer is already gone); the drag
-        // simply ends at the stage's edge instead of following past it.
-      }
-    }
-    const now = performance.now();
-    if (now > d.t) {
-      d.vx = dx / (now - d.t);
-      d.t = now;
-      d.x = e.clientX;
-      d.railX = ((gsap.getProperty(railRef.current, "x") as number) || 0) + dx;
-    }
-    gsap.set(railRef.current, { x: d.railX });
-  };
-  const onPointerUp = (e: React.PointerEvent) => {
-    const d = drag.current;
-    drag.current = null;
-    if (captured.current != null) {
-      try {
-        (e.currentTarget as Element).releasePointerCapture(captured.current);
-      } catch {
-        // Already released with the pointer itself.
-      }
-      captured.current = null;
-    }
-    if (!d || !railRef.current) return;
-    if (!d.moved) return;
-    const x = (gsap.getProperty(railRef.current, "x") as number) || 0;
-    goTo(Math.round(-(x + d.vx * 170) / step));
-  };
-  const draggedRef = drag;
+  }, [unpick, close]);
 
   return (
     <div className="relative w-full bg-black text-white" style={{ fontFamily: SANS, minHeight: "100dvh" }}>
@@ -528,10 +560,14 @@ export default function InformationalDesignView() {
           </p>
           <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={eyebrowStyle}>
-              {phase === "closed" ? "Closed" : `${active + 1} / ${LEAFLETS.length}`}
+              {phase === "closed"
+                ? "Closed"
+                : picked
+                  ? `${active + 1} / ${N} · ${flipped ? "Back" : "Front"}`
+                  : `${N} leaflets`}
             </div>
             <div style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", minHeight: 20 }}>
-              {phase === "closed" ? "" : LEAFLETS[active].title}
+              {picked ? LEAFLETS[active].title : ""}
             </div>
           </div>
         </aside>
@@ -555,6 +591,7 @@ export default function InformationalDesignView() {
             // than inferred from where things happen to have landed.
             data-id-phase={phase}
             data-id-active={active}
+            data-id-flipped={flipped ? "1" : "0"}
             style={{
               position: "relative",
               flex: "1 1 auto",
@@ -621,6 +658,7 @@ export default function InformationalDesignView() {
                      It sits in the RIGHT panel, which is where the closed
                      object is. */}
               <div
+                ref={fixedRef}
                 style={{
                   position: "absolute",
                   left: panelW,
@@ -628,8 +666,6 @@ export default function InformationalDesignView() {
                   width: panelW,
                   height: "100%",
                   transformStyle: "preserve-3d",
-                  opacity: centredActive ? 0.3 : 1,
-                  transition: "opacity 420ms ease",
                   borderRadius: 3,
                   boxShadow: "0 40px 90px rgba(0,0,0,0.75)",
                 }}
@@ -681,185 +717,102 @@ export default function InformationalDesignView() {
               </div>
 
               {/* 2. THE LEAFLETS — between the inside face and the pocket
-                     band, which is what makes them stored. */}
+                     band, which is what makes them stored. The layer takes
+                     NO z-index on purpose: without one it is not a stacking
+                     context, so each slot is ordered directly against the
+                     band and the cover — behind the band in the fan, in
+                     front of everything once it is picked. */}
               <div
-                onPointerDown={onPointerDown}
-                onPointerMove={onPointerMove}
-                onPointerUp={onPointerUp}
-                onPointerLeave={onPointerUp}
                 style={{
                   position: "absolute",
-                  // IN THE POCKET, which is in the fixed leaf — so the run
-                  // starts from the right panel and not from the middle of
-                  // a spread that is not open yet.
+                  // IN THE POCKET, which is in the fixed leaf.
                   left: panelW,
                   top: 0,
                   width: panelW,
                   height: "100%",
-                  // Above the cover and the band once a leaflet has been
-                  // picked up — a slot's own z-index only orders it within
-                  // THIS layer, so without this the cover painted over it.
-                  zIndex: centredActive ? 9 : 2,
-                  touchAction: phase === "open" ? "pan-y" : "auto",
-                  cursor: phase === "open" ? "grab" : "default",
+                  pointerEvents: "none",
                 }}
               >
-                <div ref={railRef} style={{ position: "absolute", left: "50%", top: 0, width: 0, height: "100%" }}>
-                  {LEAFLETS.map((l, i) => {
-                    const isActive = i === active;
-                    const isCentred = centredActive && isActive;
-                    return (
+                {LEAFLETS.map((l, i) => {
+                  const isPicked = picked && i === active;
+                  return (
+                    <div
+                      key={l.id}
+                      ref={(el) => {
+                        slotRefs.current[i] = el;
+                      }}
+                      data-id-slot={i}
+                      style={{
+                        position: "absolute",
+                        left: slotLeft,
+                        top: 0,
+                        width: leafW,
+                        height: leafH,
+                        transformOrigin: "50% 50%",
+                        willChange: "transform",
+                        pointerEvents: phase === "closed" ? "none" : "auto",
+                      }}
+                    >
+                      {/* ONE SHEET, TWO FACES. The turn is a real one:
+                          front on this side, back on the reverse, and the
+                          sheet goes over about its own vertical centre. */}
                       <div
-                        key={l.id}
                         ref={(el) => {
-                          slotRefs.current[i] = el;
+                          flipRefs.current[i] = el;
                         }}
-                        // A handle for the measurement pass, which checks
-                        // that BACK returns a leaflet to the exact box it
-                        // left and that closing restores the initial state.
-                        data-id-slot={i}
-                        style={{
-                          position: "absolute",
-                          left: -leafW / 2,
-                          top: 0,
-                          width: leafW,
-                          height: leafH,
-                          transformOrigin: "50% 50%",
-                          zIndex: isCentred ? 9 : isActive ? 4 : 3,
-                          willChange: "transform",
-                          // FULLY OPAQUE, always — a leaflet is a printed
-                          // sheet and a printed sheet is not translucent.
-                          // Depth in the run is carried by overlap and by
-                          // scale, never by fading the neighbours out,
-                          // which is what made the collection read as
-                          // ghosts of itself. The one exception is while
-                          // a leaflet is being READ: the rest step back
-                          // out of the way rather than competing with it.
-                          opacity: centredActive && !isCentred ? 0.12 : 1,
-                          transition: "opacity 380ms ease",
-                        }}
+                        style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d" }}
                       >
-                        {/* WHICH DEPARTMENT THIS ONE IS.
-                            The rail already names the leaflet at the
-                            centre, but a run of nine covers is a set of
-                            thumbnails, and a thumbnail you cannot name
-                            without first sliding it to the middle is not
-                            doing a thumbnail's job. The name rides the
-                            slot, so it travels with its own leaflet.
-
-                            ABOVE, not below: below is where the jacket's
-                            own inside spread and the pocket band are, and
-                            a caption there would be printed over the
-                            artwork. It goes while a leaflet is being read,
-                            where the rail names it anyway and the slot's
-                            own scale would blow the type up with it. */}
-                        <div
-                          aria-hidden
-                          style={{
-                            position: "absolute",
-                            bottom: "100%",
-                            left: 0,
-                            right: 0,
-                            marginBottom: 12,
-                            textAlign: "center",
-                            fontSize: 10,
-                            fontWeight: 500,
-                            letterSpacing: "0.13em",
-                            textTransform: "uppercase",
-                            lineHeight: 1.35,
-                            color: isActive
-                              ? "rgba(255,255,255,0.8)"
-                              : "rgba(255,255,255,0.34)",
-                            opacity: phase === "open" ? 1 : 0,
-                            transition: "opacity 320ms ease, color 320ms ease",
-                            pointerEvents: "none",
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (phaseRef.current === "open") choose(i);
+                            else if (isPicked) turn();
                           }}
-                        >
-                          {l.title}
-                        </div>
-
-                        {/* THE BACK PAGE, behind the front until the
-                            leaflet is picked up. */}
-                        <div
-                          ref={(el) => {
-                            backRefs.current[i] = el;
-                          }}
+                          aria-label={
+                            isPicked
+                              ? `${l.title} — turn over`
+                              : `${l.title} — take out`
+                          }
+                          tabIndex={phase === "closed" || (picked && !isPicked) ? -1 : 0}
                           style={{
                             position: "absolute",
                             inset: 0,
-                            zIndex: 1,
-                            willChange: "transform",
+                            padding: 0,
+                            border: "none",
+                            background: "none",
+                            cursor: phase === "closed" ? "default" : "pointer",
+                            WebkitTapHighlightColor: "transparent",
+                            transformStyle: "preserve-3d",
                           }}
                         >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={l.pages[0]}
+                            alt={`${l.title}, front`}
+                            draggable={false}
+                            style={{
+                              ...faceStyle,
+                              boxShadow: isPicked
+                                ? "0 30px 80px rgba(0,0,0,0.75)"
+                                : "0 14px 34px rgba(0,0,0,0.6)",
+                            }}
+                          />
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={l.pages[1]}
                             alt={`${l.title}, back`}
                             draggable={false}
                             style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "fill",
-                              display: "block",
-                              borderRadius: 2,
-                              boxShadow: "0 18px 44px rgba(0,0,0,0.66)",
-                            }}
-                          />
-                        </div>
-
-                        {/* THE FRONT PAGE. */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (draggedRef.current?.moved) return;
-                            if (phaseRef.current === "centred") {
-                              if (isActive) uncentre(i);
-                              return;
-                            }
-                            if (phaseRef.current !== "open") return;
-                            if (i !== active) goTo(i);
-                            else centre(i);
-                          }}
-                          aria-label={l.title}
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            zIndex: 2,
-                            padding: 0,
-                            border: "none",
-                            background: "none",
-                            cursor: phase === "closed" ? "default" : "pointer",
-                            WebkitTapHighlightColor: "transparent",
-                            // Depth in the run: the one in the middle full
-                            // size, its neighbours a touch smaller and set
-                            // back. Never applied to the centred one, whose
-                            // own scale GSAP owns.
-                            transform: isCentred ? "none" : `scale(${isActive ? 1 : 0.9})`,
-                            transformOrigin: "50% 50%",
-                            transition: "transform 520ms cubic-bezier(0.22,1,0.36,1)",
-                          }}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={l.pages[0]}
-                            alt={l.title}
-                            draggable={false}
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "fill",
-                              display: "block",
-                              borderRadius: 2,
-                              boxShadow: isActive
-                                ? "0 26px 60px rgba(0,0,0,0.72)"
-                                : "0 16px 36px rgba(0,0,0,0.6)",
+                              ...faceStyle,
+                              transform: "rotateY(180deg)",
+                              boxShadow: "0 30px 80px rgba(0,0,0,0.75)",
                             }}
                           />
                         </button>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* 3. THE POCKET, drawn over the leaflets — which is the
@@ -870,6 +823,7 @@ export default function InformationalDesignView() {
                      hidden: the pocket is part of the inside face, and
                      with the cover shut the cover is over both. */}
               <div
+                ref={bandRef}
                 aria-hidden
                 style={{
                   position: "absolute",
@@ -877,10 +831,8 @@ export default function InformationalDesignView() {
                   width: panelW,
                   top: `${JACKET.pocketTop * 100}%`,
                   bottom: 0,
-                  zIndex: 5,
+                  zIndex: Z_BAND,
                   overflow: "clip",
-                  opacity: centredActive ? 0.3 : 1,
-                  transition: "opacity 420ms ease",
                   borderRadius: "0 0 3px 3px",
                   pointerEvents: "none",
                 }}
@@ -934,16 +886,21 @@ export default function InformationalDesignView() {
                   top: 0,
                   width: panelW,
                   height: "100%",
-                  zIndex: 7,
+                  // z-index is GSAP's: over the leaflets while shut, under
+                  // them once it has turned past the spine. And no opacity
+                  // here, ever — opacity on a preserve-3d element flattens
+                  // it, which would show the cover's face mirrored. The
+                  // two faces dim instead.
                   transformOrigin: "left center",
                   transformStyle: "preserve-3d",
-                  transition: "opacity 420ms ease",
-                  opacity: centredActive ? 0.3 : 1,
                   pointerEvents: "none",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
+                  ref={(el) => {
+                    coverFaceRefs.current[0] = el;
+                  }}
                   src={JACKET.frontCover}
                   alt="EIPL jacket"
                   style={{
@@ -961,6 +918,9 @@ export default function InformationalDesignView() {
                     LEFT half, which is what this leaf shows once it has
                     turned over. */}
                 <div
+                  ref={(el) => {
+                    coverFaceRefs.current[1] = el;
+                  }}
                   style={{
                     position: "absolute",
                     inset: 0,
@@ -994,30 +954,6 @@ export default function InformationalDesignView() {
               </div>
             </div>
 
-            {/* Arrows: one at a time, and only while the run is the thing
-                being looked at. */}
-            {phase === "open" && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => goTo(active - 1)}
-                  disabled={active === 0}
-                  aria-label="Previous leaflet"
-                  style={arrowStyle("left", active === 0)}
-                >
-                  ‹
-                </button>
-                <button
-                  type="button"
-                  onClick={() => goTo(active + 1)}
-                  disabled={active === LEAFLETS.length - 1}
-                  aria-label="Next leaflet"
-                  style={arrowStyle("right", active === LEAFLETS.length - 1)}
-                >
-                  ›
-                </button>
-              </>
-            )}
           </div>
 
           <div
@@ -1040,17 +976,67 @@ export default function InformationalDesignView() {
                 <button type="button" onClick={close} style={controlStyle}>
                   Put the leaflets back
                 </button>
-                <span style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
+                <span className="id-sep" aria-hidden style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
                 <span style={{ ...eyebrowStyle, color: "rgba(255,255,255,0.35)" }}>
-                  Drag, or click a leaflet to open it
+                  Choose a leaflet
                 </span>
               </>
             )}
-            {phase === "centred" && (
-              <button type="button" onClick={() => uncentre(active)} style={controlStyle}>
-                <span aria-hidden>←</span> Back to the set
-              </button>
+            {picked && (
+              <>
+                <button type="button" onClick={unpick} style={controlStyle}>
+                  <span aria-hidden>←</span> Back to the leaflets
+                </button>
+                <span className="id-sep" aria-hidden style={{ color: "rgba(255,255,255,0.2)" }}>|</span>
+                <button type="button" onClick={turn} style={{ ...controlStyle, color: "rgba(255,255,255,0.5)" }}>
+                  {flipped ? "Turn to the front" : "Turn it over"}
+                </button>
+              </>
             )}
+          </div>
+
+          {/* THE NAMES — one per leaflet, the way you choose one. The
+              space is kept even while they are hidden: if it appeared with
+              them the stage would shrink mid-motion and re-size the jacket
+              under the leaflets that are moving in it. */}
+          <div
+            data-id-chips
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "center",
+              gap: 10,
+              maxWidth: 920,
+              width: "100%",
+              margin: "0 auto",
+              pointerEvents: chipsIn ? "auto" : "none",
+            }}
+          >
+            {LEAFLETS.map((l, i) => {
+              const on = picked && i === active;
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  data-id-chip={i}
+                  aria-pressed={on}
+                  tabIndex={chipsIn ? 0 : -1}
+                  onClick={() => choose(i)}
+                  onMouseEnter={() => hover(i, true)}
+                  onMouseLeave={() => hover(i, false)}
+                  onFocus={() => hover(i, true)}
+                  onBlur={() => hover(i, false)}
+                  style={{
+                    ...chipStyle(on),
+                    opacity: chipsIn ? 1 : 0,
+                    transform: chipsIn ? "none" : "translateY(8px)",
+                    transition: `opacity 360ms ease ${chipsIn ? i * 45 : 0}ms, transform 420ms cubic-bezier(0.22,1,0.36,1) ${chipsIn ? i * 45 : 0}ms, background 240ms ease, color 240ms ease, border-color 240ms ease`,
+                  }}
+                >
+                  {l.title}
+                </button>
+              );
+            })}
           </div>
         </main>
       </div>
@@ -1063,6 +1049,10 @@ export default function InformationalDesignView() {
             border-right: none !important;
             border-bottom: 1px solid rgba(255,255,255,0.08);
           }
+        }
+        @media (max-width: 480px) {
+          .id-sep { display: none; }
+          [data-id-chip] { font-size: 10px !important; padding: 8px 10px !important; }
         }
       `}</style>
     </div>
@@ -1105,23 +1095,31 @@ const controlStyle: React.CSSProperties = {
   color: "rgba(255,255,255,0.78)",
 };
 
-function arrowStyle(side: "left" | "right", disabled: boolean): React.CSSProperties {
+const faceStyle: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  width: "100%",
+  height: "100%",
+  objectFit: "fill",
+  display: "block",
+  borderRadius: 2,
+  backfaceVisibility: "hidden",
+  WebkitBackfaceVisibility: "hidden",
+};
+
+function chipStyle(on: boolean): React.CSSProperties {
   return {
-    position: "absolute",
-    [side]: "clamp(4px, 1.6vw, 22px)",
-    top: "50%",
-    transform: "translateY(-50%)",
-    zIndex: 12,
-    width: 42,
-    height: 42,
-    borderRadius: "50%",
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.22)",
-    color: "#fff",
-    fontSize: 20,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.25 : 1,
-    display: "grid",
-    placeItems: "center",
+    fontFamily: SANS,
+    fontSize: 11,
+    fontWeight: 500,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    lineHeight: 1.2,
+    padding: "9px 13px",
+    borderRadius: 2,
+    border: `1px solid ${on ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.22)"}`,
+    background: on ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.03)",
+    color: on ? "#000" : "rgba(255,255,255,0.8)",
+    cursor: "pointer",
   };
 }
