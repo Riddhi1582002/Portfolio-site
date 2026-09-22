@@ -7,7 +7,7 @@
 // (Publications, Campaigns/Social, Informational Design, the Reception
 // screen) are unchanged; each of those pages comes back here.
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import CategoryStage from "./CategoryStage";
 import CordSection from "./CordSection";
 import { preloadBulb } from "./BulbModel";
@@ -30,8 +30,11 @@ const CORD_VH = 1200;
 const CORD_ARC_START = 0.51;
 const ARC_LEAD = 2.6;
 const ARC_CARD_COUNT = 9;
-const FIRST_CARD_ARC_P = ARC_LEAD / (ARC_CARD_COUNT - 1 + ARC_LEAD * 2);
-const OPEN_AT = CORD_ARC_START + FIRST_CARD_ARC_P * (1 - CORD_ARC_START);
+/** Where card `k` is square to the lens, as a share of the track. */
+const cardAt = (k: number) =>
+  CORD_ARC_START +
+  ((ARC_LEAD + k) / (ARC_CARD_COUNT - 1 + ARC_LEAD * 2)) * (1 - CORD_ARC_START);
+const OPEN_AT = cardAt(0);
 
 export default function GraphicDesignCategoryView() {
   // THE BULB'S BYTES, STARTED AT ONCE.
@@ -48,8 +51,20 @@ export default function GraphicDesignCategoryView() {
     void preloadBulb();
   }, []);
 
+  // ?card=N opens the ring on card N (0-based) instead of the first — how
+  // a project's NEXT PROJECT hands over to the one after it. Read after
+  // mount: the page is a static export, so there is no request to read it
+  // from on the server.
+  // (startProgress is only ever read inside CategoryStage's effect, never
+  // rendered, so a server value that differs cannot mismatch hydration.)
+  const [openAt] = useState(() => {
+    if (typeof window === "undefined") return OPEN_AT;
+    const k = Number(new URLSearchParams(window.location.search).get("card"));
+    return Number.isInteger(k) && k > 0 && k < ARC_CARD_COUNT ? cardAt(k) : OPEN_AT;
+  });
+
   return (
-    <CategoryStage lengthVh={CORD_VH} startProgress={OPEN_AT}>
+    <CategoryStage lengthVh={CORD_VH} startProgress={openAt}>
       {(progress) => <CordSection progress={progress} sans={SANS} visible />}
     </CategoryStage>
   );

@@ -74,7 +74,14 @@ const CARD_HOLDERS: CardHolder[] = [
   },
   { index: 5, label: "Posters", href: "/posters", Display: PostersDisplay },
   { index: 6, label: "Applications", href: "/applications", Display: ApplicationsDisplay },
+  // Project 08. The card is established — its place, label and link — and
+  // deliberately left empty inside: its contents have not been decided.
+  { index: 7, label: "AI Comics", href: "/ai-comics", Display: EmptyDisplay },
 ];
+
+function EmptyDisplay() {
+  return null;
+}
 
 const holderAt = (i: number) => CARD_HOLDERS.find((h) => h.index === i) ?? null;
 // Angle between neighbouring cards on the ring. 9 x 30 = 270 degrees
