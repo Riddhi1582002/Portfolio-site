@@ -28,9 +28,18 @@
 //
 // A THROW IS AIMED, NOT TRUNCATED. Letting go does not snap to whatever
 // is nearest right now: the release velocity is projected forward to see
-// where the throw was HEADING, and that is the piece it settles on, under
-// a damped spring. Flicking hard moves you further than nudging, which is
-// what the hand expects and what makes the row feel weighted.
+// where the throw was HEADING, and that is the piece it settles on.
+//
+// ONE AIM, ONE SPRING. Every input — a throw, an arrow, a wheel notch, a
+// click on a card — only moves `aim`, the place the row is going. The
+// row itself is never moved by an input; it chases the aim from wherever
+// it actually is, carrying whatever speed it already has, so a second
+// arrow press halfway through a move simply lengthens that move instead
+// of restarting it, and nothing ever jumps. The chase is the EXACT
+// solution of a critically damped spring, stepped in closed form so it
+// is the same at 30fps as at 144, and its velocity towards the aim is
+// capped at the one speed that can never carry it past — so the settle
+// is guaranteed never to cross the card and ring back.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
@@ -56,10 +65,42 @@ const CULL = 4.2;
 
 const clampTo = (v: number, n: number) => Math.min(n - 1, Math.max(0, v));
 
+/** The spring's natural frequency. Critically damped at this, a one-card
+ *  move reads as settled in about four tenths of a second. */
+const OMEGA = 10.5;
+/** A ceiling on how fast the row may travel, in cards per second. A
+ *  spring's speed grows with the distance it is asked to cover, so four
+ *  quick arrow presses had the row peaking near fifteen cards a second —
+ *  a smear, not a move. Capped, a long move is a steady glide that the
+ *  spring then settles; a short one never reaches the cap at all. */
+const MAX_SPEED = 7;
+/** Wheel travel per item, and how far past the aim a wheel gesture has
+ *  to have pushed before letting go of it counts as a step. */
+const WHEEL_PER_ITEM = 380;
+const WHEEL_COMMIT = 0.15;
+
+/**
+ * Start a video silently. `muted` is set as a PROPERTY here on purpose:
+ * React does not render the `muted` attribute into server HTML, so in this
+ * static export the attribute is absent from the page as delivered, and
+ * a browser only allows an unprompted play() on a video it can see is
+ * muted.
+ */
+function playNow(v: HTMLVideoElement) {
+  v.muted = true;
+  v.defaultMuted = true;
+  void v.play().catch(() => {
+    // Refused (no source yet, a failed candidate being skipped, a data
+    // saver): onCanPlay retries once there is something to play.
+  });
+}
+
 type Slot = {
   el: HTMLDivElement;
   video: HTMLVideoElement | null;
-  playing: boolean;
+  /** What we last asked of the video — kept apart from what it is DOING,
+   *  since a play() can be refused or still be waiting on its source. */
+  wantPlay: boolean;
 };
 
 export default function ReceptionDepthCarousel() {
@@ -71,10 +112,20 @@ export default function ReceptionDepthCarousel() {
   /** The continuous position, and its velocity in items per second. */
   const posRef = useRef(0);
   const velRef = useRef(0);
-  /** Where a released throw is settling. Null while a hand is on it. */
-  const snapRef = useRef<number | null>(0);
-  const dragRef = useRef<{ x: number; pos0: number; last: number; t: number } | null>(null);
+  /** Where the row is going. Null only while a hand is holding it. */
+  const aimRef = useRef<number | null>(0);
+  const dragRef = useRef<{
+    x: number;
+    pos0: number;
+    last: number;
+    t: number;
+    moved: number;
+    card: number | null;
+  } | null>(null);
   const wheelIdle = useRef<number | null>(null);
+  /** Where the current wheel gesture began, so letting go of it can round
+   *  in the direction it was pushed rather than to the nearest card. */
+  const wheelBase = useRef<number | null>(null);
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
 
@@ -95,9 +146,9 @@ export default function ReceptionDepthCarousel() {
       const a = Math.abs(d);
       if (a > CULL) {
         if (slot.el.style.visibility !== "hidden") slot.el.style.visibility = "hidden";
-        if (slot.playing && slot.video) {
+        if (slot.wantPlay && slot.video) {
           slot.video.pause();
-          slot.playing = false;
+          slot.wantPlay = false;
         }
         continue;
       }
@@ -108,18 +159,20 @@ export default function ReceptionDepthCarousel() {
         `translate3d(${(d * itemW * STEP).toFixed(2)}px, 0, ${(-a * DEPTH).toFixed(2)}px)` +
         ` rotateY(${rot.toFixed(2)}deg) scale(${scale.toFixed(4)})`;
       slot.el.style.opacity = Math.max(0, 1 - FADE * a).toFixed(3);
-      slot.el.style.filter = a < 0.06 ? "none" : `blur(${Math.min(MAX_BLUR, BLUR * a).toFixed(2)}px)`;
+      // Continuous all the way to the centre. Switching from a small blur
+      // to none at a threshold was a visible click as a card arrived.
+      slot.el.style.filter =
+        a < 0.001 ? "none" : `blur(${Math.min(MAX_BLUR, BLUR * a).toFixed(3)}px)`;
       slot.el.style.zIndex = String(1000 - Math.round(a * 100));
       // ONLY WHAT IS BEING LOOKED AT RUNS. Eight simultaneous decodes to
       // show one piece is a way to make a carousel stutter on a laptop.
       if (slot.video) {
         const want = a < 0.75;
-        if (want && !slot.playing) {
-          slot.playing = true;
-          slot.video.muted = true;
-          void slot.video.play().catch(() => {});
-        } else if (!want && slot.playing) {
-          slot.playing = false;
+        if (want && !slot.wantPlay) {
+          slot.wantPlay = true;
+          playNow(slot.video);
+        } else if (!want && slot.wantPlay) {
+          slot.wantPlay = false;
           slot.video.pause();
         }
       }
@@ -135,32 +188,39 @@ export default function ReceptionDepthCarousel() {
   useEffect(() => {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const tick = () => {
-      const dt = Math.min(0.032, gsap.ticker.deltaRatio() / 60);
-      if (!dragRef.current) {
-        const snap = snapRef.current;
-        if (snap !== null) {
-          const d = snap - posRef.current;
-          if (reduced) {
-            posRef.current = snap;
+      const dt = Math.min(0.05, gsap.ticker.deltaRatio() / 60);
+      const aim = aimRef.current;
+      if (!dragRef.current && aim !== null) {
+        if (reduced) {
+          posRef.current = aim;
+          velRef.current = 0;
+        } else {
+          const x = posRef.current - aim;
+          let v = velRef.current;
+          // NEVER FAST ENOUGH TO CROSS. A critically damped spring only
+          // passes its target if it is already moving towards it faster
+          // than OMEGA times the distance left; capping the approach speed
+          // there is what makes "no visible oscillation" a property of the
+          // maths rather than of the tuning.
+          if (v * x < 0 && Math.abs(v) > OMEGA * Math.abs(x)) {
+            v = -Math.sign(x) * OMEGA * Math.abs(x);
+          }
+          if (Math.abs(v) > MAX_SPEED) v = Math.sign(v) * MAX_SPEED;
+          const e = Math.exp(-OMEGA * dt);
+          const c = v + OMEGA * x;
+          const nx = (x + c * dt) * e;
+          const nv = (v - OMEGA * c * dt) * e;
+          if (Math.abs(nx) < 0.0006 && Math.abs(nv) < 0.01) {
+            posRef.current = aim;
             velRef.current = 0;
           } else {
-            // A damped spring, not an easing: it inherits the throw's own
-            // speed instead of starting again from nothing.
-            //
-            // CRITICALLY DAMPED, deliberately. At the damping this started
-            // with the row was well underdamped: it overshot its piece and
-            // rang back through it, and a throw across several pieces took
-            // roughly two seconds to stop moving. Matching the damping to
-            // the stiffness (c = 2*sqrt(k)) means it arrives straight,
-            // never crosses the piece it is landing on, and settles in
-            // well under a second however far it was thrown.
-            velRef.current += d * 130 * dt;
-            velRef.current *= Math.exp(-23 * dt);
-            posRef.current += velRef.current * dt;
-            if (Math.abs(d) < 0.002 && Math.abs(velRef.current) < 0.03) {
-              posRef.current = snap;
-              velRef.current = 0;
-            }
+            // The closed-form step can still ask for more than the ceiling
+            // over a long frame; hold the travel to it, and let the spring
+            // take over again once it is inside its own speed.
+            const maxStepLen = MAX_SPEED * dt;
+            const step = Math.max(-maxStepLen, Math.min(maxStepLen, nx - x));
+            posRef.current = aim + x + step;
+            velRef.current = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, nv));
           }
         }
       }
@@ -182,13 +242,17 @@ export default function ReceptionDepthCarousel() {
     // A native image drag cancels the pointer mid-gesture and takes the
     // carousel with it.
     e.preventDefault();
-    snapRef.current = null;
-    velRef.current = 0;
+    const cardEl = (e.target as Element).closest("[data-dc-i]");
+    // Taking hold of the row keeps its speed until the hand actually moves
+    // it: a tap on a card mid-flight should not first slam the row to a
+    // stop and then start it again.
     dragRef.current = {
       x: e.clientX,
       pos0: posRef.current,
       last: posRef.current,
       t: performance.now(),
+      moved: 0,
+      card: cardEl ? Number(cardEl.getAttribute("data-dc-i")) : null,
     };
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
@@ -200,6 +264,11 @@ export default function ReceptionDepthCarousel() {
     const itemW = stage?.firstElementChild
       ? (stage.firstElementChild as HTMLElement).clientWidth
       : 600;
+    d.moved = Math.max(d.moved, Math.abs(e.clientX - d.x));
+    // Below a few pixels this is still a tap, and the row stays under the
+    // spring rather than under the hand.
+    if (d.moved < 5) return;
+    aimRef.current = null;
     let next = d.pos0 - (e.clientX - d.x) / (itemW * STEP);
     // Rubber band at the ends: it gives, but it gives less the further
     // you pull, so the row always tells you it has run out.
@@ -214,13 +283,21 @@ export default function ReceptionDepthCarousel() {
   };
 
   const release = useCallback(() => {
-    if (!dragRef.current) return;
+    const d = dragRef.current;
+    if (!d) return;
     dragRef.current = null;
+    if (d.moved < 5) {
+      // A TAP CHOOSES THAT CARD — the exact one under the finger — and
+      // the row travels to it from wherever it is.
+      if (d.card !== null) aimRef.current = clampTo(d.card, n);
+      else if (aimRef.current === null) aimRef.current = clampTo(Math.round(posRef.current), n);
+      return;
+    }
     // WHERE THE THROW WAS HEADING, not where it happens to be. Projecting
     // the release velocity forward is what lets a hard flick cross more
     // than one piece while a nudge settles back.
     const projected = posRef.current + velRef.current * 0.2;
-    snapRef.current = clampTo(Math.round(projected), n);
+    aimRef.current = clampTo(Math.round(projected), n);
   }, [n]);
 
   // ── THE WHEEL ────────────────────────────────────────────────────────
@@ -233,13 +310,24 @@ export default function ReceptionDepthCarousel() {
       const raw = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
       if (!raw) return;
       e.preventDefault();
-      snapRef.current = null;
-      velRef.current = 0;
-      posRef.current = Math.min(n - 1, Math.max(0, posRef.current + raw / 420));
+      // THE WHEEL MOVES THE AIM, NOT THE ROW. Writing the position
+      // directly made every notch of a mouse wheel a visible jump of a
+      // quarter card; moving the aim instead lets the spring carry the row
+      // there, so a wheel reads as continuous as a drag.
+      const start = aimRef.current ?? posRef.current;
+      if (wheelBase.current === null) wheelBase.current = Math.round(start);
+      aimRef.current = Math.min(n - 1, Math.max(0, start + raw / WHEEL_PER_ITEM));
       if (wheelIdle.current) window.clearTimeout(wheelIdle.current);
-      // The wheel has no "let go", so the settle is on it going quiet.
+      // The wheel has no "let go", so the settle is on it going quiet —
+      // and it rounds the way it was pushed, so a single notch is a step
+      // rather than a nudge that falls back to where it began.
       wheelIdle.current = window.setTimeout(() => {
-        snapRef.current = clampTo(Math.round(posRef.current), n);
+        const aim = aimRef.current ?? posRef.current;
+        const base = wheelBase.current ?? Math.round(aim);
+        wheelBase.current = null;
+        const to =
+          aim > base ? Math.ceil(aim - WHEEL_COMMIT) : Math.floor(aim + WHEEL_COMMIT);
+        aimRef.current = clampTo(to, n);
       }, 110);
     };
     stage.addEventListener("wheel", onWheel, { passive: false });
@@ -250,7 +338,7 @@ export default function ReceptionDepthCarousel() {
   }, [n]);
 
   const go = useCallback((to: number) => {
-    snapRef.current = clampTo(to, n);
+    aimRef.current = clampTo(to, n);
   }, [n]);
 
   useEffect(() => {
@@ -258,7 +346,7 @@ export default function ReceptionDepthCarousel() {
     // Reading the live position means a second press during the spring
     // re-aims from a piece the row has already half left, so holding the
     // key down moved one or two places and then stopped making progress.
-    const from = () => snapRef.current ?? Math.round(posRef.current);
+    const from = () => Math.round(aimRef.current ?? posRef.current);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") go(from() - 1);
       else if (e.key === "ArrowRight") go(from() + 1);
@@ -287,16 +375,29 @@ export default function ReceptionDepthCarousel() {
           <div
             key={piece.id}
             className="dc-item"
+            data-dc-i={i}
             ref={(el) => {
-              slotsRef.current[i] = el
-                ? { el, video: el.querySelector("video"), playing: false }
-                : null;
+              // Re-run on every render. It used to rebuild the slot each
+              // time, which reset what had been asked of the video — so a
+              // card that left the centre after the meter re-rendered was
+              // never paused. The same element keeps the same slot.
+              const prev = slotsRef.current[i];
+              if (!el) {
+                slotsRef.current[i] = null;
+              } else if (!prev || prev.el !== el) {
+                slotsRef.current[i] = { el, video: el.querySelector("video"), wantPlay: false };
+              }
             }}
           >
             <div className="dc-frame">
               {piece.kind === "video" ? (
                 <video
-                  src={piece.src}
+                  // One URL for a local file; for an R2 piece, every key it
+                  // may be stored under — see r2Candidates. The browser
+                  // tries each <source> in order and moves past one that
+                  // fails, which is native resource selection, not a
+                  // second video system.
+                  src={piece.sources ? undefined : piece.src}
                   poster={piece.poster}
                   width={piece.w}
                   height={piece.h}
@@ -305,7 +406,20 @@ export default function ReceptionDepthCarousel() {
                   playsInline
                   preload="metadata"
                   draggable={false}
-                />
+                  onCanPlay={(e) => {
+                    // A play() asked for before the source had arrived —
+                    // or refused while a failed <source> was being passed
+                    // over — is not retried by the browser. It is here,
+                    // the moment there is something to play, if the card
+                    // is still the one being looked at.
+                    const slot = slotsRef.current[i];
+                    if (slot?.wantPlay && e.currentTarget.paused) playNow(e.currentTarget);
+                  }}
+                >
+                  {piece.sources?.map((src) => (
+                    <source key={src} src={src} type="video/mp4" />
+                  ))}
+                </video>
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img

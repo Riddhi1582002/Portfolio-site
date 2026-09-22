@@ -19,10 +19,33 @@ const R2_BASE = "https://pub-0ddc522dfc834a90ab7c556775e1dd6f.r2.dev";
 const r2 = (object: string) =>
   `${R2_BASE}/${object.split("/").map(encodeURIComponent).join("/")}`;
 
+/**
+ * WHERE AN R2 VIDEO MIGHT ACTUALLY BE.
+ *
+ * These two were requested at `TV/…`, the folder they were described in.
+ * But every other video on this site that plays from this same bucket —
+ * all thirty-odd reels — is stored at the bucket's ROOT, and the supplied
+ * TV archive itself carries a `TV/` folder, so whether that folder name
+ * survived the upload as a key prefix is exactly the thing that decides
+ * whether these load. A 404 on the one form is a black rectangle.
+ *
+ * So both forms are offered, the named one first, as <source> children:
+ * the browser's own resource selection tries each in order and moves on
+ * from a failed one by itself. Same bucket, same objects, native <video>,
+ * nothing re-uploaded — and whichever key is real, it plays.
+ */
+function r2Candidates(object: string): string[] {
+  const base = object.split("/").pop() as string;
+  return object === base ? [r2(object)] : [r2(object), r2(base)];
+}
+
 export type ReceptionPiece = {
   id: string;
   kind: "image" | "video";
   src: string;
+  /** For a motion piece, every URL it may be served at, tried in order by
+   *  the browser's own <source> selection — see r2Candidates. */
+  sources?: string[];
   /** A still for a motion piece: the <video>'s poster, and the texture the
    *  card stages it with, since a card is a still composition. */
   poster?: string;
@@ -44,6 +67,7 @@ export const RECEPTION_PIECES: ReceptionPiece[] = [
     id: "rs-002",
     kind: "video",
     src: r2("TV/002.mp4"),
+    sources: r2Candidates("TV/002.mp4"),
     w: 1920,
     h: 1080,
   },
@@ -76,6 +100,7 @@ export const RECEPTION_PIECES: ReceptionPiece[] = [
     id: "rs-reception-02",
     kind: "video",
     src: r2("TV/reception vdo 02.mp4"),
+    sources: r2Candidates("TV/reception vdo 02.mp4"),
     w: 1920,
     h: 1080,
   },
