@@ -217,7 +217,7 @@ export default function ApplicationsView() {
           <TransitionLink href="/work/graphic-design" className="ap-back">
             <span aria-hidden>←</span> Back
           </TransitionLink>
-          <div className="ap-num" data-open-line>06</div>
+          <div className="ap-num" data-open-line>07</div>
           <h1 className="ap-title" data-open-line>Applications</h1>
           <p className="ap-sub" data-open-line>{SUBTITLE}</p>
           <p className="ap-desc" data-open-line>{DESCRIPTION}</p>

@@ -35,6 +35,7 @@ import CampaignsDisplay, { preloadCampaigns } from "./CampaignsDisplay";
 import ReceptionScreenDisplay, { preloadReceptionScreen } from "./ReceptionScreenDisplay";
 import LogosDisplay, { preloadLogos } from "./LogosDisplay";
 import ApplicationsDisplay, { preloadApplications } from "./ApplicationsDisplay";
+import PostersDisplay, { preloadPosters } from "./PostersDisplay";
 import InformationalDesignDisplay, {
   preloadInformationalDesign,
 } from "./InformationalDesignDisplay";
@@ -71,7 +72,8 @@ const CARD_HOLDERS: CardHolder[] = [
     href: "/informational-design",
     Display: InformationalDesignDisplay,
   },
-  { index: 5, label: "Applications", href: "/applications", Display: ApplicationsDisplay },
+  { index: 5, label: "Posters", href: "/posters", Display: PostersDisplay },
+  { index: 6, label: "Applications", href: "/applications", Display: ApplicationsDisplay },
 ];
 
 const holderAt = (i: number) => CARD_HOLDERS.find((h) => h.index === i) ?? null;
@@ -156,6 +158,7 @@ export default function ArcCarousel({
     preloadCampaigns();
     preloadReceptionScreen();
     preloadLogos();
+    preloadPosters();
     preloadApplications();
     preloadInformationalDesign();
   }, []);
