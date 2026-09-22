@@ -191,6 +191,7 @@ export default function ApplicationsDisplay({
       contentScale: 0.82,
       floorY: FLOOR_Y,
       rocks: ROCKS,
+      studio: true,
       // Moulded plastic, glazed ceramic and a gold trim all need something
       // to reflect to be those materials at all.
       environment: 0.42,

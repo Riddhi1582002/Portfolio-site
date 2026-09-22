@@ -116,6 +116,17 @@ export type SpatialCardOptions = {
    * material.
    */
   environment?: number;
+  /**
+   * THE STUDIO — the ring's still-life look, taken from the reference the
+   * cards are matched to: the pieces float at varied tilts and fill the
+   * case; a warm spot from overhead and a gold rim from behind light them;
+   * the floor is glossy and dark with a warm pool under the group; stones
+   * sit at the base corners. Only with a lightbox, and only where a card
+   * asks for it, so the /logos page's own still keeps its layout.
+   *
+   * The lightbox itself, and every hover movement, are unchanged by it.
+   */
+  studio?: boolean;
 };
 
 export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
@@ -141,6 +152,72 @@ export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
   contentScale: 1,
 };
 
+
+// ── THE STUDIO ──────────────────────────────────────────────────────────
+//
+// PLACEMENT. Each card's own composition is kept — its order, overlaps and
+// depths — and then lifted off the floor and tilted, piece by piece, from
+// these fixed sequences, so the group reads as floating rather than
+// standing; then the whole group is fitted to the case's opening, so every
+// card fills its frame the same amount whatever size its pieces were
+// authored at. Deterministic: the same card always lands the same way.
+const STUDIO_TILT_Z = [-6, 5, -3.5, 7, -5, 4, -7, 3].map((d) => (d * Math.PI) / 180);
+const STUDIO_TILT_X = [3, -2.5, 4, -2, 2.5, -3, 2, -1.5].map((d) => (d * Math.PI) / 180);
+const STUDIO_FLOAT_Y = [0.14, -0.06, 0.2, 0.02, 0.1, -0.1, 0.16, -0.02];
+/** Where the fitted group sits in the opening, as shares of it: tight at
+ *  the sides and top, open at the bottom, where the floor, the pool of
+ *  light and the stones are — the air under the group is what makes it
+ *  float. */
+const STUDIO_FIT = { side: 0.055, top: 0.06, bottom: 0.17 };
+/** The supplied stone's own largest half-extent, in its file's units. */
+const ROCK_HALF = 5.02;
+
+/** A soft radial gradient on a canvas, as a texture. Stops are [t, rgba]. */
+function radialTexture(
+  THREE: typeof THREEModule,
+  stops: [number, string][],
+  cx = 0.5,
+  cy = 0.5
+) {
+  const N = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = N;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const g = ctx.createRadialGradient(N * cx, N * cy, 0, N * cx, N * cy, N * 0.5);
+  for (const [t, c] of stops) g.addColorStop(t, c);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, N, N);
+  return new THREE.CanvasTexture(canvas);
+}
+
+/** The stones for a studio card: a large one forward left, one back
+ *  right, a small one forward right — all inside the case at this lens. */
+function studioRocks(opt: SpatialCardOptions): RockPlacement[] {
+  const half = opt.lightbox as number;
+  // The case's inner edge carried forward to depth z, at six sevenths so
+  // a stone is clearly inside it rather than touching it.
+  const edge = (z: number) => ((half * (opt.camZ - z)) / (opt.camZ + 1.62)) * (6 / 7);
+  const place = (
+    side: -1 | 1,
+    z: number,
+    scale: number,
+    inset: number,
+    rot: [number, number, number]
+  ): RockPlacement => ({
+    file: "rock-02.glb",
+    // Sitting ON the floor, not sunk into it: a sunk stone's buried half
+    // still projects, and at the front that put it below the case.
+    pos: [side * (edge(z) - ROCK_HALF * scale - inset), opt.floorY + 2.94 * scale * 0.9, z],
+    rot,
+    scale,
+  });
+  return [
+    place(-1, 0.05, 0.085, 0.08, [0.4, 2.3, 0.2]),
+    place(1, -0.8, 0.078, 0, [-0.3, 1.4, 0.5]),
+    place(1, 0.45, 0.034, 0.32, [0.9, 0.6, -0.3]),
+  ];
+}
 
 // ── THE LIGHTBOX ────────────────────────────────────────────────────────
 //
@@ -285,6 +362,36 @@ function buildLightbox(
     box.add(spill);
   }
 
+  // THE STUDIO'S BACKDROP: the overhead spot's own glow on the back of
+  // the case, brightest high in the middle and gone by the sides — the
+  // warm haze the reference's pieces float against.
+  if (opt.studio) {
+    const tex = radialTexture(
+      THREE,
+      [
+        [0, "rgba(255,168,78,0.36)"],
+        [0.35, "rgba(200,112,40,0.17)"],
+        [0.7, "rgba(110,56,18,0.04)"],
+        [1, "rgba(0,0,0,0)"],
+      ],
+      0.5,
+      0.5
+    );
+    if (tex) {
+      const haze = new THREE.Mesh(
+        new THREE.PlaneGeometry(half * 2.3, half * 2.3),
+        new THREE.MeshBasicMaterial({
+          map: tex,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      haze.position.set(0, half * 0.42, 0.01);
+      box.add(haze);
+    }
+  }
+
   scene.add(box);
 }
 
@@ -306,6 +413,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   options: Partial<SpatialCardOptions> = {}
 ): () => void {
   const opt = { ...DEFAULT_SPATIAL_CARD_OPTIONS, ...options };
+  opt.studio = !!opt.studio && opt.lightbox != null;
   let disposed = false;
 
   const renderer = new THREE.WebGLRenderer({
@@ -361,9 +469,32 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   const ambient = new THREE.AmbientLight(0x9fb0cc, 0.42);
   scene.add(ambient);
 
+  // THE STUDIO'S LIGHT. The front key stays near white and carries the
+  // artwork's own colour; the warmth is all in the two added sources — a
+  // spot from overhead, which also throws the pool on the floor, and a
+  // gold rim from behind, which catches every top and side edge and runs
+  // along the glossy floor towards the lens.
+  let spot: import("three").SpotLight | null = null;
+  let rimLight: import("three").DirectionalLight | null = null;
+  if (opt.studio) {
+    spot = new THREE.SpotLight(0xffc68e, 5.2, 0, 0.46, 1, 0);
+    spot.position.set(0, 5.4, 1.3);
+    spot.target.position.set(0, -0.2, 0.3);
+    scene.add(spot, spot.target);
+    rimLight = new THREE.DirectionalLight(0xffb05e, 4);
+    // Steep, so its sheen on the glossy floor lands behind the group
+    // rather than as a lit band across the whole front of the case.
+    rimLight.position.set(0.4, 4.4, -4.2);
+    scene.add(rimLight);
+  }
+
 
   const group = new THREE.Group();
   scene.add(group);
+  /** The pieces themselves — fitted to the case in studio mode, while the
+   *  floor and the stones stay where the case puts them. */
+  const content = new THREE.Group();
+  group.add(content);
 
   // A real surface, not a bare shadow catcher: with the group this close to
   // filling the card, objects standing over an invisible plane read as
@@ -373,17 +504,44 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     makeFadedFloor(THREE, {
       size: 7,
       y: opt.floorY,
-      color: 0x100e0c,
-      core: 0.18,
-      roughness: 0.5,
-      metalness: 0.18,
+      // Studio: dark and glossy, so the rim light runs along it.
+      color: opt.studio ? 0x0c0a08 : 0x100e0c,
+      core: opt.studio ? 0.26 : 0.18,
+      roughness: opt.studio ? 0.32 : 0.5,
+      metalness: opt.studio ? 0.3 : 0.18,
     })
   );
+  // THE POOL: the overhead spot landing on the floor under the group,
+  // warm and soft-edged, the floor's brightest place.
+  if (opt.studio) {
+    const tex = radialTexture(THREE, [
+      [0, "rgba(255,176,96,0.34)"],
+      [0.3, "rgba(214,128,56,0.14)"],
+      [0.65, "rgba(120,62,24,0.03)"],
+      [1, "rgba(0,0,0,0)"],
+    ]);
+    if (tex) {
+      const pool = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.2, 1.7),
+        new THREE.MeshBasicMaterial({
+          map: tex,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.set(0, opt.floorY + 0.004, 0.35);
+      group.add(pool);
+    }
+  }
 
   if (opt.rocks) {
-    const placements: RockPlacement[] = Array.isArray(opt.rocks)
-      ? opt.rocks
-      : DEFAULT_ROCKS;
+    const placements: RockPlacement[] = opt.studio
+      ? studioRocks(opt)
+      : Array.isArray(opt.rocks)
+        ? opt.rocks
+        : DEFAULT_ROCKS;
     // Staged as the reference does: one rock at the back right for the
     // smallest piece to stand against and to close the gap beneath it, one
     // forward and left, on the surface in front of the group — the SAME
@@ -395,7 +553,26 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     // The renderer goes in so the stones get an environment to reflect —
     // scoped to them alone, so nothing else in this case changes. See
     // addRocks and getStoneEnvironment.
-    void addRocks(THREE, group, placements, renderer);
+    const before = new Set(group.children);
+    void addRocks(THREE, group, placements, renderer).then(() => {
+      if (!opt.studio || disposed) return;
+      // STUDIO STONES ARE BLACK AND GLOSSY, the reference's volcanic rock:
+      // under the warm spot the shared stone went pale brown. Their
+      // materials are per-instance (see addRocks), so this touches only
+      // this card's own.
+      for (const child of group.children) {
+        if (before.has(child)) continue;
+        child.traverse((o) => {
+          const mesh = o as import("three").Mesh;
+          if (!mesh.isMesh) return;
+          const mat = mesh.material as import("three").MeshStandardMaterial;
+          mat.color.multiplyScalar(0.38);
+          mat.roughness = 0.5;
+          mat.envMapIntensity = 0.32;
+          mat.needsUpdate = true;
+        });
+      }
+    });
   }
 
   if (opt.lightbox) buildLightbox(THREE, scene, opt);
@@ -425,7 +602,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   }
   // Applied to the group itself rather than to each object, so hover,
   // parallax and every authored position keep their relationship exactly.
-  if (opt.contentScale !== 1) group.scale.setScalar(opt.contentScale);
+  if (opt.contentScale !== 1 && !opt.studio) group.scale.setScalar(opt.contentScale);
 
   /** What each material was authored as, before the arrival fade touched
    *  it — so the fade can put it back rather than flattening it. */
@@ -437,7 +614,13 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   /** Per-object focus, eased. Keyed by the item's own id. */
   const focusAmount = new Map<string, number>();
 
-  type Loaded = { item: T; node: import("three").Object3D };
+  type Loaded = {
+    item: T;
+    node: import("three").Object3D;
+    /** Where it rests: the authored pose, plus the studio's float/tilt. */
+    pos: [number, number, number];
+    rot: [number, number, number];
+  };
   const loaded: Loaded[] = [];
   const textures: import("three").Texture[] = [];
   let compositionReadyAt: number | null = null;
@@ -471,12 +654,76 @@ export function mountSpatialCard<T extends SpatialCardObject>(
         holder.scale.setScalar(item.scale);
         holder.position.set(...item.pos);
         holder.rotation.set(...item.rot);
-        group.add(holder);
-        loaded.push({ item, node: holder });
+        content.add(holder);
+        const k = loaded.length;
+        const pos: [number, number, number] = opt.studio
+          ? [item.pos[0], item.pos[1] + STUDIO_FLOAT_Y[k % STUDIO_FLOAT_Y.length], item.pos[2]]
+          : [...item.pos];
+        const rot: [number, number, number] = opt.studio
+          ? [
+              item.rot[0] + STUDIO_TILT_X[k % STUDIO_TILT_X.length],
+              item.rot[1],
+              item.rot[2] + STUDIO_TILT_Z[k % STUDIO_TILT_Z.length],
+            ]
+          : [...item.rot];
+        holder.position.set(...pos);
+        holder.rotation.set(...rot);
+        loaded.push({ item, node: holder, pos, rot });
       }
+      if (opt.studio) fitToCase();
       compositionReadyAt = performance.now();
     }
   );
+
+  /**
+   * THE FIT. Scales and moves the pieces (never the case, the floor or the
+   * stones) until their projected bounds fill the case's opening to
+   * STUDIO_FIT, measured on the rest pose through the actual camera. A few
+   * passes, because scaling about the origin also moves the group.
+   */
+  function fitToCase() {
+    const half = opt.lightbox as number;
+    const v = new THREE.Vector3();
+    camera.updateMatrixWorld();
+    const ndc = (x: number, y: number, z: number) => v.set(x, y, z).project(camera).clone();
+    const a = ndc(-half, -half, -1.62);
+    const b = ndc(half, half, -1.62);
+    const W = b.x - a.x;
+    const H = b.y - a.y;
+    const tx0 = a.x + W * STUDIO_FIT.side;
+    const tx1 = b.x - W * STUDIO_FIT.side;
+    const ty0 = a.y + H * STUDIO_FIT.bottom;
+    const ty1 = b.y - H * STUDIO_FIT.top;
+    const box = new THREE.Box3();
+    const measure = () => {
+      content.updateMatrixWorld(true);
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, zc = 0;
+      for (const { node } of loaded) {
+        box.setFromObject(node, true);
+        zc += (box.min.z + box.max.z) / 2;
+        for (let c = 0; c < 8; c++) {
+          const p = ndc(
+            c & 1 ? box.max.x : box.min.x,
+            c & 2 ? box.max.y : box.min.y,
+            c & 4 ? box.max.z : box.min.z
+          );
+          x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+          y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+        }
+      }
+      return { x0, x1, y0, y1, zc: zc / Math.max(1, loaded.length) };
+    };
+    const tanH = Math.tan((camera.fov * Math.PI) / 360);
+    for (let pass = 0; pass < 4; pass++) {
+      let m = measure();
+      const k = Math.min((tx1 - tx0) / (m.x1 - m.x0), (ty1 - ty0) / (m.y1 - m.y0));
+      content.scale.multiplyScalar(k);
+      m = measure();
+      const d = camera.position.z - m.zc;
+      content.position.x += (((tx0 + tx1) / 2 - (m.x0 + m.x1) / 2) * tanH * d * camera.aspect);
+      content.position.y += (((ty0 + ty1) / 2 - (m.y0 + m.y1) / 2) * tanH * d);
+    }
+  }
 
   const resize = () => {
     const w = host.clientWidth || 1;
@@ -554,7 +801,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
         : Math.min(1, (now - compositionReadyAt) / opt.compositionArriveMs);
     const arrive = arriveT * arriveT * (3 - 2 * arriveT);
 
-    for (const { item, node } of loaded) {
+    for (const { item, node, pos, rot } of loaded) {
       // THE ARRIVAL FADE, and putting back exactly what it found.
       //
       // This used to end by forcing every material it had touched to
@@ -609,14 +856,14 @@ export function mountSpatialCard<T extends SpatialCardObject>(
       const fz = 0.42 * f - (opt.focusRef ? 0.1 * (1 - f) : 0);
 
       node.position.set(
-        item.pos[0] + item.lift[0] * h,
-        item.pos[1] + item.lift[1] * h + fy + (1 - arrive) * 0.22,
-        item.pos[2] + (item.lift[2] + opt.groupLiftZ * item.parallax) * h + fz
+        pos[0] + item.lift[0] * h,
+        pos[1] + item.lift[1] * h + fy + (1 - arrive) * 0.22,
+        pos[2] + (item.lift[2] + opt.groupLiftZ * item.parallax) * h + fz
       );
       node.rotation.set(
-        item.rot[0] + item.turn[0] * h,
-        item.rot[1] + item.turn[1] * h,
-        item.rot[2] + item.turn[2] * h
+        rot[0] + item.turn[0] * h,
+        rot[1] + item.turn[1] * h,
+        rot[2] + item.turn[2] * h
       );
       if (opt.focusRef) {
         node.scale.setScalar(item.scale * (1 + 0.05 * f - 0.03 * (1 - f)));
@@ -631,6 +878,8 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     fill.intensity = (0.5 + 0.1 * h) * lum;
     bounce.intensity = (0.28 + 0.14 * h) * lum;
     ambient.intensity = (0.42 + 0.08 * h) * lum;
+    if (spot) spot.intensity = (5.2 + 1.2 * h) * lum;
+    if (rimLight) rimLight.intensity = (4 + 0.8 * h) * lum;
     renderer.toneMappingExposure = 1.16 + 0.07 * h;
 
     renderer.render(scene, camera);

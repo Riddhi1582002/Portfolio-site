@@ -459,6 +459,7 @@ export default function PublicationsDisplay({
         compositionArriveMs: COMPOSITION_ARRIVE_MS,
         contentScale: 0.74,
         rocks: true,
+        studio: true,
       });
     })().catch((err) => {
       // The card is decoration on a scroll beat, not content — but a silent

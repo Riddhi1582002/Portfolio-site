@@ -189,7 +189,7 @@ export default function ArtworkStackDisplay({
         (piece) => buildPanel(THREE, piece),
         lumRef,
         reduced,
-        { rocks: true, ...options }
+        { rocks: true, studio: true, ...options }
       );
     })().catch((err) => {
       // Decoration on a scroll beat, but a silent failure reads on screen

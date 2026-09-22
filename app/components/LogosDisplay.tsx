@@ -246,6 +246,7 @@ export default function LogosDisplay({
       contentScale: 0.9,
       floorY: FLOOR_Y,
       rocks: ROCKS,
+      studio: true,
       // Glass and brushed metal, not printed paper: without something to
       // reflect, a clear bottle renders as flat white. See
       // SpatialCardOptions.environment.
