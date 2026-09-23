@@ -144,6 +144,8 @@ export default function BulbModel({
   litness,
   pitch = 0,
   reduced = false,
+  onReady,
+  paused = false,
 }: {
   litness: number;
   /**
@@ -154,8 +156,26 @@ export default function BulbModel({
    */
   pitch?: number;
   reduced?: boolean;
+  /**
+   * Called once, after the first frame that actually shows the model —
+   * the GLTF parsed, the shaders compiled and the composers run. A fresh
+   * instance takes hundreds of milliseconds to get there; a section
+   * taking over from another bulb waits on this rather than on a guess.
+   */
+  onReady?: () => void;
+  /** Stop drawing once a first frame has been drawn — for an instance
+   *  kept warm but not yet shown. */
+  paused?: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const pausedRef = useRef(paused);
+  useEffect(() => {
+    pausedRef.current = paused;
+  }, [paused]);
+  const onReadyRef = useRef(onReady);
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
   // The render loop reads the latest litness without the component having
   // to re-run for every scroll frame. Written in an effect, not during
   // render, so React never sees a ref mutated while rendering.
@@ -575,9 +595,11 @@ export default function BulbModel({
       );
       io.observe(host);
 
+      let readyTold = false;
       const tick = () => {
         raf = requestAnimationFrame(tick);
         if (!visible) return;
+        if (pausedRef.current && readyTold) return;
         const lit = Math.min(1, Math.max(0, litRef.current));
         // Both floors are near zero: an unlit bulb has to READ unlit. An
         // emissive floor keeps the glass glowing however far litness
@@ -657,6 +679,10 @@ export default function BulbModel({
         bloomComposer.render();
         scene.traverse(restoreMaterial);
         finalComposer.render();
+        if (loaded && !readyTold) {
+          readyTold = true;
+          onReadyRef.current?.();
+        }
       };
       raf = requestAnimationFrame(tick);
 

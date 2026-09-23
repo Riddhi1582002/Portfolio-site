@@ -31,7 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import InfiniteCanvas, { PIECES, type Piece } from "./InfiniteCanvas";
 import TransitionLink from "./TransitionLink";
-import ArtMediumBar, { isArtMedium } from "./ArtMediumBar";
+import ArtMediumBar, { isArtMedium, piecesFor } from "./ArtMediumBar";
 import { HOME_FINAL_HREF, backStyle } from "./CategoryStage";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
@@ -60,7 +60,7 @@ export default function ArtCategoryView() {
   }, []);
 
   const shown = useMemo(
-    () => (medium ? PIECES.filter((p) => p.medium === medium) : []),
+    () => (medium ? piecesFor(PIECES, medium) : []),
     [medium]
   );
 
@@ -293,7 +293,7 @@ export default function ArtCategoryView() {
         }
         /* Clears the bar on its own line — see the 860px rule above. */
         @media (max-width: 860px) {
-          .ag-sheet { padding-top: calc(clamp(18px, 3.5vh, 34px) + 96px); }
+          .ag-sheet { padding-top: calc(clamp(18px, 3.5vh, 34px) + 114px); }
         }
         @media (max-width: 1180px) { .ag-grid { column-count: 3; } }
         @media (max-width: 800px)  { .ag-grid { column-count: 2; } }

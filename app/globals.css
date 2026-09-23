@@ -89,3 +89,14 @@ body::-webkit-scrollbar {
 html[data-reveal="1"] #page-frame {
   clip-path: inset(50% 0% 50% 0%);
 }
+
+/* THE TOUCH MULTIPLIER, as layout. A finger's flick carries a page one or
+   two screens, and the homepage journey was ~31 screens long: on a phone a
+   swipe moved each scene only a little, so the reader had to push again and
+   again to reach the next one. On touch devices the scroll tracks are
+   shorter by this factor; every scene boundary is a share of its track, so
+   the choreography is unchanged — each swipe simply carries more of it. */
+:root { --track-k: 1; }
+@media (hover: none) and (pointer: coarse) {
+  :root { --track-k: 0.62; }
+}

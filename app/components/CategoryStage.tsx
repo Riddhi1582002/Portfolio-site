@@ -105,7 +105,8 @@ export default function CategoryStage({
     <div
       ref={trackRef}
       data-track="category"
-      style={{ height: `${lengthVh}vh`, position: "relative", zIndex: 1 }}
+      // Shorter on touch devices — see --track-k in globals.css.
+      style={{ height: `calc(${lengthVh}vh * var(--track-k, 1))`, position: "relative", zIndex: 1 }}
     >
       <div
         ref={paneRef}

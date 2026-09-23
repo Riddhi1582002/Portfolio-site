@@ -16,8 +16,21 @@ const MEDIUMS = [
   "Digital art",
 ] as const;
 
+/** THE INDEX: every artwork once, in the grid the mediums use, grouped
+ *  in the mediums' own order — for a reader who wants to know they have
+ *  seen all of it. The scattered field stays the way in; this is the
+ *  contents page beside it. */
+export const ART_INDEX = "Index";
+
 export function isArtMedium(m: string): boolean {
-  return (MEDIUMS as readonly string[]).includes(m);
+  return m === ART_INDEX || (MEDIUMS as readonly string[]).includes(m);
+}
+
+/** The collection a selection shows: one medium, or every piece once. */
+export function piecesFor<T extends { medium: string }>(all: T[], selection: string): T[] {
+  if (selection !== ART_INDEX) return all.filter((p) => p.medium === selection);
+  const order = MEDIUMS as readonly string[];
+  return [...all].sort((a, b) => order.indexOf(a.medium) - order.indexOf(b.medium));
 }
 
 export default function ArtMediumBar({
@@ -51,6 +64,15 @@ export default function ArtMediumBar({
             {m}
           </button>
         ))}
+        <span className="ag-sep" aria-hidden />
+        <button
+          type="button"
+          className={`ag-tab${active === ART_INDEX ? " on" : ""}`}
+          onClick={() => onSelect(ART_INDEX)}
+          aria-label="Index — every artwork"
+        >
+          {ART_INDEX}
+        </button>
       </nav>
       <style>{`
         .ag-bar {
@@ -75,7 +97,10 @@ export default function ArtMediumBar({
            768 and at 740 landscape. Stacking order stops it swallowing the
            clicks; only moving it off that line stops them sharing it. */
         @media (max-width: 860px) {
-          .ag-bar { top: calc(clamp(18px, 3.5vh, 34px) + 32px); }
+          /* +50, not +32: the section navigation's MENU shares the top
+             line with BACK here, and its touch target needs clear air
+             above the bar. */
+          .ag-bar { top: calc(clamp(18px, 3.5vh, 34px) + 50px); }
         }
         .ag-tab {
           flex: 0 0 auto;

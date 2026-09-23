@@ -98,6 +98,7 @@ const ARC_LEAD = 2.6;
 
 // The one measurement everything else follows from.
 const CARD_SHARE = 0.44; // of the viewport's shorter side
+const CARD_SHARE_PORTRAIT = 0.64; // of the width, on a portrait screen
 const CARD_MIN_PX = 110;
 const CARD_MAX_PX = 430;
 // Ring radius, in card edges. The chord between neighbours is
@@ -375,9 +376,16 @@ export default function ArcCarousel({
     };
   }, []);
 
+  // A PORTRAIT PHONE is not a small landscape screen: keyed off the
+  // shorter side, the card in front was 44% of the width with most of a
+  // tall screen empty above and below it. In portrait it takes its size
+  // from the width instead, so the piece in focus is the size a piece of
+  // work should be on a phone; its neighbours already leave by the frame's
+  // edge (EDGE_FADE), so a larger card crowds nothing.
+  const portrait = vh > vw * 1.2;
   const card = Math.min(
     CARD_MAX_PX,
-    Math.max(CARD_MIN_PX, CARD_SHARE * Math.min(vw, vh))
+    Math.max(CARD_MIN_PX, portrait ? CARD_SHARE_PORTRAIT * vw : CARD_SHARE * Math.min(vw, vh))
   );
   const radius = card * RADIUS_IN_CARDS;
   const ringVh = centreVh - RING_LIFT_VH;
@@ -419,10 +427,15 @@ export default function ArcCarousel({
         // A card leaves whichever way comes first: turning away, or
         // running out of frame.
         const outerEdge = Math.abs(x) + card / 2;
-        const opacity = Math.min(
-          1 - span(absDeg, FADE_START_DEG, FADE_END_DEG),
-          1 - span(outerEdge, EDGE_FADE_START * vw, EDGE_FADE_END * vw)
-        );
+        // In portrait the card is most of the frame's width, so its OUTER
+        // edge reaches the frame's while the card is still nearly all in
+        // view — measured that way, the card in front faded out half way
+        // to its neighbour and the ring blinked empty between cards. There
+        // the fade follows the card's INNER edge: it goes as it leaves.
+        const edgeFade = portrait
+          ? span(Math.abs(x) - card / 2, 0.12 * vw, 0.5 * vw)
+          : span(outerEdge, EDGE_FADE_START * vw, EDGE_FADE_END * vw);
+        const opacity = Math.min(1 - span(absDeg, FADE_START_DEG, FADE_END_DEG), 1 - edgeFade);
         if (opacity <= 0.001) return null;
 
         // A partial yaw: enough that the card reads as sitting on a ring,

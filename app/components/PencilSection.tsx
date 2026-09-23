@@ -33,6 +33,7 @@
 // shadow that grows with it, is a full re-blur of the largest thing on
 // screen on every frame.
 
+import { useCallback, useEffect, useRef } from "react";
 import BulbModel from "./BulbModel";
 import NarrationLine from "./NarrationLine";
 import { irisFrame } from "./InfiniteCanvas";
@@ -127,6 +128,7 @@ export default function PencilSection({
   vw,
   vh,
   showBackdrop = true,
+  onBulbReady,
 }: {
   progress: number;
   sans: string;
@@ -141,7 +143,18 @@ export default function PencilSection({
    * bulb blink the instant this section mounted. See HeroSection.
    */
   showBackdrop?: boolean;
+  /** Whether this beat's bulb has drawn a real frame (true), or this
+   *  section has gone (false). HeroSection holds the previous beat's bulb
+   *  on screen until it has. */
+  onBulbReady?: (ready: boolean) => void;
 }) {
+  const readyRef = useRef(onBulbReady);
+  useEffect(() => {
+    readyRef.current = onBulbReady;
+  }, [onBulbReady]);
+  const reportReady = useCallback(() => readyRef.current?.(true), []);
+  useEffect(() => () => readyRef.current?.(false), []);
+
   const p = clamp01(progress);
   const frame = irisFrame(vw, vh);
 
@@ -286,6 +299,9 @@ export default function PencilSection({
         // has already reached litness 1 (they share the same boundary), so
         // nothing visibly changes when this section takes over.
         opacity: showBackdrop ? 1 : 0,
+        // Invisible while warming up over the ring's last cards: it must
+        // not take their clicks.
+        pointerEvents: showBackdrop ? undefined : "none",
       }}
     >
       {cordOpacity > 0.001 && (
@@ -352,27 +368,6 @@ export default function PencilSection({
         </>
       )}
 
-      {/* THE BULB, still hanging where it was. Only the eye moves. */}
-      {bloom < 0.999 && (
-        <div
-          data-pencil="bulb"
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: 0,
-            width: bulbPx,
-            height: bulbPx,
-            marginLeft: -bulbPx / 2,
-            transform: `translateY(${bulbTop.toFixed(1)}px)`,
-            opacity: 1 - bloom,
-            willChange: "transform, opacity",
-            pointerEvents: "none",
-          }}
-        >
-          <BulbModel litness={1} pitch={fallT} />
-        </div>
-      )}
-
       {/* THE LIGHT IN THE ROOM, ARRIVING ALREADY LIT.
           The bulb has been burning for a whole section; the eye moving
           under it does not switch it on. This layer IS the cord beat's
@@ -382,7 +377,13 @@ export default function PencilSection({
           the glass and the light stops reading as a lamp in a room and
           starts reading as a disc. The two opacities always sum to 1,
           so the room never dims for the swap; it only changes what shape
-          the light is. */}
+          the light is.
+
+          BENEATH the bulb, as it is in the cord beat (there it sits at
+          zIndex -1 behind the model). Painted over the bulb here, this
+          warm layer washed the black socket out to a milky ghost on the
+          exact frame this beat took over — one lamp, visibly swapped for
+          a paler copy of itself. */}
       {fallT < 0.999 && (
         <div
           aria-hidden
@@ -403,6 +404,27 @@ export default function PencilSection({
             pointerEvents: "none",
           }}
         />
+      )}
+
+      {/* THE BULB, still hanging where it was. Only the eye moves. */}
+      {bloom < 0.999 && (
+        <div
+          data-pencil="bulb"
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 0,
+            width: bulbPx,
+            height: bulbPx,
+            marginLeft: -bulbPx / 2,
+            transform: `translateY(${bulbTop.toFixed(1)}px)`,
+            opacity: 1 - bloom,
+            willChange: "transform, opacity",
+            pointerEvents: "none",
+          }}
+        >
+          <BulbModel litness={1} pitch={fallT} paused={!showBackdrop} onReady={reportReady} />
+        </div>
       )}
 
       {/* The light in the room, rising as the eye comes under the bulb. */}

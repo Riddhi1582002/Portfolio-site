@@ -23,6 +23,7 @@ export default function TransitionLink({
   children,
   onNavigate,
   historyBack,
+  ariaCurrent,
 }: {
   href: string;
   style?: CSSProperties;
@@ -37,6 +38,7 @@ export default function TransitionLink({
    * carousel where it was) instead of rebuilding it from nothing.
    */
   historyBack?: boolean;
+  ariaCurrent?: "page";
 }) {
   const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
@@ -51,7 +53,7 @@ export default function TransitionLink({
     pageOut(() => window.location.assign(href));
   };
   return (
-    <a href={href} style={style} className={className} onClick={onClick}>
+    <a href={href} style={style} className={className} onClick={onClick} aria-current={ariaCurrent}>
       {children}
     </a>
   );

@@ -200,6 +200,21 @@ const STRIP_ENTRY_CARRY = 0.14;
 const STRIP_EXIT_CARRY = 0.96;
 const focusEase = carry(baseEaseInOutSine, STRIP_ENTRY_CARRY, STRIP_EXIT_CARRY);
 
+/** The strip's own progress at which reel `k` is exactly centred — the
+ *  inverse of `focusEase`, solved by bisection (the curve is monotonic).
+ *  Used to give a touch scroll somewhere to come to rest. */
+export function reelRestProgress(k: number, count = REELS.length): number {
+  const want = count > 1 ? k / (count - 1) : 0;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (focusEase(mid) < want) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
 export { CARD_H_VH, STRIP_CENTRE_VH, GAP_VH };
 
 // THE card face, for every beat that draws these eight pieces: the strip,

@@ -34,11 +34,12 @@ import {
   ringCardProgress,
 } from "./graphicDesignProjects";
 import usePinnedPane from "./usePinnedPane";
-import ReelStrip, { REELS } from "./ReelStrip";
+import ReelStrip, { REELS, reelRestProgress } from "./ReelStrip";
 import useReelOverlays from "./useReelOverlays";
 import ReelProjectView from "./ReelProjectView";
 import ReelVideoViewer from "./ReelVideoViewer";
 import CordSection from "./CordSection";
+import { ARC_CARD_COUNT } from "./ArcCarousel";
 import PencilSection, { IRIS_HANDOFF_AT } from "./PencilSection";
 import InfiniteCanvas from "./InfiniteCanvas";
 import ArtMediumBar from "./ArtMediumBar";
@@ -47,6 +48,7 @@ import { easeInPow, easeOutSine } from "../lib/motion";
 import MothLayer from "./MothLayer";
 import { holdReveal, pageOut } from "../lib/pageTransition";
 import { mothFlyBy } from "./mothStage";
+import { setSectionNavState } from "./sectionNavStore";
 import { preloadBulb } from "./BulbModel";
 import { setMothCamera, type MothPhase } from "./mothStage";
 import "./hero-fonts.css";
@@ -333,6 +335,17 @@ const HERO_BEATS_END = BEATS_VH / HERO_VH;
 /** Where the journey counts as finished: the settled gallery at the end. */
 const JOURNEY_DONE_AT = 0.965;
 
+// THE BULB HAND-OVER. CordSection's bulb and PencilSection's are two
+// BulbModel instances, and a fresh one needs hundreds of milliseconds —
+// GLTF parse, transmission and bloom shaders compiled, first composite —
+// before it shows anything. The two used to overlap for 0.006 of the
+// track (about 19vh), far less scrolling than that takes, so crossing
+// the boundary at an ordinary pace landed on frames with no bulb at all:
+// the glow and the cord, and nothing hanging from it. PencilSection is
+// now mounted this far ahead, invisible and paused once warm, and it only
+// takes over once its bulb reports a real frame (see onBulbReady).
+const PENCIL_WARM_LEAD = 0.04;
+
 const HOME_NAV_LINKS: { key: HomeSectionKey; label: string }[] = [
   { key: "video", label: "VIDEO" },
   { key: "graphic-design", label: "GRAPHIC DESIGN" },
@@ -583,6 +596,10 @@ export default function HeroSection() {
   const [toastShown, setToastShown] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [scrollP, setScrollP] = useState(0); // 0..1 smoothed scroll fraction through the track
+  // Whether PencilSection's own bulb has drawn a real frame — see
+  // PENCIL_WARM_LEAD. Reset by PencilSection itself when it unmounts.
+  const [pencilBulbReady, setPencilBulbReady] = useState(false);
+  const onPencilBulbReady = useCallback((ready: boolean) => setPencilBulbReady(ready), []);
   const [t, setT] = useState(0); // seconds elapsed, for the idle breathing/drift motion
   // Raw scroll fraction (what the page actually is), vs scrollP (what is
   // rendered, easing toward it). See SCROLL_SMOOTH_TAU.
@@ -859,6 +876,97 @@ export default function HeroSection() {
   // A category's own Back link lands here with ?home=final. Consumed once
   // and stripped from the URL, so a later reload opens normally.
   //
+  // THE TOUCH SETTLE. On a phone the scroll is the browser's own — fast,
+  // native, with its own momentum — and a flick ends wherever it ends: a
+  // card half in frame, the next one half out. Inside the two carousels
+  // (the reel strip and the ring) that reads as nowhere in particular.
+  // Once the momentum has actually stopped, the scroll glides the rest of
+  // the way onto a card: the one ahead once the reader has come a quarter
+  // of the way to it, otherwise the one they are on. Only there — the long
+  // cinematic moves between beats keep free scrolling — and only for
+  // touch; any new touch takes the page straight back.
+  useEffect(() => {
+    if (!window.matchMedia("(hover: none) and (pointer: coarse)").matches) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const reels = REELS.map((_, k) => HERO_SPAN + reelRestProgress(k) * (REELS_SPAN_END - HERO_SPAN));
+    const ring = Array.from(
+      { length: ARC_CARD_COUNT },
+      (_, k) => REELS_SPAN_END + ringCardProgress(k) * (CORD_SPAN_END - REELS_SPAN_END)
+    );
+    const runs = [reels, ring];
+    let touching = false;
+    let settling: gsap.core.Tween | null = null;
+    let timer = 0;
+    let lastY = window.scrollY;
+    let dir = 0;
+    const geom = () => {
+      const el = trackRef.current;
+      if (!el) return null;
+      const total = el.offsetHeight - window.innerHeight;
+      if (total <= 0) return null;
+      return { top: el.getBoundingClientRect().top + window.scrollY, total };
+    };
+    const settle = () => {
+      if (touching || settling) return;
+      const g = geom();
+      if (!g) return;
+      const f = (window.scrollY - g.top) / g.total;
+      const run = runs.find((r) => f >= r[0] && f <= r[r.length - 1]);
+      if (!run) return;
+      let i = 0;
+      while (i < run.length - 2 && f > run[i + 1]) i++;
+      const a = run[i];
+      const b = run[i + 1];
+      const t = (f - a) / (b - a);
+      const to = dir > 0 ? (t > 0.25 ? b : a) : dir < 0 ? (t < 0.75 ? a : b) : t < 0.5 ? a : b;
+      const y = g.top + to * g.total;
+      const dist = Math.abs(y - window.scrollY);
+      if (dist < 2) return;
+      const proxy = { y: window.scrollY };
+      settling = gsap.to(proxy, {
+        y,
+        duration: Math.min(0.75, 0.32 + dist / 1800),
+        ease: "power2.out",
+        onUpdate: () => window.scrollTo(0, proxy.y),
+        onComplete: () => {
+          settling = null;
+          lastY = window.scrollY;
+        },
+      });
+    };
+    const onScroll = () => {
+      if (settling) return;
+      const y = window.scrollY;
+      if (y !== lastY) dir = Math.sign(y - lastY);
+      lastY = y;
+      window.clearTimeout(timer);
+      if (!touching) timer = window.setTimeout(settle, 170);
+    };
+    const onTouchStart = () => {
+      touching = true;
+      window.clearTimeout(timer);
+      settling?.kill();
+      settling = null;
+    };
+    const onTouchEnd = () => {
+      touching = false;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(settle, 170);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    window.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    return () => {
+      window.clearTimeout(timer);
+      settling?.kill();
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, []);
+
   // A graphic-design PROJECT opened from the journey's own ring lands here
   // with ?gd=<card>: back into the journey, on that exact card, so the
   // reader carries on scrolling to Art rather than being left on a page
@@ -869,7 +977,7 @@ export default function HeroSection() {
     clearGdDirect();
     const params = new URLSearchParams(window.location.search);
     const gd = Number(params.get(HOME_GD_PARAM));
-    if (params.has(HOME_GD_PARAM) && Number.isInteger(gd) && gd >= 0 && gd < 7) {
+    if (params.has(HOME_GD_PARAM) && Number.isInteger(gd) && gd >= 0 && gd < ARC_CARD_COUNT) {
       const p = REELS_SPAN_END + ringCardProgress(gd) * (CORD_SPAN_END - REELS_SPAN_END);
       let raf = 0;
       // BACK FROM A PROJECT: the page stays shut until the ring is drawn
@@ -1040,6 +1148,10 @@ export default function HeroSection() {
   const pencilP = clamp01(
     (scrollP - CORD_SPAN_END) / (PENCIL_SPAN_END - CORD_SPAN_END)
   );
+  // Only while the bulb is actually on screen (the descent: the first
+  // 0.6 of the beat — see PencilSection's FALL) does the hand-over wait on
+  // PencilSection's bulb; past that the beat is the iris, which needs none.
+  const pencilBulbPending = !pencilBulbReady && pencilP < 0.6;
   const canvasP = clamp01((scrollP - PENCIL_SPAN_END) / (1 - PENCIL_SPAN_END));
 
   const p = SCROLL_TO_P(clamp01(heroP / HERO_BEATS_END));
@@ -1108,6 +1220,22 @@ export default function HeroSection() {
   // like the contact block: present at the final state, gone once they
   // move off it.
   const navOpacity = journeyDone && atFinalState ? contactOpacity : 0;
+
+  // THE SECTION NAVIGATION (top right — see SectionNav) follows the
+  // journey: the section in view is the one marked. It steps back while
+  // the A transition plays (the hero's own move, which nothing should
+  // compete with), while the row under ART is showing (the same three
+  // words twice), and under an open reel.
+  const navSection: HomeSectionKey | null =
+    scrollP < HERO_SPAN ? null : scrollP < REELS_SPAN_END ? "video" : scrollP < CORD_SPAN_END ? "graphic-design" : "art";
+  const navShow =
+    reelOpenIndex == null &&
+    viewerReelIndex == null &&
+    navOpacity < 0.05 &&
+    (atFinalState || scrollP >= HERO_SPAN * 0.96);
+  useEffect(() => {
+    setSectionNavState({ section: navSection, show: navShow });
+  }, [navSection, navShow]);
 
   const haloSize = 1500 * artScale;
 
@@ -1473,7 +1601,8 @@ export default function HeroSection() {
     <div
       ref={trackRef}
       data-track="sequence"
-      style={{ height: `${SCROLL_LENGTH_VH}vh`, position: "relative", zIndex: 1 }}
+      // Shorter on touch devices — see --track-k in globals.css.
+      style={{ height: `calc(${SCROLL_LENGTH_VH}vh * var(--track-k, 1))`, position: "relative", zIndex: 1 }}
     >
       <div
         ref={paneRef}
@@ -2008,7 +2137,8 @@ export default function HeroSection() {
         )}
 
         {/* And the cord beat, same pane again. */}
-        {scrollP > REELS_SPAN_END - 0.004 && scrollP < CORD_SPAN_END + 0.003 && (
+        {scrollP > REELS_SPAN_END - 0.004 &&
+          (scrollP < CORD_SPAN_END + 0.003 || pencilBulbPending) && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
             <CordSection
               progress={cordP}
@@ -2027,20 +2157,22 @@ export default function HeroSection() {
         )}
 
         {/* The descent past the bulb and the match cut into the iris. */}
-        {scrollP > CORD_SPAN_END - 0.003 && scrollP < PENCIL_SPAN_END + 0.002 && (
+        {scrollP > CORD_SPAN_END - PENCIL_WARM_LEAD && scrollP < PENCIL_SPAN_END + 0.002 && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
             <PencilSection
               progress={pencilP}
               sans={SANS}
               vw={viewport.vw}
               vh={viewport.vh}
-              // Mounted early (see the -0.003 lead-in above) so its WebGL
-              // context and GLTF are already warm by the time this beat
-              // actually starts. Opaque only once real progress begins —
-              // before that, CordSection is still mounted underneath,
-              // still finishing its own beat, and has to stay visible
-              // through it.
-              showBackdrop={pencilP > 0}
+              // Mounted early (PENCIL_WARM_LEAD) so its WebGL context,
+              // GLTF and shaders are warm by the time this beat starts, and
+              // shown only once real progress has begun AND its bulb has
+              // actually drawn a frame. Until then CordSection stays
+              // mounted underneath, its lit bulb hanging exactly where
+              // this beat's starts — so the hand-over can never land on a
+              // frame with no bulb in it.
+              showBackdrop={pencilP > 0 && !pencilBulbPending}
+              onBulbReady={onPencilBulbReady}
             />
           </div>
         )}

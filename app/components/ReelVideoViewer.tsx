@@ -108,6 +108,21 @@ export default function ReelVideoViewer({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [recentlyActive, setRecentlyActive] = useState(true);
+  // A PORTRAIT PHONE. The desktop composition — the video box filling the
+  // stage, the transport pinned to the bottom edge — left a 16:9 film
+  // letterboxed inside a frame three times its height, with the controls
+  // half a screen away from it and wrapped onto two lines. On a portrait
+  // phone a landscape film is laid out the way a phone lays out a film: at
+  // its own height, full width, with its transport directly beneath it and
+  // the pair centred on the screen.
+  const [phonePortrait, setPhonePortrait] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px) and (orientation: portrait)");
+    const read = () => setPhonePortrait(mq.matches);
+    read();
+    mq.addEventListener("change", read);
+    return () => mq.removeEventListener("change", read);
+  }, []);
   const [activity, setActivity] = useState(0);
   const bumpActivity = useCallback(() => {
     setRecentlyActive(true);
@@ -369,6 +384,7 @@ export default function ReelVideoViewer({
   if (!mounted || !reel) return null;
 
   const isLandscape = reel.ratio >= 1;
+  const compact = phonePortrait && isLandscape;
   const canPrev = videoIndex > 0;
   const canNext = videoIndex < videos.length - 1;
   const t = clamp01(shown ? 1 : 0);
@@ -468,6 +484,7 @@ export default function ReelVideoViewer({
           height: "100dvh",
           display: "flex",
           flexDirection: "column",
+          justifyContent: compact ? "center" : undefined,
           padding: "clamp(16px, 3vw, 40px)",
           boxSizing: "border-box",
         }}
@@ -477,7 +494,7 @@ export default function ReelVideoViewer({
             index's own media, just given more of the frame here. */}
         <div
           style={{
-            flex: 1,
+            flex: compact ? "0 0 auto" : 1,
             minHeight: 0,
             display: "flex",
             alignItems: "center",
@@ -487,7 +504,7 @@ export default function ReelVideoViewer({
           <div
             style={{
               position: "relative",
-              height: "100%",
+              height: compact ? "auto" : "100%",
               width: isLandscape ? "100%" : "auto",
               maxWidth: isLandscape ? "100%" : "min(100%, 62vh)",
               maxHeight: isLandscape ? "min(100%, 88vh)" : "94%",
@@ -690,10 +707,16 @@ export default function ReelVideoViewer({
         {/* BOTTOM: progress, time, transport, video number. */}
         <div
           style={{
-            position: "absolute",
-            left: "clamp(16px, 3vw, 40px)",
-            right: "clamp(16px, 3vw, 40px)",
-            bottom: "clamp(16px, 3vw, 36px)",
+            // Beside the film on a portrait phone, in the flow directly
+            // under it; pinned to the bottom edge everywhere else.
+            ...(compact
+              ? { position: "relative" as const, marginTop: 18 }
+              : {
+                  position: "absolute" as const,
+                  left: "clamp(16px, 3vw, 40px)",
+                  right: "clamp(16px, 3vw, 40px)",
+                  bottom: "clamp(16px, 3vw, 36px)",
+                }),
             zIndex: 2,
             opacity: controlsVisible ? 1 : 0,
             transition: "opacity 300ms ease",
@@ -724,6 +747,27 @@ export default function ReelVideoViewer({
             />
           </div>
 
+          {compact && (
+            <div
+              style={{
+                marginTop: 9,
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 11,
+                fontWeight: 500,
+                letterSpacing: "0.06em",
+                color: "rgba(255,255,255,0.6)",
+              }}
+            >
+              <span>
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </span>
+              <span>
+                {String(videoIndex + 1).padStart(2, "0")} / {String(videos.length).padStart(2, "0")}
+              </span>
+            </div>
+          )}
+
           {/* The transport itself, as one coherent bar rather than a loose
               row of icons — a big central play/pause with its own restful
               ring, prev/next either side of it, restart and mute as the
@@ -732,13 +776,13 @@ export default function ReelVideoViewer({
               things scattered along a line. */}
           <div
             style={{
-              marginTop: 14,
+              marginTop: compact ? 12 : 14,
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
+              justifyContent: compact ? "center" : "space-between",
               gap: 16,
-              flexWrap: "wrap",
-              padding: "8px 18px",
+              flexWrap: compact ? "nowrap" : "wrap",
+              padding: compact ? "6px 14px" : "8px 18px",
               borderRadius: 999,
               background: "rgba(14,15,18,0.55)",
               border: "1px solid rgba(255,255,255,0.1)",
@@ -746,17 +790,19 @@ export default function ReelVideoViewer({
               WebkitBackdropFilter: "blur(10px)",
             }}
           >
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 500,
-                letterSpacing: "0.04em",
-                color: "rgba(255,255,255,0.6)",
-                minWidth: 80,
-              }}
-            >
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </div>
+            {!compact && (
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 500,
+                  letterSpacing: "0.04em",
+                  color: "rgba(255,255,255,0.6)",
+                  minWidth: 80,
+                }}
+              >
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </div>
+            )}
 
             <div
               style={{
@@ -813,18 +859,20 @@ export default function ReelVideoViewer({
               </button>
             </div>
 
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 500,
-                letterSpacing: "0.1em",
-                color: "rgba(255,255,255,0.6)",
-                minWidth: 80,
-                textAlign: "right",
-              }}
-            >
-              {String(videoIndex + 1).padStart(2, "0")} / {String(videos.length).padStart(2, "0")}
-            </div>
+            {!compact && (
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 500,
+                  letterSpacing: "0.1em",
+                  color: "rgba(255,255,255,0.6)",
+                  minWidth: 80,
+                  textAlign: "right",
+                }}
+              >
+                {String(videoIndex + 1).padStart(2, "0")} / {String(videos.length).padStart(2, "0")}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -11,6 +11,7 @@
 // to see. Two copies of that would have drifted, so there is one.
 
 import { useCallback, useEffect, useState } from "react";
+import { setSectionNavOverlay } from "./sectionNavStore";
 import { REELS } from "./ReelStrip";
 
 export default function useReelOverlays() {
@@ -104,6 +105,13 @@ export default function useReelOverlays() {
       window.removeEventListener("touchmove", block);
     };
   }, [reelOpenIndex, viewerReelIndex]);
+
+  // The section navigation steps aside while either overlay is open.
+  const anyOpen = reelOpenIndex != null || viewerReelIndex != null;
+  useEffect(() => {
+    setSectionNavOverlay(anyOpen);
+    return () => setSectionNavOverlay(false);
+  }, [anyOpen]);
 
   return {
     reelOpenIndex,
