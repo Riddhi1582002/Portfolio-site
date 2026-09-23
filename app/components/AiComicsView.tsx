@@ -33,6 +33,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import TransitionLink from "./TransitionLink";
+import ProjectRail from "./ProjectRail";
+import { GD_PROJECTS, gdBackHref } from "./graphicDesignProjects";
 import {
   AI_COMICS_CONTENT,
   COMICS,
@@ -47,13 +49,19 @@ const N = COMICS.length;
 // THE WALL'S COMPOSITION, as shares of the wall's own height, so it is
 // the same picture at every size. Strips stand nearly the full height;
 // pages are smaller, which is what lets a strip read as long.
-const STRIP_H = 0.86;
-const PAGE_H = 0.6;
+// Strips are TALLER than the wall — the reference's scale — so each runs
+// past the frame's top and bottom, at a different height from its
+// neighbours; pages stand whole beside them. Nothing is cropped: the frame
+// is a window onto the wall, and opening a strip shows all of it.
+const STRIP_H = 1.7;
+const PAGE_H = 0.82;
 /** The gap after each piece, in gap units — uneven, so it is a wall and
  *  not a ruler. */
 const GAPS = [1.2, 1, 1.5, 1.9, 1, 1.9, 1.1, 1.4, 1, 1.3, 1.8];
 /** Each piece's vertical offset from centre, of the wall height. */
-const OFFSETS = [0, -0.02, 0.02, -0.01, -0.06, 0.05, 0.02, -0.02, 0.01, 0.02, -0.02];
+const OFFSETS = [0.12, -0.3, 0.26, -0.12, -0.04, 0.05, 0.3, -0.22, 0.08, -0.34, 0.2];
+/** The wall's own tilt — a plane seen at an angle, not a flat row. */
+const TILT = "rotateX(9deg) rotateZ(-5deg) scale(1.1)";
 /** How far the wall curves towards the reader, 0 = flat. */
 const CURVE = 0.4;
 /** The lens. Never shorter than the wall's own radius, so the pieces the
@@ -115,7 +123,7 @@ export default function AiComicsView() {
   const layout = useMemo(() => {
     const H = box.h;
     if (!H || !box.w) return null;
-    const gap = Math.max(26, H * 0.055);
+    const gap = Math.max(28, H * 0.05);
     const one: Omit<Placed, "key">[] = [];
     let x = 0;
     COMICS.forEach((c, i) => {
@@ -150,7 +158,9 @@ export default function AiComicsView() {
         const it = items[k];
         let x = (((it.base - m.s) % L) + L) % L;
         if (x > L / 2) x -= L;
-        if (Math.abs(x) > W / 2 + it.w / 2 + 80) {
+        // The plane is turned, so its ends reach further than the frame's
+        // own half-width: culled with room to spare.
+        if (Math.abs(x) > W * 0.62 + it.w / 2 + 80) {
           if (el.style.visibility !== "hidden") el.style.visibility = "hidden";
           continue;
         }
@@ -381,9 +391,7 @@ export default function AiComicsView() {
         ? null
         : COMICS[open].id === PAGE_ONE
           ? { label: "Next page", to: COMICS.findIndex((c) => c.id === PAGE_TWO) }
-          : COMICS[open].id === PAGE_TWO
-            ? { label: "Next comic art", to: (open + 1) % N }
-            : null,
+          : null,
     [open]
   );
 
@@ -414,16 +422,16 @@ export default function AiComicsView() {
 
   return (
     <div className="ac-outer" style={{ fontFamily: SANS }}>
-      <header className="ac-head">
-        <TransitionLink href="/work/graphic-design" className="ac-back">
-          <span aria-hidden>←</span> Back
-        </TransitionLink>
-        <div className="ac-titles">
-          <div className="ac-num">{AI_COMICS_CONTENT.number}</div>
-          <h1 className="ac-title">{AI_COMICS_CONTENT.title}</h1>
-        </div>
+      <ProjectRail
+        number={GD_PROJECTS.comics.number}
+        title={AI_COMICS_CONTENT.title}
+        backHref={gdBackHref(GD_PROJECTS.comics)}
+          gd={GD_PROJECTS.comics}
+      >
         <div className="ac-hint">Drag or scroll the wall · click a piece to open it</div>
-      </header>
+      </ProjectRail>
+
+      <div className="ac-main">
 
       <div
         ref={wallRef}
@@ -436,6 +444,7 @@ export default function AiComicsView() {
         onPointerCancel={release}
         onDragStart={(e) => e.preventDefault()}
       >
+        <div className="ac-plane" style={{ transform: TILT }}>
         {layout?.items.map((it, k) => {
           const c = COMICS[it.i];
           return (
@@ -465,6 +474,8 @@ export default function AiComicsView() {
             </button>
           );
         })}
+        </div>
+      </div>
       </div>
 
       {current && open != null && (
@@ -537,6 +548,15 @@ export default function AiComicsView() {
                     {nextStep.label} <span aria-hidden>→</span>
                   </button>
                 )}
+                {/* Page two is the end of the piece: what follows it is the
+                    next project, not more of this one. */}
+                {current.id === PAGE_TWO && (
+                  <span className="ac-fade" data-ac-next-project="">
+                    <TransitionLink href={NEXT_PROJECT_HREF} className="ac-ctl ac-pill">
+                      Next project <span aria-hidden>→</span>
+                    </TransitionLink>
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -546,32 +566,28 @@ export default function AiComicsView() {
       <style>{`
         .ac-outer {
           width: 100%; height: 100svh; min-height: 330px; background: #000; color: #fff;
-          display: flex; flex-direction: column; overflow: hidden;
+          display: flex; overflow: hidden;
         }
-        .ac-head {
-          flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end;
-          justify-content: space-between; gap: 16px 32px;
-          padding: clamp(18px, 3.4vh, 40px) clamp(18px, 5vw, 80px) clamp(14px, 2.4vh, 26px);
-        }
-        .ac-back {
-          flex: 1 0 100%;
-          display: inline-flex; align-items: center; gap: 8px;
-          font-size: 12px; font-weight: 500; letter-spacing: 0.1em;
-          text-transform: uppercase; color: rgba(255,255,255,0.6); text-decoration: none;
-        }
-        .ac-num { font-size: 11px; letter-spacing: 0.2em; color: rgba(255,255,255,0.34); margin-bottom: 8px; }
-        .ac-title {
-          margin: 0; font-size: clamp(28px, 3.4vw, 58px); font-weight: 500;
-          letter-spacing: -0.015em; line-height: 1.04;
+        .ac-main {
+          flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+          padding: clamp(14px, 2.4vh, 26px) 0;
         }
         .ac-hint {
           font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-          color: rgba(255,255,255,0.36); padding-bottom: 4px;
+          color: rgba(255,255,255,0.36); line-height: 1.6; margin-top: auto;
         }
-
+        .ac-plane {
+          position: absolute; inset: 0; transform-style: preserve-3d;
+          transform-origin: 50% 50%;
+        }
+        @media (max-width: 900px) {
+          .ac-outer { flex-direction: column; height: auto; overflow: visible; }
+          .ac-main { height: 78svh; }
+          .ac-hint { margin-top: 0; }
+        }
         .ac-wall {
           position: relative; flex: 1 1 auto; min-height: 200px;
-          perspective-origin: 50% 50%; margin-bottom: clamp(8px, 2vh, 24px);
+          perspective-origin: 50% 50%;
           overflow: hidden; touch-action: pan-y; cursor: grab;
           user-select: none; -webkit-user-select: none;
         }
@@ -579,14 +595,14 @@ export default function AiComicsView() {
         /* The wall goes into the dark at both ends rather than being cut by
            the frame. */
         .ac-wall::before, .ac-wall::after {
-          content: ""; position: absolute; top: 0; bottom: 0; width: 12%;
+          content: ""; position: absolute; inset: 0;
           z-index: 2; pointer-events: none;
         }
-        .ac-wall::before { left: 0; background: linear-gradient(to right, #000, rgba(0,0,0,0)); }
-        .ac-wall::after { right: 0; background: linear-gradient(to left, #000, rgba(0,0,0,0)); }
+        .ac-wall::before { background: linear-gradient(to right, #000, rgba(0,0,0,0) 10%, rgba(0,0,0,0) 90%, #000); }
+        .ac-wall::after { background: linear-gradient(to bottom, #000, rgba(0,0,0,0) 9%, rgba(0,0,0,0) 91%, #000); }
         .ac-item {
           position: absolute; left: 50%; top: 0; padding: 0; border: 0;
-          background: #0b0b0c; border-radius: 2px; overflow: hidden; cursor: zoom-in;
+          background: #0b0b0c; border-radius: 6px; overflow: hidden; cursor: zoom-in;
           will-change: transform, opacity; backface-visibility: hidden;
           box-shadow: 0 0 0 1px rgba(255,255,255,0.07), 0 30px 70px -30px rgba(0,0,0,0.95);
         }

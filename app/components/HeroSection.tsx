@@ -27,6 +27,7 @@ import {
   JOURNEY_DONE_KEY,
   type HomeSectionKey,
 } from "./homeSections";
+import { HOME_GD_PARAM, ringCardProgress } from "./graphicDesignProjects";
 import usePinnedPane from "./usePinnedPane";
 import ReelStrip, { REELS } from "./ReelStrip";
 import useReelOverlays from "./useReelOverlays";
@@ -836,8 +837,37 @@ export default function HeroSection() {
 
   // A category's own Back link lands here with ?home=final. Consumed once
   // and stripped from the URL, so a later reload opens normally.
+  //
+  // A graphic-design PROJECT opened from the journey's own ring lands here
+  // with ?gd=<card>: back into the journey, on that exact card, so the
+  // reader carries on scrolling to Art rather than being left on a page
+  // that ends with the ring.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const gd = Number(params.get(HOME_GD_PARAM));
+    if (params.has(HOME_GD_PARAM) && Number.isInteger(gd) && gd >= 0 && gd < 9) {
+      const p = REELS_SPAN_END + ringCardProgress(gd) * (CORD_SPAN_END - REELS_SPAN_END);
+      let raf = 0;
+      const place = () => {
+        const el = trackRef.current;
+        if (!el) return;
+        const total = el.offsetHeight - window.innerHeight;
+        if (total <= 0) {
+          raf = requestAnimationFrame(place);
+          return;
+        }
+        const y = el.getBoundingClientRect().top + window.scrollY + total * p;
+        const smoother = ScrollSmoother.get();
+        if (smoother) smoother.scrollTo(y, false);
+        else window.scrollTo(0, y);
+        measureRef.current?.();
+        window.history.replaceState(null, "", window.location.pathname);
+      };
+      raf = requestAnimationFrame(() => {
+        raf = requestAnimationFrame(place);
+      });
+      return () => cancelAnimationFrame(raf);
+    }
     const home = params.get(HOME_FINAL_PARAM);
     if (home === HOME_FINAL_VALUE) {
       // Back from a category: the reader has already been through the

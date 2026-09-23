@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import CategoryStage from "./CategoryStage";
 import CordSection from "./CordSection";
 import { preloadBulb } from "./BulbModel";
+import { ringCardProgress } from "./graphicDesignProjects";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 
@@ -27,13 +28,9 @@ const CORD_VH = 1200;
 // ArcCarousel turns that into a ring rotation that runs from -ARC_LEAD to
 // ARC_CARD_COUNT - 1 + ARC_LEAD. Card 0 is square to the lens when that
 // rotation reaches 0. If either constant is retuned, this follows.
-const CORD_ARC_START = 0.51;
-const ARC_LEAD = 2.6;
 const ARC_CARD_COUNT = 9;
 /** Where card `k` is square to the lens, as a share of the track. */
-const cardAt = (k: number) =>
-  CORD_ARC_START +
-  ((ARC_LEAD + k) / (ARC_CARD_COUNT - 1 + ARC_LEAD * 2)) * (1 - CORD_ARC_START);
+const cardAt = ringCardProgress;
 const OPEN_AT = cardAt(0);
 
 export default function GraphicDesignCategoryView() {

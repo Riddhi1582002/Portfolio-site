@@ -33,6 +33,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import TransitionLink from "./TransitionLink";
+import ProjectRail from "./ProjectRail";
+import { GD_PROJECTS, gdBackHref, resolveGdBackHref } from "./graphicDesignProjects";
 import {
   DESCRIPTION,
   OPENING,
@@ -162,7 +164,7 @@ export default function ApplicationsView() {
 
     gsap.registerPlugin(ScrollTrigger);
     const ctx = gsap.context(() => {
-      gsap.from("[data-open-line]", {
+      gsap.from("[data-project-rail] > *", {
         opacity: 0, y: 26, duration: 0.9, stagger: 0.09, ease: "power3.out", delay: 0.12,
       });
       gsap.from("[data-open-plate]", {
@@ -205,23 +207,35 @@ export default function ApplicationsView() {
     };
   }, []);
 
+  // The footer's Back goes where the header's does — see ProjectRail.
+  const [footBack, setFootBack] = useState(gdBackHref(GD_PROJECTS.applications));
+  useEffect(() => {
+    const id = requestAnimationFrame(() =>
+      setFootBack(resolveGdBackHref(GD_PROJECTS.applications))
+    );
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   return (
     <div
       ref={rootRef}
       className="ap-root"
       style={{ fontFamily: SANS }}
     >
+      {/* ── THE PROJECT HEADER, where every project page has it ──────── */}
+      <ProjectRail
+        variant="block"
+        number={GD_PROJECTS.applications.number}
+        title="Applications"
+        description={DESCRIPTION}
+        backHref={gdBackHref(GD_PROJECTS.applications)}
+          gd={GD_PROJECTS.applications}
+      >
+        <p className="ap-sub">{SUBTITLE}</p>
+      </ProjectRail>
+
       {/* ── THE OPENING ─────────────────────────────────────────────── */}
       <header className="ap-open">
-        <div className="ap-open-text">
-          <TransitionLink href="/work/graphic-design" className="ap-back">
-            <span aria-hidden>←</span> Back
-          </TransitionLink>
-          <div className="ap-num" data-open-line>07</div>
-          <h1 className="ap-title" data-open-line>Applications</h1>
-          <p className="ap-sub" data-open-line>{SUBTITLE}</p>
-          <p className="ap-desc" data-open-line>{DESCRIPTION}</p>
-        </div>
 
         <div className="ap-open-plate" data-open-plate>
           <div className="ap-ground" aria-hidden />
@@ -269,7 +283,7 @@ export default function ApplicationsView() {
       ))}
 
       <footer className="ap-foot">
-        <TransitionLink href="/work/graphic-design" className="ap-back">
+        <TransitionLink href={footBack} className="ap-back">
           <span aria-hidden>←</span> Back to Graphic Design
         </TransitionLink>
       </footer>
@@ -306,29 +320,13 @@ export default function ApplicationsView() {
         /* ── OPENING ───────────────────────────────────────────────── */
         .ap-open {
           display: grid; grid-template-columns: 1fr;
-          gap: clamp(40px, 6vh, 76px);
-          padding: clamp(24px, 4vh, 56px) var(--ap-gutter) clamp(56px, 9vh, 128px);
-          align-items: center; min-height: 100svh;
-        }
-        .ap-open-text { display: flex; flex-direction: column; }
-        .ap-num {
-          margin-top: clamp(28px, 6vh, 64px); font-size: 11px;
-          letter-spacing: 0.22em; color: rgba(255,255,255,0.34);
-        }
-        .ap-title {
-          margin: 10px 0 0; font-weight: 500; line-height: 1;
-          letter-spacing: -0.025em; text-transform: uppercase;
-          font-size: clamp(38px, 8.4vw, 104px);
+          padding: clamp(8px, 2vh, 24px) var(--ap-gutter) clamp(56px, 9vh, 128px);
+          align-items: center;
         }
         .ap-sub {
-          margin: 14px 0 0; font-size: clamp(12px, 1.15vw, 15px);
+          margin: 0; font-size: 11px;
           letter-spacing: 0.16em; text-transform: uppercase;
           color: rgba(255,255,255,0.5);
-        }
-        .ap-desc {
-          margin: clamp(22px, 3.2vh, 38px) 0 0; max-width: 54ch;
-          font-size: clamp(14px, 1.15vw, 16.5px); line-height: 1.68;
-          color: rgba(255,255,255,0.68);
         }
         .ap-open-plate { position: relative; justify-self: center; width: 100%; }
         .ap-plate-hero {
@@ -423,10 +421,7 @@ export default function ApplicationsView() {
           .ap-field { grid-template-columns: repeat(6, 1fr); }
         }
         @media (min-width: 1100px) {
-          .ap-open {
-            grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
-            gap: clamp(40px, 5vw, 96px);
-          }
+
           .ap-field { grid-template-columns: repeat(12, 1fr); }
           .ap-cap-hero { text-align: left; }
         }

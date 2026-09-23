@@ -122,6 +122,17 @@ export const RECEPTION_PIECES: ReceptionPiece[] = [
     w: 1920,
     h: 1080,
   },
+  {
+    // Already on R2 as "Diwali.mp4" — mapped, not re-uploaded. Tried under
+    // the TV/ folder the other screen videos live in first, then at the
+    // bucket root, by the same <source> fallback as the two above.
+    id: "rs-diwali",
+    kind: "video",
+    src: r2("TV/Diwali.mp4"),
+    sources: r2Candidates("TV/Diwali.mp4"),
+    w: 1920,
+    h: 1080,
+  },
 ];
 
 /** What a still composition can actually stage: the images, plus a motion

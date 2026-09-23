@@ -68,8 +68,17 @@ export type PageBendOptions = {
   strips?: number;
   /** Peak curl in radians. Restrained on purpose. */
   beta?: number;
-  /** Total swing in radians. Just past vertical — see the note above. */
+  /** Total swing in radians. Just past vertical — see the note above.
+   *  A two-page booklet passes Math.PI: there the leaf has a left-hand
+   *  page to land on, so the whole half-circle is on screen. */
   swing?: number;
+  /**
+   * Which HALF of a two-page printed spread each face carries, where the
+   * supplied image is a spread rather than a single page. Omitted, a face
+   * shows its whole image, exactly as before.
+   */
+  frontHalf?: "left" | "right";
+  backHalf?: "left" | "right";
   zIndex?: number;
 };
 
@@ -139,6 +148,10 @@ export function createPageBend(opt: PageBendOptions): PageBendHandle {
     } as Partial<CSSStyleDeclaration>);
 
     const face = (back: boolean) => {
+      const half = back ? opt.backHalf : opt.frontHalf;
+      // A half is the same sampling over an image twice the leaf's width,
+      // shifted a leaf-width along when it is the right-hand half.
+      const shift = half === "right" ? -W : 0;
       const f = document.createElement("div");
       Object.assign(f.style, {
         position: "absolute",
@@ -152,12 +165,12 @@ export function createPageBend(opt: PageBendOptions): PageBendHandle {
         right: "-0.75px",
         backfaceVisibility: "hidden",
         backgroundRepeat: "no-repeat",
-        backgroundSize: `${W}px ${H}px`,
+        backgroundSize: `${half ? W * 2 : W}px ${H}px`,
         backgroundImage: `url("${back ? opt.backSrc : opt.frontSrc}")`,
         // FRONT samples the outgoing page rightward from the spine at x=0.
         // BACK samples the incoming page leftward from its own spine, which
         // after the flip is the far edge at x=W.
-        backgroundPositionX: back ? `${(i + 1) * sw - W}px` : `${-i * sw}px`,
+        backgroundPositionX: back ? `${(i + 1) * sw - W + shift}px` : `${-i * sw + shift}px`,
         transform: back ? "rotateY(180deg)" : "",
       } as Partial<CSSStyleDeclaration>);
       return f;

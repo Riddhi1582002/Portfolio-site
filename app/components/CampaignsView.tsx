@@ -24,7 +24,8 @@
 // and opening it shows every slide in order at its own proportions.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import TransitionLink from "./TransitionLink";
+import ProjectRail from "./ProjectRail";
+import { GD_PROJECTS, gdBackHref } from "./graphicDesignProjects";
 import {
   CAROUSELS,
   DEPT_POSTS,
@@ -96,48 +97,18 @@ export default function CampaignsView() {
   return (
     <div className="relative w-full bg-black text-white" style={{ fontFamily: SANS, minHeight: "100dvh" }}>
       <div className="cs-shell" style={{ display: "flex", minHeight: "100dvh" }}>
-        {/* ── LEFT RAIL: back, title, description. Nothing else. ─────── */}
-        <aside
-          className="cs-rail"
-          style={{
-            width: "clamp(280px, 28vw, 400px)",
-            flex: "0 0 auto",
-            borderRight: "1px solid rgba(255,255,255,0.08)",
-            padding: "clamp(22px, 3.6vh, 40px) clamp(20px, 2.4vw, 40px)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 22,
-          }}
-        >
-          {/* Back goes to the gallery this project sits in — the homepage's
-              Graphic Design beat — not to the top of the homepage. */}
-          <TransitionLink href="/work/graphic-design" style={backLinkStyle}>
-            <span aria-hidden>←</span> Back
-          </TransitionLink>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: "clamp(28px, 2.7vw, 46px)",
-              fontWeight: 500,
-              letterSpacing: "-0.01em",
-              lineHeight: 1.08,
-            }}
-          >
-            Campaigns /<br />
-            Social
-          </h1>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 13,
-              lineHeight: 1.75,
-              fontWeight: 300,
-              color: "rgba(255,255,255,0.68)",
-            }}
-          >
-            {DESCRIPTION}
-          </p>
-        </aside>
+        <ProjectRail
+          number={GD_PROJECTS.campaigns.number}
+          title={
+            <>
+              Campaigns /<br />
+              Social
+            </>
+          }
+          description={DESCRIPTION}
+          backHref={gdBackHref(GD_PROJECTS.campaigns)}
+          gd={GD_PROJECTS.campaigns}
+        />
 
         {/* ── MAIN ──────────────────────────────────────────────────── */}
         <main
@@ -337,11 +308,6 @@ export default function CampaignsView() {
         @media (max-width: 1100px) { .cs-grid { column-count: 2; } .cs-grid--wide { column-count: 1; } }
         @media (max-width: 900px) {
           .cs-shell { flex-direction: column !important; }
-          .cs-rail {
-            width: 100% !important;
-            border-right: none !important;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-          }
         }
         @media (max-width: 560px) { .cs-grid { column-count: 1; } }
       `}</style>
@@ -363,17 +329,6 @@ const tileStyle: React.CSSProperties = {
   WebkitTapHighlightColor: "transparent",
 };
 
-const backLinkStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 12,
-  fontWeight: 500,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "rgba(255,255,255,0.62)",
-  textDecoration: "none",
-};
 
 const controlStyle: React.CSSProperties = {
   background: "none",

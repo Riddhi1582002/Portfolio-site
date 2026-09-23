@@ -13,7 +13,8 @@
 // there is nothing to open yet).
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import TransitionLink from "./TransitionLink";
+import ProjectRail from "./ProjectRail";
+import { GD_PROJECTS, gdBackHref } from "./graphicDesignProjects";
 import { useRouter } from "next/navigation";
 import { pageOut } from "../lib/pageTransition";
 import PublicationsIndexDisplay, {
@@ -153,47 +154,15 @@ export default function PublicationsIndexView() {
         </div>
       )}
 
-      {/* TOP: back link + restrained page title. Small on purpose — the
-          arrangement is the page, this is just identification. */}
-      <div
-        style={{
-          position: "absolute",
-          top: "clamp(18px, 3.5vh, 34px)",
-          left: "clamp(18px, 4vw, 48px)",
-          zIndex: 5,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        <TransitionLink
-          href="/work/graphic-design"
-          style={{
-            fontFamily: SANS,
-            fontSize: 12,
-            fontWeight: 500,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "rgba(255,255,255,0.6)",
-            textDecoration: "underline",
-            textUnderlineOffset: 3,
-          }}
-        >
-          Back
-        </TransitionLink>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: "clamp(13px, 1.1vw, 16px)",
-            fontWeight: 600,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-            color: "rgba(255,255,255,0.82)",
-          }}
-        >
-          Publications
-        </h1>
-      </div>
+      {/* THE PROJECT HEADER — the same block, at the same top-left place,
+          as every other graphic-design project page. */}
+      <ProjectRail
+        variant="overlay"
+        number={GD_PROJECTS.publications.number}
+        title="Publications"
+        backHref={gdBackHref(GD_PROJECTS.publications)}
+          gd={GD_PROJECTS.publications}
+      />
 
       {/* THE PROJECT INDEX. A plain, restrained list — not a second grid —
           linked to the arrangement in both directions: hovering an entry

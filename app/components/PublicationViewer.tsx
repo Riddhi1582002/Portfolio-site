@@ -21,13 +21,20 @@
 // PDF. Nothing is recreated, re-typeset or reordered, and no metadata line
 // exists that the approved copy did not give.
 //
-// EVERY FORMAT IS READ ONE PAGE AT A TIME, and a page change is a
-// horizontal slide — never a fold, a curl or a crossfade. Not one of
-// these is a bound volume: Sneh Sagar is a set of selected pages, a
-// brochure's page is a printed spread already, and a newsletter, a
-// handbook and a policy document are read a sheet at a time. Pages can
-// also be dragged through directly, which is the same slide under the
-// reader's own hand.
+// TWO WAYS OF READING, decided by what the thing physically is:
+//
+//   IMAGE CAROUSEL — Sneh Sagar, ExcelEDGE, the handbook, the policy
+//   documents, and any single-sheet document. The pages sit side by side
+//   on one track and slide; a drag moves the track under the hand and
+//   lets go onto the nearest page. No fold, no curl, no crossfade.
+//
+//   BOOKLET — the company brochures only. Each is a set of two-page
+//   printed spreads, the first of which is the outside of the sheet: back
+//   cover LEFT, front cover RIGHT. So the booklet opens closed on the
+//   right half of that first spread alone; each leaf turns over on the
+//   central spine; and after the last interior spread the last leaf
+//   closes it onto the left half of the same first spread — the back
+//   cover. Cover, interiors, back cover: the order a folded sheet has.
 //
 // ZOOM AND NAVIGATION ARE INDEPENDENT ON PURPOSE. The controls, the
 // arrows and the thumbnails all sit OUTSIDE the transformed surface, so
@@ -81,13 +88,39 @@ const BEND: Record<string, BendProfile> = {
  *  commits itself; a dragged turn waits for the hand to let go. */
 type Turn = { dir: 1 | -1; from: number; to: number; auto: boolean };
 
-/** One thing the reader looks at. A brochure's page is already a printed
- *  spread, so a "page" here is always exactly one supplied image. */
-type View = { pages: string[]; labels: number[] };
+/** One thing the reader looks at: one supplied image — or, in a brochure
+ *  booklet, one HALF of a supplied spread (the covers). */
+type View = { pages: string[]; labels: number[]; half?: "left" | "right" };
 
 function buildViews(doc: PublicationDoc): View[] {
   return doc.pages.map((p, i) => ({ pages: [p], labels: [i + 1] }));
 }
+
+// ── THE BOOKLET ─────────────────────────────────────────────────────────
+//
+// States 0..N for N supplied spreads: 0 is closed on its front cover
+// (right half of spread 1), k is lying open at spread k+1, N is closed on
+// its back cover (left half of spread 1).
+function buildBookletViews(doc: PublicationDoc): View[] {
+  const n = doc.pages.length;
+  const v: View[] = [{ pages: [doc.pages[0]], labels: [1], half: "right" }];
+  for (let k = 1; k < n; k++) v.push({ pages: [doc.pages[k]], labels: [k + 1] });
+  v.push({ pages: [doc.pages[0]], labels: [1], half: "left" });
+  return v;
+}
+type Half = { src: string; half: "left" | "right" } | null;
+/** What lies on the left-hand side of the spine in state `s`. */
+const leftOf = (pages: string[], s: number): Half =>
+  s === 0 ? null : { src: pages[s < pages.length ? s : 0], half: "left" };
+/** What lies on the right-hand side of the spine in state `s`. */
+const rightOf = (pages: string[], s: number): Half =>
+  s < pages.length ? { src: pages[s], half: "right" } : null;
+/** A closed booklet is one page wide, and it is that page that sits on the
+ *  stage's centre — so the whole book is carried half a page sideways
+ *  while it is shut, and comes back as the cover opens. Percent of the
+ *  book's own (two-page) width. */
+const shiftOf = (n: number, s: number) => (s === 0 ? -25 : s === n ? 25 : 0);
+const BOOK_ASPECT = 1985 / 1404;
 
 export default function PublicationViewer({ slug }: { slug: string }) {
   const router = useRouter();
@@ -104,18 +137,25 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   const isCollection =
     content?.viewer.kind === "collection" || content?.viewer.kind === "spreadCollection";
   const isBook = content?.viewer.kind === "book";
-  // A brochure page is a printed spread already, so it is drawn wide;
-  // a book's facing pair is drawn as two pages meeting at a gutter.
   // The ACTIVE DOCUMENT decides its own page shape, falling back to the
   // publication's kind where it does not say — see `doc` in
-  // publicationsContent. A collection can hold both a landscape spread and
-  // a portrait sheet, and this is the line that stops one of them being
-  // drawn in the other's frame.
+  // publicationsContent.
   const isWidePage = activeDoc?.wide ?? content?.viewer.kind === "spreadCollection";
+  /** Only a printed brochure — a set of spreads — is a booklet. A single
+   *  portrait sheet inside the brochures collection is not. */
+  const isBooklet =
+    content?.viewer.kind === "spreadCollection" &&
+    activeDoc?.wide !== false &&
+    (activeDoc?.pages.length ?? 0) >= 2;
   /** This publication's own curl — see BEND. */
   const bendProfile = BEND[content?.viewer.kind ?? "page"] ?? BEND.page;
 
-  const views = useMemo(() => (activeDoc ? buildViews(activeDoc) : []), [activeDoc]);
+  const views = useMemo(
+    () => (activeDoc ? (isBooklet ? buildBookletViews(activeDoc) : buildViews(activeDoc)) : []),
+    [activeDoc, isBooklet]
+  );
+  const spreads = useMemo(() => activeDoc?.pages ?? [], [activeDoc]);
+  const lastState = spreads.length;
 
   const [viewIndex, setViewIndex] = useState(0);
   const [turn_, setTurn] = useState<Turn | null>(null);
@@ -127,9 +167,11 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   const zoom = ZOOM_LEVELS[zoomIdx];
   const turningRef = useRef(false);
   const stageRef = useRef<HTMLDivElement>(null);
-  const currentLayerRef = useRef<HTMLDivElement>(null);
-  /** The 3D context the bending leaf is added to. */
+  /** The 3D context the booklet (and its turning leaf) lives in. */
   const layerHostRef = useRef<HTMLDivElement>(null);
+  const bookRef = useRef<HTMLDivElement>(null);
+  /** The carousel's track. */
+  const trackRef = useRef<HTMLDivElement>(null);
   const bendRef = useRef<PageBendHandle | null>(null);
   /** The live turn position, kept off React so a drag can write it every
    *  frame without re-rendering the page underneath. */
@@ -137,48 +179,39 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   const turnRef = useRef<Turn | null>(null);
 
   const view = views[viewIndex];
-  // While a turn is in flight the page on the stage is not necessarily the
-  // current one — see the turn block below.
-  const beneathView =
-    (turn_ ? views[turn_.dir === 1 ? turn_.to : turn_.from] : view) ?? view;
   const viewIndexRef = useRef(viewIndex);
   useEffect(() => {
     viewIndexRef.current = viewIndex;
   }, [viewIndex]);
 
-  // ── TURNING: THE SHEET ACTUALLY BENDS ─────────────────────────────────
+  // The stage's size, for the booklet's own box: a two-page spread fitted
+  // inside it, never cropped.
+  const [stageBox, setStageBox] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => setStageBox({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isBooklet]);
+  const bookW = Math.max(0, Math.min(stageBox.w, stageBox.h * BOOK_ASPECT));
+  const bookH = bookW / BOOK_ASPECT;
+
+  // ── THE BOOKLET: A LEAF TURNS ON THE SPINE ────────────────────────────
   //
-  // What this replaces slid the incoming page in behind an opening clip.
-  // It was honest about POSITION — the artefact never moved — but a sheet
-  // that arrives by being un-masked is not a sheet arriving. It had no
-  // thickness and no reverse, and at any speed it read as a slideshow
-  // wipe laid over a photograph of a page.
+  // The leaf is pageBend's chain of nested strips, pivoting on its LEFT
+  // edge — which here is the booklet's central fold — through a full half
+  // circle, so it leaves the right-hand page and lands flat on the left.
+  // Its front is the right half of the spread being left; its back is the
+  // left half of the spread arriving, which is what the reverse of that
+  // printed sheet genuinely carries. Beneath it lie the left page that is
+  // staying and the right page being uncovered, so nothing is ever drawn
+  // twice and nothing fades through anything.
   //
-  // The leaf is a real curved surface now. The geometry is in pageBend.ts,
-  // adapted from Meng To's Sketchbook: a chain of nested strips whose
-  // tangent sweeps through an arc, so the page bends progressively across
-  // its width instead of pivoting like a flat door. What matters here is
-  // that the leaf pivots on the SPINE — its left edge — which gives the
-  // two directions their shapes:
-  //
-  //   next   the outgoing page IS the leaf. It bends away to the left and
-  //          uncovers the incoming page, which was lying beneath it all
-  //          along.
-  //   prev   the incoming page is the leaf, starting folded back off-frame
-  //          and coming down over the page being left behind.
-  //
-  // One number drives both. `t` runs 0 (flat over the page) to 1 (turned
-  // fully away), forward for next and backward for prev, which is why a
-  // drag can be handed straight to it and why commit and revert are the
-  // same tween to different ends.
-  //
-  // THE REVERSE CARRIES THE OTHER PAGE. The back of the sheet you are
-  // turning is the next page of the document — these are printed pages in
-  // order, so that is literally true — and pageBend samples it from the
-  // opposite edge so it reads the right way round once flipped. Past 90
-  // degrees the leaf lies to the left of the spine and the stage's own
-  // overflow clips it, which is what stops the incoming page ever being
-  // visible twice at once.
+  // One number drives it: `t` 0 (lying on the right) to 1 (landed on the
+  // left), forward for next and backward for prev.
   const beginTurn = useCallback(
     (dir: 1 | -1, auto: boolean) => {
       if (turningRef.current) return false;
@@ -220,10 +253,10 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     const o = { v: tRef.current };
     gsap.to(o, {
       v: target,
-      // Whatever is left of the turn, at a steady tempo — a page half
-      // pulled over should not take as long as one starting from flat.
-      duration: Math.max(0.26, Math.abs(target - o.v) * 0.66),
-      ease: "power3.out",
+      // Whatever is left of the turn, at a steady tempo; a whole leaf
+      // over the spine is a longer journey than a one-page slide.
+      duration: Math.max(0.3, Math.abs(target - o.v) * 1.05),
+      ease: "power2.inOut",
       onUpdate: () => {
         tRef.current = o.v;
         bend.setT(o.v);
@@ -232,40 +265,92 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     });
   }, []);
 
-  // THE LEAF ITSELF. Built once per turn, from the page box the beneath
-  // layer is actually rendering at — measured in layout coordinates, not
-  // screen ones, so it stays correct while the stage is zoomed.
+  // THE LEAF ITSELF, built once per turn over the right-hand page box.
   useLayoutEffect(() => {
-    if (!turn_) return;
-    const host = layerHostRef.current;
-    const img = currentLayerRef.current?.querySelector("img");
-    const frontSrc = (turn_.dir === 1 ? views[turn_.from] : views[turn_.to])?.pages[0];
-    const backSrc = (turn_.dir === 1 ? views[turn_.to] : views[turn_.from])?.pages[0];
-    if (!host || !(img instanceof HTMLImageElement) || !frontSrc || !backSrc) {
+    if (!turn_ || !isBooklet) return;
+    const book = bookRef.current;
+    const a = Math.min(turn_.from, turn_.to);
+    const front = rightOf(spreads, a);
+    const back = leftOf(spreads, a + 1);
+    if (!book || !front || !back || !book.offsetWidth) {
       turningRef.current = false;
       turnRef.current = null;
       setTurn(null);
       return;
     }
+    const w = book.offsetWidth / 2;
+    const h = book.offsetHeight;
     const bend = createPageBend({
-      host,
-      x: img.offsetLeft,
-      y: img.offsetTop,
-      width: img.offsetWidth,
-      height: img.offsetHeight,
-      frontSrc,
-      backSrc,
+      host: book,
+      x: w,
+      y: 0,
+      width: w,
+      height: h,
+      frontSrc: front.src,
+      backSrc: back.src,
+      frontHalf: front.half,
+      backHalf: back.half,
       beta: bendProfile.beta,
+      swing: Math.PI,
       zIndex: 6,
     });
-    bend.setT(tRef.current);
-    bendRef.current = bend;
+    const s0 = shiftOf(lastState, a);
+    const s1 = shiftOf(lastState, a + 1);
+    const handle: PageBendHandle = {
+      setT(t: number) {
+        bend.setT(t);
+        // The book slides onto the centre as its cover opens, and off it
+        // again as the last leaf closes it — with the leaf, not after it.
+        const e = t * t * (3 - 2 * t);
+        gsap.set(book, { xPercent: s0 + (s1 - s0) * e });
+      },
+      destroy: () => bend.destroy(),
+    };
+    handle.setT(tRef.current);
+    bendRef.current = handle;
     if (turn_.auto) settle(true);
     return () => {
       bend.destroy();
       bendRef.current = null;
     };
-  }, [turn_, views, settle, bendProfile.beta]);
+  }, [turn_, isBooklet, spreads, lastState, settle, bendProfile.beta]);
+
+  // At rest the booklet sits where its state puts it.
+  useLayoutEffect(() => {
+    if (!isBooklet || turnRef.current || !bookRef.current) return;
+    gsap.set(bookRef.current, { xPercent: shiftOf(lastState, viewIndex) });
+  }, [isBooklet, viewIndex, lastState, bookW]);
+
+  // ── THE CAROUSEL: ONE TRACK, SLIDING ──────────────────────────────────
+  const slideTo = useCallback(
+    (i: number, instant = false) => {
+      const clamped = Math.min(views.length - 1, Math.max(0, i));
+      const tr = trackRef.current;
+      if (tr) {
+        if (instant) gsap.set(tr, { xPercent: -100 * clamped, x: 0 });
+        else
+          gsap.to(tr, {
+            xPercent: -100 * clamped,
+            x: 0,
+            duration: 0.72,
+            ease: "power3.out",
+            overwrite: true,
+          });
+      }
+      if (clamped !== viewIndexRef.current) {
+        setViewIndex(clamped);
+        viewIndexRef.current = clamped;
+        setPan({ x: 0, y: 0 });
+      }
+    },
+    [views.length]
+  );
+
+  // A different document starts on its own first page, placed, not slid.
+  useLayoutEffect(() => {
+    if (isBooklet || !trackRef.current) return;
+    gsap.set(trackRef.current, { xPercent: -100 * viewIndexRef.current, x: 0 });
+  }, [isBooklet, docIndex]);
 
   const goToView = useCallback(
     (next: number) => {
@@ -273,18 +358,22 @@ export default function PublicationViewer({ slug }: { slug: string }) {
       const clamped = Math.min(views.length - 1, Math.max(0, next));
       const cur = viewIndexRef.current;
       if (clamped === cur) return;
+      if (!isBooklet) {
+        slideTo(clamped);
+        return;
+      }
       if (Math.abs(clamped - cur) === 1) {
         beginTurn(clamped > cur ? 1 : -1, true);
         return;
       }
-      // A jump of more than one page is not a page turn. Bending a single
-      // sheet to cross ten of them would be a lie about the document, so
-      // the thumbnails and the overview simply go there.
+      // A jump of more than one leaf is not a page turn — turning one
+      // sheet to cross ten would be a lie about the booklet — so the
+      // thumbnails and the overview simply go there.
       setViewIndex(clamped);
       viewIndexRef.current = clamped;
       setPan({ x: 0, y: 0 });
     },
-    [views.length, beginTurn]
+    [views.length, beginTurn, isBooklet, slideTo]
   );
 
   // Switching documents inside a collection starts that document at its
@@ -292,8 +381,6 @@ export default function PublicationViewer({ slug }: { slug: string }) {
   const selectDoc = useCallback(
     (i: number) => {
       if (i === docIndex || turningRef.current) return;
-      // Not a page turn — a different document. Bending a sheet out of one
-      // brochure into another would claim they are bound together.
       setDocIndex(i);
       setViewIndex(0);
       viewIndexRef.current = 0;
@@ -320,16 +407,10 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     [clampPan]
   );
 
-  // ONE POINTER, TWO JOBS, decided by whether the page is zoomed: zoomed
-  // in, a drag pans the page; at fit, it takes hold of the sheet's edge
-  // and bends it. Both are the same gesture doing the obvious thing at
-  // that zoom.
-  //
-  // THE HAND DRIVES THE TURN DIRECTLY. The drag does not "trigger" an
-  // animation when it ends — it writes the leaf's angle every frame, and
-  // letting go only decides which end the remainder runs to. Which half
-  // of the page was grabbed picks the direction, the way it does on a
-  // real one.
+  // ONE POINTER, decided by format and zoom: zoomed in, a drag pans the
+  // page; at fit, it slides the carousel, or takes hold of the booklet's
+  // leaf and turns it — writing its angle every frame, so letting go only
+  // decides which end the rest of the turn runs to.
   const panRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const dragRef = useRef<{
     dir: 1 | -1;
@@ -339,6 +420,7 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     vel: number;
     tPrev: number;
   } | null>(null);
+  const slideRef = useRef<{ x0: number; w: number; moved: number; vel: number; lastX: number; tPrev: number } | null>(null);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (zoomIdx > 0) {
@@ -349,11 +431,29 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     }
     if (turningRef.current) return;
     // No text selection and no native image drag: either one makes the
-    // browser cancel the pointer mid-gesture and take the turn with it.
+    // browser cancel the pointer mid-gesture.
     e.preventDefault();
     const rect = stageRef.current?.getBoundingClientRect();
     if (!rect || !rect.width) return;
-    const dir: 1 | -1 = (e.clientX - rect.left) / rect.width > 0.5 ? 1 : -1;
+    if (!isBooklet) {
+      if (trackRef.current) gsap.killTweensOf(trackRef.current);
+      slideRef.current = {
+        x0: e.clientX,
+        w: rect.width,
+        moved: 0,
+        vel: 0,
+        lastX: e.clientX,
+        tPrev: performance.now(),
+      };
+      setDragging(true);
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+      return;
+    }
+    // Which half of the open booklet was taken hold of picks the way it
+    // turns; a closed one can only open the way it opens.
+    const cur = viewIndexRef.current;
+    const dir: 1 | -1 =
+      cur === 0 ? 1 : cur === lastState ? -1 : (e.clientX - rect.left) / rect.width > 0.5 ? 1 : -1;
     if (!beginTurn(dir, false)) return;
     dragRef.current = {
       dir,
@@ -373,14 +473,28 @@ export default function PublicationViewer({ slug }: { slug: string }) {
       setPan(clampPan(pr.panX + (e.clientX - pr.x), pr.panY + (e.clientY - pr.y), zoom));
       return;
     }
+    const sl = slideRef.current;
+    if (sl) {
+      let dx = e.clientX - sl.x0;
+      sl.moved = Math.max(sl.moved, Math.abs(dx));
+      const cur = viewIndexRef.current;
+      // Past either end the track gives, but only a little.
+      if ((cur === 0 && dx > 0) || (cur === views.length - 1 && dx < 0)) dx *= 0.3;
+      const now = performance.now();
+      const dt = Math.max(1, now - sl.tPrev);
+      sl.vel = sl.vel * 0.6 + (((e.clientX - sl.lastX) / dt) * 1000) * 0.4;
+      sl.lastX = e.clientX;
+      sl.tPrev = now;
+      if (trackRef.current) gsap.set(trackRef.current, { x: dx });
+      return;
+    }
     const d = dragRef.current;
     if (!d) return;
     const dx = e.clientX - d.x0;
     d.moved = Math.max(d.moved, Math.abs(dx));
-    // Pulling left turns forward. The leaf follows the hand across about
-    // two thirds of the page's width, so a full turn is a deliberate
-    // gesture rather than a flick of the wrist.
-    const adv = Math.max(0, Math.min(1, (d.dir === 1 ? -dx : dx) / (d.w * 0.62)));
+    // Pulling left turns forward. A leaf crosses the whole spread, so the
+    // hand crosses most of the stage to take it all the way over.
+    const adv = Math.max(0, Math.min(1, (d.dir === 1 ? -dx : dx) / (d.w * 0.7)));
     const t = d.dir === 1 ? adv : 1 - adv;
     const now = performance.now();
     d.vel = (t - tRef.current) / Math.max(0.001, (now - d.tPrev) / 1000);
@@ -395,18 +509,27 @@ export default function PublicationViewer({ slug }: { slug: string }) {
       setDragging(false);
       return;
     }
+    const sl = slideRef.current;
+    if (sl) {
+      slideRef.current = null;
+      setDragging(false);
+      const x = trackRef.current ? (gsap.getProperty(trackRef.current, "x") as number) || 0 : 0;
+      const fresh = performance.now() - sl.tPrev < 90;
+      const projected = x + (fresh ? sl.vel * 0.18 : 0);
+      const step = Math.abs(projected) > sl.w * 0.18 ? (projected < 0 ? 1 : -1) : 0;
+      slideTo(viewIndexRef.current + step);
+      return;
+    }
     const d = dragRef.current;
     dragRef.current = null;
     if (!d) return;
     setDragging(false);
-    // A tap on one side of the page turns it, the way tapping the edge of
-    // a book does.
+    // A tap on one side of the booklet turns it, the way tapping the edge
+    // of a book does.
     if (d.moved < 6) {
       settle(true);
       return;
     }
-    // Past the halfway mark, or thrown hard enough that stopping it would
-    // feel like the page being taken back out of your hand.
     const progress = d.dir === 1 ? tRef.current : 1 - tRef.current;
     const speed = d.dir === 1 ? d.vel : -d.vel;
     settle(progress > 0.42 || (speed > 1.1 && progress > 0.12));
@@ -437,9 +560,11 @@ export default function PublicationViewer({ slug }: { slug: string }) {
     ...(content.pages ? ([["Pages", content.pages]] as [string, string][]) : []),
   ];
 
-  const pageLabel = view.labels.length > 1
-    ? `${String(view.labels[0]).padStart(2, "0")}–${String(view.labels[view.labels.length - 1]).padStart(2, "0")}`
+  // The booklet counts its own states — cover, spreads, back cover.
+  const pageLabel = isBooklet
+    ? String(viewIndex + 1).padStart(2, "0")
     : String(view.labels[0]).padStart(2, "0");
+  const pageTotal = String(isBooklet ? views.length : activeDoc.pageCount).padStart(2, "0");
 
   const layerStyle: React.CSSProperties = {
     position: "absolute",
@@ -479,6 +604,99 @@ export default function PublicationViewer({ slug }: { slug: string }) {
       ))}
     </>
   );
+
+  /** A thumbnail's picture: a whole page, or half of a spread. */
+  const thumb = (v: View, sizing: React.CSSProperties) =>
+    v.half ? (
+      <span
+        key={v.pages[0] + v.half}
+        style={{ ...sizing, display: "block", aspectRatio: "1985 / 2808", overflow: "hidden", position: "relative", flex: "0 0 auto" }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={v.pages[0]}
+          alt=""
+          style={{
+            position: "absolute",
+            top: 0,
+            left: v.half === "right" ? "-100%" : 0,
+            width: "200%",
+            height: "100%",
+            maxWidth: "none",
+            display: "block",
+          }}
+        />
+      </span>
+    ) : (
+      v.pages.map((src) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img key={src} src={src} alt="" style={{ ...sizing, display: "block", minWidth: 0 }} />
+      ))
+    );
+
+  // ONE PAGE OF THE BOOKLET: half of a supplied spread, on its side of the
+  // spine. The edge away from the spine carries the stack of pages still
+  // on that side; the edge at the spine carries the fold's shadow.
+  const bookletPage = (h: Half, side: "left" | "right", stack: number) => {
+    if (!h) return null;
+    const layers = Math.min(5, Math.max(0, stack));
+    const edge = Array.from({ length: layers }, (_, k) => {
+      const d = (k + 1) * 1.6;
+      const c = 214 - k * 22;
+      return `${side === "left" ? -d : d}px ${d * 0.4}px 0 rgb(${c},${c - 3},${c - 8})`;
+    });
+    return (
+      <div
+        key={side}
+        data-booklet-page={side}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: side === "left" ? 0 : "50%",
+          width: "50%",
+          height: "100%",
+          overflow: "hidden",
+          background: "#f4f2ee",
+          boxShadow: [...edge, "0 40px 90px rgba(0,0,0,0.7)"].join(", "),
+        }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={h.src}
+          alt={`${activeDoc.title}, ${h.half === "right" && side === "right" && viewIndex === 0 ? "front cover" : h.half === "left" && viewIndex === lastState ? "back cover" : "page"}`}
+          draggable={false}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: h.half === "right" ? "-100%" : 0,
+            width: "200%",
+            height: "100%",
+            maxWidth: "none",
+            display: "block",
+          }}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            background:
+              side === "left"
+                ? "linear-gradient(to left, rgba(0,0,0,0.26), rgba(0,0,0,0.06) 5%, rgba(0,0,0,0) 12%)"
+                : "linear-gradient(to right, rgba(0,0,0,0.26), rgba(0,0,0,0.06) 5%, rgba(0,0,0,0) 12%)",
+          }}
+        />
+      </div>
+    );
+  };
+  // What lies under the leaf: while a turn is in flight, the left page
+  // that stays and the right page being uncovered; at rest, the state.
+  const restA = turn_ ? Math.min(turn_.from, turn_.to) : viewIndex;
+  const leftHalf = leftOf(spreads, restA);
+  const rightHalf = rightOf(spreads, turn_ ? restA + 1 : viewIndex);
+  const leftStack = turn_ ? restA : viewIndex;
+  const rightStack = lastState - (turn_ ? restA + 1 : viewIndex);
 
   return (
     <div
@@ -675,7 +893,7 @@ export default function PublicationViewer({ slug }: { slug: string }) {
               </div>
             </div>
             <div style={{ fontSize: 12, letterSpacing: "0.08em", color: "rgba(255,255,255,0.5)" }}>
-              {pageLabel} / {String(activeDoc.pageCount).padStart(2, "0")}
+              {pageLabel} / {pageTotal}
             </div>
           </div>
 
@@ -727,27 +945,67 @@ export default function PublicationViewer({ slug }: { slug: string }) {
                 cursor: dragging ? "grabbing" : "grab",
               }}
             >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  transformStyle: "preserve-3d",
-                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                  transformOrigin: "50% 50%",
-                  transition: dragging ? "none" : "transform 340ms cubic-bezier(0.22,1,0.36,1)",
-                }}
-                ref={layerHostRef}
-              >
-                {/* ONE PAGE IS DRAWN, and it is whichever one is lying
-                    underneath the leaf: the page being turned TO while
-                    going forward, the page being left behind while going
-                    back. The leaf itself is not React's — pageBend adds it
-                    to this same 3D context, because a drag writes its
-                    angle every frame and nothing here should re-render. */}
-                <div ref={currentLayerRef} style={layerStyle}>
-                  {renderPages(beneathView)}
+              {isBooklet ? (
+                <div
+                  ref={layerHostRef}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    transformStyle: "preserve-3d",
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                    transformOrigin: "50% 50%",
+                    transition: dragging ? "none" : "transform 340ms cubic-bezier(0.22,1,0.36,1)",
+                  }}
+                >
+                  {/* THE BOOKLET. Its box is the two-page spread fitted to
+                      the stage; the leaf pageBend adds is not React's, so a
+                      drag can write its angle every frame. */}
+                  <div
+                    ref={bookRef}
+                    data-booklet
+                    data-booklet-state={viewIndex}
+                    style={{
+                      position: "absolute",
+                      left: (stageBox.w - bookW) / 2,
+                      top: (stageBox.h - bookH) / 2,
+                      width: bookW,
+                      height: bookH,
+                      transformStyle: "preserve-3d",
+                    }}
+                  >
+                    {bookletPage(leftHalf, "left", leftStack)}
+                    {bookletPage(rightHalf, "right", rightStack)}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                // THE CAROUSEL. Every page on one track, each a stage wide;
+                // only the page being read takes the zoom.
+                <div
+                  ref={trackRef}
+                  data-pub-track
+                  style={{ position: "absolute", inset: 0, display: "flex", willChange: "transform" }}
+                >
+                  {views.map((v, i) => (
+                    <div
+                      key={v.pages.join("|")}
+                      data-pub-slide={i}
+                      style={{ flex: "0 0 100%", height: "100%", position: "relative", overflow: "hidden" }}
+                    >
+                      <div
+                        style={{
+                          ...layerStyle,
+                          transform:
+                            i === viewIndex ? `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` : "none",
+                          transformOrigin: "50% 50%",
+                          transition: dragging ? "none" : "transform 340ms cubic-bezier(0.22,1,0.36,1)",
+                        }}
+                      >
+                        {renderPages(v)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -799,7 +1057,7 @@ export default function PublicationViewer({ slug }: { slug: string }) {
           >
             {views.map((v, i) => (
               <button
-                key={v.pages.join("|")}
+                key={v.pages.join("|") + (v.half ?? "")}
                 type="button"
                 onClick={() => goToView(i)}
                 aria-label={`Go to page ${v.labels.join("–")}`}
@@ -820,15 +1078,7 @@ export default function PublicationViewer({ slug }: { slug: string }) {
                   display: "flex",
                 }}
               >
-                {v.pages.map((src) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={src}
-                    src={src}
-                    alt=""
-                    style={{ height: "100%", width: "auto", display: "block" }}
-                  />
-                ))}
+                {thumb(v, { height: "100%", width: "auto" })}
               </button>
             ))}
           </div>
@@ -867,7 +1117,7 @@ export default function PublicationViewer({ slug }: { slug: string }) {
           >
             {views.map((v, i) => (
               <button
-                key={v.pages.join("|")}
+                key={v.pages.join("|") + (v.half ?? "")}
                 type="button"
                 onClick={() => {
                   goToView(i);
@@ -886,10 +1136,7 @@ export default function PublicationViewer({ slug }: { slug: string }) {
                       : "1px solid rgba(255,255,255,0.1)",
                 }}
               >
-                {v.pages.map((src) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={src} src={src} alt="" style={{ width: "100%", display: "block", minWidth: 0 }} />
-                ))}
+                {thumb(v, { width: "100%" })}
               </button>
             ))}
           </div>

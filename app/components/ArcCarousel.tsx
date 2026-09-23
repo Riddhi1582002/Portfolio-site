@@ -30,6 +30,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import gsap from "gsap";
 import { OUT_S as TRANSITION_OUT_S, pageOut } from "../lib/pageTransition";
 import HoverCard from "./HoverCard";
+import { rememberGdOrigin } from "./graphicDesignProjects";
 import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
 import CampaignsDisplay, { preloadCampaigns } from "./CampaignsDisplay";
 import ReceptionScreenDisplay, { preloadReceptionScreen } from "./ReceptionScreenDisplay";
@@ -61,22 +62,24 @@ type CardHolder = {
   Display: ComponentType<{ luminance?: number }>;
 };
 
+// THE APPROVED ORDER — see graphicDesignProjects for the numbering. Slot
+// 4 (project 05) is held empty, exactly as the order lists it.
 const CARD_HOLDERS: CardHolder[] = [
-  { index: 0, label: "Logos", href: "/logos", Display: LogosDisplay },
-  { index: 1, label: "Publications", href: "/publications", Display: PublicationsDisplay },
-  { index: 2, label: "Campaigns / Social", href: "/campaigns", Display: CampaignsDisplay },
-  { index: 3, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
+  { index: 0, label: "Publications", href: "/publications", Display: PublicationsDisplay },
+  { index: 1, label: "Campaigns / Social", href: "/campaigns", Display: CampaignsDisplay },
+  { index: 2, label: "Logos", href: "/logos", Display: LogosDisplay },
   {
-    index: 4,
+    index: 3,
     label: "Informational Design",
     href: "/informational-design",
     Display: InformationalDesignDisplay,
   },
   { index: 5, label: "Posters", href: "/posters", Display: PostersDisplay },
   { index: 6, label: "Applications", href: "/applications", Display: ApplicationsDisplay },
-  // Project 08. The card is established — its place, label and link — and
-  // deliberately left empty inside: its contents have not been decided.
-  { index: 7, label: "AI Comics", href: "/ai-comics", Display: EmptyDisplay },
+  { index: 7, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
+  // Project 09. The card is established — its place, label and link — and
+  // left empty inside: its contents have not been decided.
+  { index: 8, label: "Comics — Post Production", href: "/ai-comics", Display: EmptyDisplay },
 ];
 
 function EmptyDisplay() {
@@ -267,6 +270,9 @@ export default function ArcCarousel({
       if (!holder) return;
       transitioningRef.current = true;
       setTransitioningIndex(holder.index);
+      // Which ring opened this project — the journey's or the category's —
+      // so its Back can return to this exact card in the same place.
+      rememberGdOrigin(holder.index);
       // GSAP's default lag smoothing hides a brief stall by freezing the
       // animation's own perceived clock, then resuming — meant to avoid a
       // jarring jump after a short tab-backgrounded pause. This page keeps

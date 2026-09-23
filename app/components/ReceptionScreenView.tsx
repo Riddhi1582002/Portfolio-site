@@ -29,7 +29,8 @@
 // No navigation panel, no sidebar, no dashboard chrome — one Back link to
 // the gallery this project belongs to, and the work.
 
-import TransitionLink from "./TransitionLink";
+import ProjectRail from "./ProjectRail";
+import { GD_PROJECTS, gdBackHref } from "./graphicDesignProjects";
 import ReceptionDepthCarousel from "./ReceptionDepthCarousel";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
@@ -41,13 +42,14 @@ export default function ReceptionScreenView() {
   return (
     <div className="relative w-full bg-black text-white" style={{ fontFamily: SANS }}>
       <div className="rs-shell">
-        <header className="rs-head">
-          <TransitionLink href="/work/graphic-design" style={backLinkStyle}>
-            <span aria-hidden>←</span> Back
-          </TransitionLink>
-          <h1 className="rs-title">Reception Screen</h1>
-          <p className="rs-desc">{DESCRIPTION}</p>
-        </header>
+        <ProjectRail
+          variant="block"
+          number={GD_PROJECTS.receptionScreen.number}
+          title="Reception Screen"
+          description={DESCRIPTION}
+          backHref={gdBackHref(GD_PROJECTS.receptionScreen)}
+          gd={GD_PROJECTS.receptionScreen}
+        />
 
         <main className="rs-run">
           <ReceptionDepthCarousel />
@@ -56,32 +58,11 @@ export default function ReceptionScreenView() {
       </div>
 
       <style>{`
-        .rs-shell {
-          min-height: 100dvh;
-          padding: clamp(22px, 4vh, 48px) clamp(18px, 6vw, 96px) clamp(64px, 12vh, 150px);
-          max-width: 1500px;
-          margin: 0 auto;
-        }
-        .rs-head {
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-          max-width: 62ch;
-          padding-bottom: clamp(30px, 6vh, 74px);
-        }
-        .rs-title {
-          margin: 0;
-          font-size: clamp(30px, 3.4vw, 58px);
-          font-weight: 500;
-          letter-spacing: -0.015em;
-          line-height: 1.04;
-        }
-        .rs-desc {
-          margin: 0;
-          font-size: 13.5px;
-          line-height: 1.75;
-          font-weight: 300;
-          color: rgba(255,255,255,0.64);
+        .rs-shell { min-height: 100dvh; }
+        /* The work runs the full width under the header; its padding is
+           the gutter the depth carousel's own row reaches back out past. */
+        .rs-run {
+          padding: 0 clamp(18px, 6vw, 96px) clamp(40px, 8vh, 110px);
         }
         .rs-run {
           display: flex;
@@ -101,14 +82,3 @@ export default function ReceptionScreenView() {
   );
 }
 
-const backLinkStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 12,
-  fontWeight: 500,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "rgba(255,255,255,0.6)",
-  textDecoration: "none",
-};

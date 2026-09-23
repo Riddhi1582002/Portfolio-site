@@ -111,15 +111,15 @@ export const PIECES: Piece[] = [
   { id: "graphite-or-charcoal-white-charcoal-on-black-paper-01", x: 41.86, y: 1751.31, w: 230.7, h: 348.41, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/white-charcoal-on-black-paper-01.jpg" },
   { id: "acrylics-img-20260913-222957", x: 1563.1, y: 4469.8, w: 353.6, h: 353.6, medium: "Acrylics", src: "/art/acrylics/img-20260913-222957.jpg" },
   { id: "graphite-or-charcoal-polish-20230319-190520609", x: 2066.22, y: 2668.8, w: 212.64, h: 306.44, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230319-190520609.jpg" },
-  { id: "pen-art-img20251002222430", x: 64.63, y: 46.87, w: 165.6, h: 294.4, medium: "Pen art", src: "/art/pen-art/img20251002222430.jpg" },
-  { id: "graphite-or-charcoal-polish-20221223-133936965", x: 311.18, y: 75.38, w: 201.3, h: 262.1, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20221223-133936965.png" },
+  { id: "pen-art-img20251002222430", x: 51.26, y: 23.09, w: 192.35, h: 341.95, medium: "Pen art", src: "/art/pen-art/img20251002222430.jpg" },
+  { id: "graphite-or-charcoal-polish-20221223-133936965", x: 299.45, y: 60.11, w: 224.76, h: 292.64, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20221223-133936965.png" },
   { id: "acrylics-img-20230722-wa0022", x: 1908.87, y: 388.19, w: 323.23, h: 242.42, medium: "Acrylics", src: "/art/acrylics/img-20230722-wa0022.jpg" },
   { id: "graphite-or-charcoal-polish-20210628-221612042", x: 1351.95, y: 1320.6, w: 394.02, h: 404.9, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20210628-221612042.jpg" },
-  { id: "pen-art-img-20260515-080123", x: 2096.36, y: 1575.95, w: 178.82, h: 317.9, medium: "Pen art", src: "/art/pen-art/img-20260515-080123.jpg" },
+  { id: "pen-art-img-20260515-080123", x: 2089.60, y: 1563.92, w: 192.35, h: 341.95, medium: "Pen art", src: "/art/pen-art/img-20260515-080123.jpg" },
   { id: "graphite-or-charcoal-a-study-of-eyes-03", x: 723.76, y: 3053.49, w: 287.96, h: 287.96, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/a-study-of-eyes-03.jpg" },
   { id: "acrylics-img-20260913-222931", x: 202.47, y: 396.8, w: 363.15, h: 371.74, medium: "Acrylics", src: "/art/acrylics/img-20260913-222931.jpg" },
   { id: "graphite-or-charcoal-polish-20220306-185610949", x: 1910.75, y: 3872.17, w: 257.4, h: 334.76, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20220306-185610949.jpg" },
-  { id: "pen-art-img20260521224939", x: 40.97, y: 2963.33, w: 141.2, h: 251.01, medium: "Pen art", src: "/art/pen-art/img20260521224939.jpg" },
+  { id: "pen-art-img20260521224939", x: 26.12, y: 2936.93, w: 170.90, h: 303.81, medium: "Pen art", src: "/art/pen-art/img20260521224939.jpg" },
   { id: "graphite-or-charcoal-polish-20240229-171648866", x: 1058.39, y: 434.07, w: 411.05, h: 410.5, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20240229-171648866.jpg" },
   { id: "acrylics-polish-20240223-203111938", x: 2091.9, y: 2167.31, w: 225.53, h: 364.99, medium: "Acrylics", src: "/art/acrylics/polish-20240223-203111938.jpg" },
   { id: "graphite-or-charcoal-polish-20220930-104029798", x: 403.3, y: 925.51, w: 225.8, h: 333.05, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20220930-104029798.jpg" },
@@ -131,22 +131,22 @@ export const PIECES: Piece[] = [
   { id: "graphite-or-charcoal-img-20260531-221408", x: 834.45, y: 1833.23, w: 242.04, h: 263.12, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/img-20260531-221408.jpg" },
   { id: "oils-polish-20210710-135759049", x: 625.85, y: 1408.48, w: 227.05, h: 330.88, medium: "Oils", src: "/art/oils/polish-20210710-135759049.jpg" },
   { id: "graphite-or-charcoal-polish-20220910-185630205", x: 108.8, y: 3445.97, w: 247.06, h: 329.52, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20220910-185630205.jpg" },
-  { id: "pen-art-img-20260509-212939", x: 1663.35, y: 92.2, w: 139.03, h: 247.16, medium: "Pen art", src: "/art/pen-art/img-20260509-212939.jpg" },
+  { id: "pen-art-img-20260509-212939", x: 1636.69, y: 44.81, w: 192.35, h: 341.95, medium: "Pen art", src: "/art/pen-art/img-20260509-212939.jpg" },
   { id: "graphite-or-charcoal-polish-20240630-193813326", x: 1454.05, y: 2184.82, w: 299.9, h: 285.85, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20240630-193813326.jpg" },
   { id: "acrylics-img-20260913-223908", x: 1161.61, y: 3180.31, w: 386.01, h: 386.01, medium: "Acrylics", src: "/art/acrylics/img-20260913-223908.jpg" },
   { id: "graphite-or-charcoal-polish-20221218-221302894", x: 1607.46, y: 3219.13, w: 334.62, h: 393.93, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20221218-221302894.png" },
-  { id: "digital-art-polish-20250917-004912519", x: 1123.35, y: 4570.65, w: 206.98, h: 275.97, medium: "Digital art", src: "/art/digital-art/polish-20250917-004912519.jpg" },
+  { id: "digital-art-polish-20250917-004912519", x: 1115.79, y: 4560.57, w: 222.11, h: 296.14, medium: "Digital art", src: "/art/digital-art/polish-20250917-004912519.jpg" },
   { id: "graphite-or-charcoal-polish-20250208-133015864", x: 219.02, y: 2637.68, w: 237.81, h: 316.97, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20250208-133015864.jpg" },
   { id: "oils-taylor-swift", x: 1528.06, y: 4077.97, w: 263.64, h: 311.48, medium: "Oils", src: "/art/oils/taylor-swift.jpg" },
   { id: "graphite-or-charcoal-polish-20240405-150241593", x: 1248.24, y: 2726.16, w: 240.42, h: 361.08, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20240405-150241593.jpg" },
   { id: "pen-art-img-20260913-223103", x: 315.68, y: 1552.83, w: 239.1, h: 373.86, medium: "Pen art", src: "/art/pen-art/img-20260913-223103.jpg" },
-  { id: "graphite-or-charcoal-polish-20260626-171824274", x: 553.83, y: 3869.93, w: 215.16, h: 268.95, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20260626-171824274.jpg" },
-  { id: "acrylics-img-20260913-223809", x: 966.01, y: 1126.29, w: 402.93, h: 152.89, medium: "Acrylics", src: "/art/acrylics/img-20260913-223809.jpg" },
+  { id: "graphite-or-charcoal-polish-20260626-171824274", x: 546.72, y: 3861.04, w: 229.39, h: 286.74, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20260626-171824274.jpg" },
+  { id: "acrylics-img-20260913-223809", x: 959.30, y: 1123.75, w: 416.34, h: 157.98, medium: "Acrylics", src: "/art/acrylics/img-20260913-223809.jpg" },
   { id: "graphite-or-charcoal-polish-20230129-170653977", x: 639.87, y: 383.97, w: 256.01, h: 341.35, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230129-170653977.jpg" },
   { id: "digital-art-ice-heart", x: 519.77, y: 2608.94, w: 305.75, h: 382.19, medium: "Digital art", src: "/art/digital-art/ice-heart.jpg" },
   { id: "graphite-or-charcoal-trs-9968", x: 894.97, y: 1329.1, w: 293.97, h: 410.12, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/trs-9968.jpg" },
   { id: "oils-polish-20210626-213830980", x: 248.02, y: 3052.09, w: 218.85, h: 309.24, medium: "Oils", src: "/art/oils/polish-20210626-213830980.jpg" },
-  { id: "pen-art-img20260512233009", x: 1542.98, y: 2872.13, w: 151.15, h: 268.71, medium: "Pen art", src: "/art/pen-art/img20260512233009.jpg" },
+  { id: "pen-art-img20260512233009", x: 1533.15, y: 2854.66, w: 170.80, h: 303.65, medium: "Pen art", src: "/art/pen-art/img20260512233009.jpg" },
   { id: "soft-pastels-polish-20210327-172832632", x: 668.9, y: 784.8, w: 233.46, h: 334.62, medium: "Soft pastels", src: "/art/soft-pastels/polish-20210327-172832632.jpg" },
   { id: "acrylics-triplets", x: 1220.18, y: 1891.02, w: 400.48, h: 225.27, medium: "Acrylics", src: "/art/acrylics/triplets.jpg" },
   { id: "digital-art-img-20241207-wa0078", x: 1956.81, y: 1142.9, w: 368.85, h: 368.85, medium: "Digital art", src: "/art/digital-art/img-20241207-wa0078.jpg" },
@@ -155,10 +155,10 @@ export const PIECES: Piece[] = [
   { id: "pen-art-img-20260913-223141", x: 1527.03, y: 833.33, w: 221.33, h: 393.43, medium: "Pen art", src: "/art/pen-art/img-20260913-223141.jpg" },
   { id: "soft-pastels-polish-20210216-004049971", x: 2045.86, y: 3371.48, w: 243.98, h: 394.69, medium: "Soft pastels", src: "/art/soft-pastels/polish-20210216-004049971.jpg" },
   { id: "acrylics-tulips", x: 58.48, y: 1237.39, w: 194.49, h: 345.77, medium: "Acrylics", src: "/art/acrylics/tulips.jpg" },
-  { id: "digital-art-img-20241220-wa0016", x: 2079.48, y: 3075.04, w: 128.34, h: 256.68, medium: "Digital art", src: "/art/digital-art/img-20241220-wa0016.jpg" },
+  { id: "digital-art-img-20241220-wa0016", x: 2070.60, y: 3057.28, w: 146.10, h: 292.20, medium: "Digital art", src: "/art/digital-art/img-20241220-wa0016.jpg" },
   { id: "graphite-or-charcoal-polish-20230917-202038401-1", x: 465.43, y: 3400.81, w: 405.96, h: 417.05, medium: "Graphite/Charcoal", src: "/art/graphite-or-charcoal/polish-20230917-202038401-1.jpg" },
-  { id: "oils-img-20260913-223823", x: 623.95, y: 31.24, w: 263.7, h: 107.28, medium: "Oils", src: "/art/oils/img-20260913-223823.jpg" },
-  { id: "pen-art-img-20260913-223204", x: 1464.85, y: 3787.47, w: 139.27, h: 247.5, medium: "Pen art", src: "/art/pen-art/img-20260913-223204.jpg" },
+  { id: "oils-img-20260913-223823", x: 554.76, y: 3.09, w: 402.09, h: 163.58, medium: "Oils", src: "/art/oils/img-20260913-223823.jpg" },
+  { id: "pen-art-img-20260913-223204", x: 1453.03, y: 3766.47, w: 162.90, h: 289.50, medium: "Pen art", src: "/art/pen-art/img-20260913-223204.jpg" },
   { id: "soft-pastels-polish-20210409-110947181", x: 75.23, y: 2283.04, w: 228.89, h: 314.37, medium: "Soft pastels", src: "/art/soft-pastels/polish-20210409-110947181.jpg" },
 ];
 
@@ -231,7 +231,6 @@ const easeInOutCubic = (t: number) =>
 // revealScale reaches exactly 1 and the clear space still arrives exactly
 // over ART.
 const revealEase = carry(easeOutCubic, 0, 0.78);
-const settleEase = carry(easeInOutCubic, 0.24, 1);
 
 // THE FLIGHT HOME.
 //
@@ -838,6 +837,17 @@ export default function InfiniteCanvas({
   // block is drawn again, and the two offsets are the same position by then.
   const irisX = frame.piece.x + frame.piece.w / 2 + frame.irisOffsetX - vw / 2;
   const irisY = frame.piece.y + frame.piece.h / 2 + frame.irisOffsetY - vh / 2;
+  // THE RE-FRAME RIDES THE PULL-BACK. The gallery settles on its centre
+  // (the GAP), not on the iris the zoom out starts from — and that move
+  // used to be its own 650ms pan AFTER the pull-back had stopped: two
+  // motions, the second a visible lurch to one side. It is now part of the
+  // same camera move: the iris stays locked while it is close to the lens,
+  // the camera drifts toward the centre as it pulls back, and it arrives
+  // with no speed left exactly as the zoom does. Nothing moves after it.
+  const reframeW = (() => {
+    const u = span(revealT, 0.15, 1);
+    return u * u * (3 - 2 * u);
+  })();
 
   // Writing the transform from a ref keeps a drag off React's render path;
   // at fourteen pieces per cell a state update per pointermove is visible.
@@ -845,8 +855,9 @@ export default function InfiniteCanvas({
     const plane = planeRef.current;
     if (!plane) return;
     if (revealing) {
-      // Locked to the iris while the camera pulls back — the reader has
-      // no say over the framing until the gallery has arrived.
+      // Locked to the iris while the camera is close, then carried to the
+      // gallery's centre by the pull-back itself (reframeW) — the reader
+      // has no say over the framing until the gallery has arrived.
       //
       // The depth bands are flattened for the duration. The hand-off from
       // the previous beat is geometry: PencilSection's last frame and this
@@ -854,9 +865,9 @@ export default function InfiniteCanvas({
       // pixel of lag would put the iris card somewhere those numbers do
       // not describe. Depth is something the field gains once it is the
       // reader's to move.
-      plane.style.transform = `translate3d(${(-irisX).toFixed(2)}px, ${(-irisY).toFixed(
-        2
-      )}px, 0)`;
+      const px = irisX + (GAP.x - vw / 2 - irisX) * reframeW;
+      const py = irisY + (GAP.y - vh / 2 - irisY) * reframeW;
+      plane.style.transform = `translate3d(${(-px).toFixed(2)}px, ${(-py).toFixed(2)}px, 0)`;
       for (let b = 1; b < DEPTH_BANDS; b++) {
         plane.style.setProperty(`--depth-${b}-x`, "0px");
         plane.style.setProperty(`--depth-${b}-y`, "0px");
@@ -909,7 +920,7 @@ export default function InfiniteCanvas({
       const calm = 1 - 0.78 * Math.min(1, speed / FIELD_CALM_SPEED);
       root.style.setProperty("--field-calm", calm.toFixed(3));
     }
-  }, [vw, vh, revealing, irisX, irisY]);
+  }, [vw, vh, revealing, irisX, irisY, reframeW]);
 
   // Re-write the plane whenever the return advances or the frame resizes,
   // not only when the pointer moves it.
@@ -942,8 +953,6 @@ export default function InfiniteCanvas({
   // sees the same brief, calm slide before the composition is simply
   // sitting there, ready to drag.
   const untouchedRef = useRef(true);
-  const settleStartRef = useRef<number | null>(null);
-  const settleVelClockRef = useRef<number | null>(null);
   useEffect(() => {
     if (revealing) {
       // Hand the pan over at the value the reveal left it on, so the
@@ -956,46 +965,18 @@ export default function InfiniteCanvas({
       prevPanRef.current = { x: irisX, y: irisY };
       fieldVelRef.current = { x: 0, y: 0 };
       untouchedRef.current = true;
-      settleStartRef.current = null;
       return;
     }
     if (!untouchedRef.current) return;
-    const SETTLE_MS = 650;
-    if (settleStartRef.current == null) settleStartRef.current = performance.now();
-    const start = settleStartRef.current;
-    let raf = 0;
-    const tick = (now: number) => {
-      if (!untouchedRef.current) return; // a drag started; leave the pan where it is
-      const t = settleEase(clamp01((now - start) / SETTLE_MS));
-      panRef.current = {
-        x: irisX + (GAP.x - vw / 2 - irisX) * t,
-        y: irisY + (GAP.y - vh / 2 - irisY) * t,
-      };
-      // The settle drives the rendered pan directly, so the target has to
-      // come with it — otherwise the first frame the drive loop wakes it
-      // would pull the composition straight back to where the settle
-      // started. The bands are left to trail it: the settle is the
-      // gallery's first movement, and them lagging through it is the first
-      // thing that says this is a field with depth rather than a flat
-      // sheet.
-      panTargetRef.current = { ...panRef.current };
-      const vdt = Math.max(1, now - (settleVelClockRef.current || now));
-      settleVelClockRef.current = now;
-      const kv = 1 - Math.exp(-vdt / DEPTH_VEL_TAU);
-      fieldVelRef.current.x +=
-        ((panRef.current.x - prevPanRef.current.x) / vdt - fieldVelRef.current.x) * kv;
-      fieldVelRef.current.y +=
-        ((panRef.current.y - prevPanRef.current.y) / vdt - fieldVelRef.current.y) * kv;
-      prevPanRef.current = { ...panRef.current };
-      write();
-      if (t < 1) raf = requestAnimationFrame(tick);
-      // The slide is over, but the bands are still displaced by the speed
-      // it ended on. Hand them to the drive loop so that speed decays on
-      // the same curve every other settle on this surface uses, instead of
-      // the parallax simply freezing where the slide dropped it.
-      else driveFnRef.current();
-    };
-    raf = requestAnimationFrame(tick);
+    // The pull-back has already brought the camera to the centre (see
+    // reframeW), so the gallery simply starts there: no second move.
+    const home = { x: GAP.x - vw / 2, y: GAP.y - vh / 2 };
+    panRef.current = { ...home };
+    panTargetRef.current = { ...home };
+    prevPanRef.current = { ...home };
+    fieldVelRef.current = { x: 0, y: 0 };
+    write();
+    const raf = requestAnimationFrame(() => driveFnRef.current());
     return () => cancelAnimationFrame(raf);
   }, [revealing, irisX, irisY, vw, vh, write]);
 

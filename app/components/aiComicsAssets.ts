@@ -1,4 +1,4 @@
-// AI COMICS — project 08.
+// COMICS — POST PRODUCTION — project 09.
 //
 // Eleven supplied files: nine long vertical strips (800px wide, 9–13k tall)
 // and two pages the files call "4.3 001" and "4.3 002". Those two are
@@ -57,9 +57,10 @@ export const PAGE_ONE = "4-3-001";
 export const PAGE_TWO = "4-3-002";
 
 export const AI_COMICS_CONTENT = {
-  number: "08",
-  title: "AI Comics",
+  number: "09",
+  title: "Comics — Post Production",
 } as const;
 
-/** Where NEXT PROJECT goes: the graphic-design ring, opened on card 9. */
-export const NEXT_PROJECT_HREF = "/work/graphic-design?card=8";
+/** Where NEXT PROJECT goes. This is the last project on the ring, so the
+ *  next one is the first: Publications, project 01. */
+export const NEXT_PROJECT_HREF = "/publications";

@@ -33,7 +33,8 @@
 // GSAP only, on the site's existing timeline system.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import TransitionLink from "./TransitionLink";
+import ProjectRail from "./ProjectRail";
+import { GD_PROJECTS, gdBackHref } from "./graphicDesignProjects";
 import gsap from "gsap";
 import { INFORMATIONAL_DESIGN, JACKET, LEAFLETS } from "./informationalDesignAssets";
 
@@ -45,16 +46,19 @@ const SANS = "'Neue Montreal', system-ui, sans-serif";
 // every leaflet's two edges cross the band's top inside the right panel,
 // its foot stays inside the jacket and its head stays below the jacket's
 // top edge. Change one and re-check all four.
-const FAN_FROM = -32;
+const FAN_FROM = -27;
 const FAN_TO = -1;
-/** The pivot, as a fraction of a leaflet: near its bottom-left corner. */
+/** The pivot, as a fraction of a leaflet: low on its left edge. */
 const PIVOT_X = 0.1;
-const PIVOT_Y = 0.9;
+const PIVOT_Y = 0.8;
 /** The fan's own offset in the pocket, as fractions of the jacket height. */
-const FAN_DX = 0.08;
-const FAN_Y = 0.19;
+const FAN_DX = 0.04;
+const FAN_Y = 0.08;
+/** A leaflet's height, as a share of the jacket's: nearly as tall as it,
+ *  the way a sheet in a folder stands. Re-solve the fan if this changes. */
+const LEAF_H = 0.84;
 /** How far a chosen leaflet rises clear of the front one, of its height. */
-const RISE = 0.4;
+const RISE = 0.2;
 /** How far a leaflet lifts in the fan when its name is pointed at. */
 const LIFT = 0.035;
 /** The rest of the fan, while one leaflet is being read. */
@@ -130,12 +134,18 @@ export default function InformationalDesignView() {
   // occupies the RIGHT panel and the left one is empty; the group is
   // shifted right by half a panel so it still sits centred on the stage.
   // Open, the cover has swung into the left panel and the shift is zero.
-  const jacketH = Math.max(180, Math.min(box.h * 0.8, narrow ? 340 : 500));
+  // As large as the stage allows: the open spread's width, and the height
+  // with room above for the heads of the fanned leaflets, which stand a
+  // little proud of the jacket's top edge.
+  const jacketH = Math.max(
+    140,
+    Math.min(box.h * 0.82, (box.w * 0.97) / (JACKET.spreadW / JACKET.spreadH), 820)
+  );
   const panelW = jacketH * (JACKET.panelW / JACKET.panelH);
   const spreadW = jacketH * (JACKET.spreadW / JACKET.spreadH);
   const closedShift = -panelW / 2;
   // A leaflet keeps its own A4 proportion exactly, always.
-  const leafH = jacketH * 0.72;
+  const leafH = jacketH * LEAF_H;
   const leafW = leafH * (LEAFLETS[0].w / LEAFLETS[0].h);
   /** A slot's own left edge in the right panel: centred in it. */
   const slotLeft = panelW / 2 - leafW / 2;
@@ -152,7 +162,7 @@ export default function InformationalDesignView() {
   // open spread's middle is half a panel left of the pocket's.
   const pickScale = Math.max(
     1,
-    Math.min((box.h * 0.9) / leafH, (box.w * 0.86) / leafW, narrow ? 1.5 : 1.9)
+    Math.min((box.h * 0.94) / leafH, (box.w * 0.9) / leafW, narrow ? 1.5 : 1.7)
   );
 
   const storedPose: Pose = { x: 0, y: storedY, rotation: 0, scale: 1 };
@@ -291,15 +301,15 @@ export default function InformationalDesignView() {
       //    The front leaflet itself needs no tuck: it is already there.
       if (i !== FRONT) {
         const f = fanPose(FRONT);
-        tl.to(el, { x: f.x, y: f.y, rotation: f.rotation, duration: 0.44, ease: EASE_IO }, 0);
-        tl.set(el, { zIndex: Z_UNDER_FRONT }, 0.44);
-        t = 0.44;
+        tl.to(el, { x: f.x, y: f.y, rotation: f.rotation, duration: 0.52, ease: "sine.inOut" }, 0);
+        tl.set(el, { zIndex: Z_UNDER_FRONT }, 0.52);
+        t = 0.52;
       }
       // 2. DRAW. Up out from under the front leaflet, along its own edge,
       //    the way a card is drawn from the back of a hand.
       tl.to(
         el,
-        { x: drawnPose.x, y: drawnPose.y, rotation: drawnPose.rotation, duration: 0.46, ease: "power2.out" },
+        { x: drawnPose.x, y: drawnPose.y, rotation: drawnPose.rotation, duration: 0.56, ease: "sine.inOut" },
         t
       );
       // The rest of the fan and the jacket step back as it clears, so the
@@ -311,11 +321,13 @@ export default function InformationalDesignView() {
       tl.to(others, { opacity: DIM, duration: 0.3, ease: "power1.out" }, t + 0.05);
       tl.to(jacketParts(), { opacity: JACKET_DIM, duration: 0.45, ease: "power1.out" }, t + 0.3);
       // 3. FORWARD, over everything, to the middle of the stage.
-      tl.set(el, { zIndex: Z_PICKED }, t + 0.4);
+      // Overlapping the draw, so the sheet never stops between leaving the
+      // fan and coming forward: one continuous path, not three moves.
+      tl.set(el, { zIndex: Z_PICKED }, t + 0.36);
       tl.to(
         el,
-        { ...pickedPose, duration: 0.74, ease: EASE_OUT },
-        t + 0.4
+        { ...pickedPose, duration: 0.9, ease: "power3.inOut" },
+        t + 0.36
       );
     },
     [fanPose, drawnPose.x, drawnPose.y, drawnPose.rotation, pickedPose.x, pickedPose.y, pickedPose.scale, settle] // eslint-disable-line react-hooks/exhaustive-deps
@@ -347,21 +359,21 @@ export default function InformationalDesignView() {
     // Exactly the reverse of the draw: back above the front leaflet...
     tl.to(
       el,
-      { ...drawnPose, duration: 0.62, ease: EASE_IO },
+      { ...drawnPose, duration: 0.8, ease: "power3.inOut" },
       t
     );
-    tl.to(jacketParts(), { opacity: 1, duration: 0.5, ease: "power1.inOut" }, t + 0.2);
+    tl.to(jacketParts(), { opacity: 1, duration: 0.55, ease: "power1.inOut" }, t + 0.25);
     // ...down under it while the fan comes back up around it...
-    tl.set(el, { zIndex: i === FRONT ? zFan(FRONT) : Z_UNDER_FRONT }, t + 0.62);
+    tl.set(el, { zIndex: i === FRONT ? zFan(FRONT) : Z_UNDER_FRONT }, t + 0.8);
     // The fan comes back only once the band is solid again.
-    tl.to(others, { opacity: 1, duration: 0.34, ease: "power1.inOut" }, t + 0.7);
+    tl.to(others, { opacity: 1, duration: 0.34, ease: "power1.inOut" }, t + 0.84);
     const f = fanPose(FRONT);
-    tl.to(el, { x: f.x, y: f.y, rotation: f.rotation, duration: 0.44, ease: EASE_IO }, t + 0.62);
+    tl.to(el, { x: f.x, y: f.y, rotation: f.rotation, duration: 0.52, ease: "sine.inOut" }, t + 0.8);
     // ...and round behind the others to its own place, at its own depth.
     if (i !== FRONT) {
       const own = fanPose(i);
-      tl.set(el, { zIndex: zFan(i) }, t + 1.06);
-      tl.to(el, { x: own.x, y: own.y, rotation: own.rotation, duration: 0.46, ease: EASE_IO }, t + 1.06);
+      tl.set(el, { zIndex: zFan(i) }, t + 1.32);
+      tl.to(el, { x: own.x, y: own.y, rotation: own.rotation, duration: 0.52, ease: "sine.inOut" }, t + 1.32);
     }
   }, [fanPose, drawnPose, settle]);
 
@@ -517,47 +529,13 @@ export default function InformationalDesignView() {
   return (
     <div className="relative w-full bg-black text-white" style={{ fontFamily: SANS, minHeight: "100dvh" }}>
       <div className="id-shell" style={{ display: "flex", minHeight: "100dvh" }}>
-        {/* ── LEFT: number, title, description. ─────────────────────── */}
-        <aside
-          className="id-rail"
-          style={{
-            width: "clamp(270px, 26vw, 380px)",
-            flex: "0 0 auto",
-            borderRight: "1px solid rgba(255,255,255,0.08)",
-            padding: "clamp(20px, 3.4vh, 38px) clamp(18px, 2.3vw, 38px)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 18,
-          }}
+        <ProjectRail
+          number={GD_PROJECTS.informationalDesign.number}
+          title={INFORMATIONAL_DESIGN.title}
+          description={INFORMATIONAL_DESIGN.description}
+          backHref={gdBackHref(GD_PROJECTS.informationalDesign)}
+          gd={GD_PROJECTS.informationalDesign}
         >
-          <TransitionLink href="/work/graphic-design" style={backLinkStyle}>
-            <span aria-hidden>←</span> Back
-          </TransitionLink>
-          <div>
-            <div style={{ ...eyebrowStyle, marginBottom: 10 }}>04</div>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: "clamp(25px, 2.5vw, 42px)",
-                fontWeight: 500,
-                letterSpacing: "-0.01em",
-                lineHeight: 1.08,
-              }}
-            >
-              {INFORMATIONAL_DESIGN.title}
-            </h1>
-          </div>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 13,
-              lineHeight: 1.75,
-              fontWeight: 300,
-              color: "rgba(255,255,255,0.68)",
-            }}
-          >
-            {INFORMATIONAL_DESIGN.description}
-          </p>
           <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={eyebrowStyle}>
               {phase === "closed"
@@ -570,7 +548,7 @@ export default function InformationalDesignView() {
               {picked ? LEAFLETS[active].title : ""}
             </div>
           </div>
-        </aside>
+        </ProjectRail>
 
         {/* ── THE OBJECT ────────────────────────────────────────────── */}
         <main
@@ -580,10 +558,11 @@ export default function InformationalDesignView() {
             minWidth: 0,
             display: "flex",
             flexDirection: "column",
-            padding: "clamp(18px, 3vh, 34px) clamp(16px, 3vw, 46px)",
+            padding: "clamp(18px, 3vh, 34px) clamp(16px, 2.2vw, 32px)",
             gap: 16,
           }}
         >
+          <div className="id-row">
           <div
             ref={stageRef}
             // Handles for the measurement pass: which phase the run is in
@@ -595,7 +574,8 @@ export default function InformationalDesignView() {
             style={{
               position: "relative",
               flex: "1 1 auto",
-              minHeight: narrow ? "56vh" : "min(74vh, 560px)",
+              minHeight: narrow ? "58vh" : "min(76vh, 700px)",
+              minWidth: 0,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -956,6 +936,44 @@ export default function InformationalDesignView() {
 
           </div>
 
+          {/* THE NAMES — one per leaflet, the way you choose one: a column
+              to the right of the object, so the object gets the room. The
+              space is kept even while they are hidden: if it appeared with
+              them the stage would shrink mid-motion and re-size the jacket
+              under the leaflets that are moving in it. */}
+          <div
+            data-id-chips
+            className="id-chips"
+            style={{ pointerEvents: chipsIn ? "auto" : "none" }}
+          >
+            {LEAFLETS.map((l, i) => {
+              const on = picked && i === active;
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  data-id-chip={i}
+                  aria-pressed={on}
+                  tabIndex={chipsIn ? 0 : -1}
+                  onClick={() => choose(i)}
+                  onMouseEnter={() => hover(i, true)}
+                  onMouseLeave={() => hover(i, false)}
+                  onFocus={() => hover(i, true)}
+                  onBlur={() => hover(i, false)}
+                  style={{
+                    ...chipStyle(on),
+                    opacity: chipsIn ? 1 : 0,
+                    transform: chipsIn ? "none" : "translateX(10px)",
+                    transition: `opacity 360ms ease ${chipsIn ? i * 45 : 0}ms, transform 420ms cubic-bezier(0.22,1,0.36,1) ${chipsIn ? i * 45 : 0}ms, background 240ms ease, color 240ms ease, border-color 240ms ease`,
+                  }}
+                >
+                  {l.title}
+                </button>
+              );
+            })}
+          </div>
+          </div>
+
           <div
             style={{
               display: "flex",
@@ -995,60 +1013,28 @@ export default function InformationalDesignView() {
             )}
           </div>
 
-          {/* THE NAMES — one per leaflet, the way you choose one. The
-              space is kept even while they are hidden: if it appeared with
-              them the stage would shrink mid-motion and re-size the jacket
-              under the leaflets that are moving in it. */}
-          <div
-            data-id-chips
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              justifyContent: "center",
-              gap: 10,
-              maxWidth: 920,
-              width: "100%",
-              margin: "0 auto",
-              pointerEvents: chipsIn ? "auto" : "none",
-            }}
-          >
-            {LEAFLETS.map((l, i) => {
-              const on = picked && i === active;
-              return (
-                <button
-                  key={l.id}
-                  type="button"
-                  data-id-chip={i}
-                  aria-pressed={on}
-                  tabIndex={chipsIn ? 0 : -1}
-                  onClick={() => choose(i)}
-                  onMouseEnter={() => hover(i, true)}
-                  onMouseLeave={() => hover(i, false)}
-                  onFocus={() => hover(i, true)}
-                  onBlur={() => hover(i, false)}
-                  style={{
-                    ...chipStyle(on),
-                    opacity: chipsIn ? 1 : 0,
-                    transform: chipsIn ? "none" : "translateY(8px)",
-                    transition: `opacity 360ms ease ${chipsIn ? i * 45 : 0}ms, transform 420ms cubic-bezier(0.22,1,0.36,1) ${chipsIn ? i * 45 : 0}ms, background 240ms ease, color 240ms ease, border-color 240ms ease`,
-                  }}
-                >
-                  {l.title}
-                </button>
-              );
-            })}
-          </div>
         </main>
       </div>
 
       <style>{`
         @media (max-width: 900px) {
           .id-shell { flex-direction: column !important; }
-          .id-rail {
-            width: 100% !important;
-            border-right: none !important;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .id-row { display: flex; flex: 1 1 auto; gap: clamp(20px, 2.4vw, 40px); min-height: 0; }
+        .id-row > [data-id-phase] { flex: 1 1 auto; }
+        .id-chips {
+          flex: 0 0 clamp(190px, 15vw, 240px);
+          display: flex; flex-direction: column; justify-content: center; align-items: stretch;
+          gap: 10px;
+        }
+        .id-chips [data-id-chip] { text-align: left; }
+        @media (max-width: 1100px) {
+          .id-row { flex-direction: column; }
+          .id-chips {
+            flex: 0 0 auto; flex-direction: row; flex-wrap: wrap; justify-content: center;
+            max-width: 920px; width: 100%; margin: 0 auto;
           }
+          .id-chips [data-id-chip] { text-align: center; }
         }
         @media (max-width: 480px) {
           .id-sep { display: none; }
@@ -1067,17 +1053,6 @@ const eyebrowStyle: React.CSSProperties = {
   color: "rgba(255,255,255,0.4)",
 };
 
-const backLinkStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 12,
-  fontWeight: 500,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "rgba(255,255,255,0.62)",
-  textDecoration: "none",
-};
 
 const controlStyle: React.CSSProperties = {
   display: "inline-flex",

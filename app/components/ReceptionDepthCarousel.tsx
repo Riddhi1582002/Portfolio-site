@@ -453,7 +453,7 @@ export default function ReceptionDepthCarousel() {
         .dc-root {
           display: flex; flex-direction: column;
           gap: clamp(18px, 3vh, 34px);
-          --dc-w: min(62vw, 54vh * 16 / 9, 820px);
+          --dc-w: min(67vw, 59vh * 16 / 9, 900px);
           /* The row runs out past the page's gutter, so the pieces behind
              carry on to the edges of the screen instead of stopping at a
              margin. Exactly the shell's own padding, so it reaches the
@@ -511,7 +511,7 @@ export default function ReceptionDepthCarousel() {
         @media (max-width: 760px) {
           /* A phone has no room to show neighbours either side, so the
              piece takes the width instead and the depth carries alone. */
-          .dc-root { --dc-w: min(86vw, 46vh * 16 / 9); }
+          .dc-root { --dc-w: min(90vw, 50vh * 16 / 9); }
         }
       `}</style>
     </div>

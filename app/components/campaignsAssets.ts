@@ -85,6 +85,16 @@ export const OTHER_POSTS: CampaignItem[] = [
   { src: "/campaigns/other/24-6.jpg", w: 960, h: 720 },
   { src: "/campaigns/other/final-post.png", w: 1080, h: 1080 },
   { src: "/campaigns/other/the-satsang-project-invitation-poster-widescreen-02.png", w: 4128, h: 2304 },
+  // Supplied later (other_campaigns.zip), appended in the zip's own name
+  // order. Same files, URL-safe names.
+  { src: "/campaigns/other/added/001-b-fin.jpg", w: 1080, h: 1080 },
+  { src: "/campaigns/other/added/002.jpg", w: 1080, h: 1080 },
+  { src: "/campaigns/other/added/003-fin.jpg", w: 1080, h: 1080 },
+  { src: "/campaigns/other/added/004.jpg", w: 1080, h: 1080 },
+  { src: "/campaigns/other/added/004-c-fin.jpg", w: 1080, h: 1080 },
+  { src: "/campaigns/other/added/200.png", w: 1080, h: 1920 },
+  { src: "/campaigns/other/added/3-days-to-go.png", w: 1080, h: 1920 },
+  { src: "/campaigns/other/added/6-days.jpg", w: 1280, h: 720 },
 ];
 
 /** CAROUSELS — each supplied PDF is ONE piece; its pages are its slides,

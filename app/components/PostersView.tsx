@@ -34,7 +34,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
-import TransitionLink from "./TransitionLink";
+import ProjectRail from "./ProjectRail";
+import { GD_PROJECTS, gdBackHref } from "./graphicDesignProjects";
 import { POSTERS, POSTERS_CONTENT } from "./postersAssets";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
@@ -125,6 +126,14 @@ export default function PostersView() {
   const modeRef = useRef<Mode>("carousel");
   const [index, setIndex] = useState(0);
   const [perRow, setPerRow] = useState(6);
+  /** The poster opened large, if any. */
+  const [enlarged, setEnlarged] = useState<number | null>(null);
+  const enlargedRef = useRef<number | null>(null);
+  useEffect(() => {
+    enlargedRef.current = enlarged;
+  }, [enlarged]);
+  const bigRef = useRef<HTMLDivElement>(null);
+  const bigImgRef = useRef<HTMLImageElement>(null);
 
   const carRef = useRef<HTMLDivElement>(null);
   const ovRef = useRef<HTMLDivElement>(null);
@@ -272,9 +281,12 @@ export default function PostersView() {
     if (!d) return;
     dragRef.current = null;
     if (d.moved < 5) {
-      // A tap focuses that exact poster, from wherever the row is.
-      if (d.card !== null) aimRef.current = clampI(d.card);
-      else if (aimRef.current === null) aimRef.current = clampI(Math.round(posRef.current));
+      // A tap brings that exact poster to the front, from wherever the row
+      // is, and opens it large.
+      if (d.card !== null) {
+        aimRef.current = clampI(d.card);
+        setEnlarged(clampI(d.card));
+      } else if (aimRef.current === null) aimRef.current = clampI(Math.round(posRef.current));
       return;
     }
     aimRef.current = clampI(Math.round(posRef.current + velRef.current * 0.2));
@@ -310,7 +322,7 @@ export default function PostersView() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (modeRef.current !== "carousel" || busy.current) return;
+      if (modeRef.current !== "carousel" || busy.current || enlargedRef.current !== null) return;
       const from = Math.round(aimRef.current ?? posRef.current);
       if (e.key === "ArrowLeft") aimRef.current = clampI(from - 1);
       else if (e.key === "ArrowRight") aimRef.current = clampI(from + 1);
@@ -320,6 +332,53 @@ export default function PostersView() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // ── ONE POSTER, LARGE ────────────────────────────────────────────────
+  // Arrows either side step through the collection; the carousel behind
+  // follows, so closing lands on the poster last looked at.
+  const stepBig = useCallback((dir: 1 | -1) => {
+    const cur = enlargedRef.current;
+    if (cur === null) return;
+    const next = (cur + dir + N) % N;
+    const img = bigImgRef.current;
+    const swap = () => {
+      setEnlarged(next);
+      aimRef.current = next;
+    };
+    if (!img) return swap();
+    gsap.to(img, {
+      x: -dir * 36,
+      opacity: 0,
+      duration: 0.18,
+      ease: "power1.in",
+      onComplete: () => {
+        swap();
+        gsap.fromTo(img, { x: dir * 36, opacity: 0 }, { x: 0, opacity: 1, duration: 0.36, ease: "power2.out" });
+      },
+    });
+  }, []);
+  const closeBig = useCallback(() => {
+    const el = bigRef.current;
+    if (!el) return setEnlarged(null);
+    gsap.to(el, { opacity: 0, duration: 0.26, ease: "power1.in", onComplete: () => setEnlarged(null) });
+  }, []);
+  const bigOpen = enlarged !== null;
+  useLayoutEffect(() => {
+    if (!bigOpen) return;
+    const el = bigRef.current;
+    const img = bigImgRef.current;
+    if (el) gsap.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out" });
+    if (img) gsap.fromTo(img, { scale: 0.94, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") stepBig(1);
+      else if (e.key === "ArrowLeft") stepBig(-1);
+      else if (e.key === "Escape") closeBig();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [bigOpen, stepBig, closeBig]);
 
   // ── THE TWO VIEWS, AND THE POSTER THAT TRAVELS BETWEEN THEM ──────────
   // The view not being looked at is laid out but lifted out of the flow
@@ -501,14 +560,13 @@ export default function PostersView() {
     // margins shrinks to its content inside the site's flex body, which is
     // what left this page an 800px column on a grey ground.
     <div className="pv-outer" style={{ fontFamily: SANS }}>
-    <div className="pv-root">
-      <header className="pv-head">
-        <TransitionLink href="/work/graphic-design" className="pv-back">
-          <span aria-hidden>←</span> Back
-        </TransitionLink>
-        <div className="pv-num">{POSTERS_CONTENT.number}</div>
-        <h1 className="pv-title">{POSTERS_CONTENT.title}</h1>
-        <p className="pv-desc">{POSTERS_CONTENT.description}</p>
+      <ProjectRail
+        number={GD_PROJECTS.posters.number}
+        title={POSTERS_CONTENT.title}
+        description={POSTERS_CONTENT.description}
+        backHref={gdBackHref(GD_PROJECTS.posters)}
+          gd={GD_PROJECTS.posters}
+      >
         <nav className="pv-modes" aria-label="View">
           <button
             type="button"
@@ -527,8 +585,8 @@ export default function PostersView() {
             <span className="pv-mode-n">02</span> Overview
           </button>
         </nav>
-      </header>
-
+      </ProjectRail>
+    <div className="pv-root">
       <div className="pv-views">
         {/* ── 01 — THE CAROUSEL ─────────────────────────────────────── */}
         <section ref={carRef} className="pv-car" aria-hidden={mode !== "carousel"}>
@@ -605,31 +663,93 @@ export default function PostersView() {
         </section>
       </div>
 
+      {enlarged !== null && (
+        <div
+          ref={bigRef}
+          className="pv-big"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Poster ${POSTERS[enlarged].no}`}
+          data-pv-big={enlarged}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeBig();
+          }}
+        >
+          <button type="button" className="pv-big-close" onClick={closeBig}>
+            Close <span aria-hidden>×</span>
+          </button>
+          <button type="button" className="pv-big-arrow" aria-label="Previous poster" onClick={() => stepBig(-1)}>
+            ‹
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            ref={bigImgRef}
+            className="pv-big-img"
+            src={POSTERS[enlarged].src}
+            alt={`Poster ${POSTERS[enlarged].no}`}
+            width={POSTERS[enlarged].w}
+            height={POSTERS[enlarged].h}
+          />
+          <button type="button" className="pv-big-arrow" aria-label="Next poster" onClick={() => stepBig(1)}>
+            ›
+          </button>
+          <div className="pv-big-count">
+            {String(enlarged + 1).padStart(2, "0")} / {String(N).padStart(2, "0")}
+          </div>
+        </div>
+      )}
+
       <style>{`
-        .pv-outer { width: 100%; min-height: 100dvh; background: #000; color: #fff; overflow-x: clip; }
+        .pv-outer {
+          width: 100%; min-height: 100dvh; background: #000; color: #fff;
+          overflow-x: clip; display: flex;
+        }
+        /* The work takes everything right of the header column; its width
+           is a container, so the carousel sizes from the room it actually
+           has rather than from the whole window. */
         .pv-root {
-          padding: clamp(22px, 4vh, 48px) clamp(18px, 6vw, 96px) clamp(64px, 12vh, 150px);
-          max-width: 1500px; margin: 0 auto; overflow-x: clip;
+          flex: 1 1 auto; min-width: 0; container-type: inline-size;
+          padding: clamp(20px, 3.4vh, 38px) clamp(18px, 3vw, 48px) clamp(40px, 8vh, 110px);
+          overflow-x: clip;
         }
-        .pv-back {
-          display: inline-flex; align-items: center; gap: 8px;
-          font-size: 12px; font-weight: 500; letter-spacing: 0.1em;
-          text-transform: uppercase; color: rgba(255,255,255,0.6); text-decoration: none;
+        .pv-big {
+          position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.94);
+          display: flex; align-items: center; justify-content: center;
+          gap: clamp(16px, 3vw, 48px); padding: 56px 16px 48px;
         }
-        .pv-head {
-          display: flex; flex-direction: column; gap: 14px; max-width: 62ch;
-          padding-bottom: clamp(26px, 5vh, 60px);
+        /* The poster at its own 4:5, as large as the screen allows beside
+           its two arrows. */
+        .pv-big-img {
+          display: block; max-width: none; flex: 0 0 auto;
+          height: min(calc(100svh - 120px), (100vw - 2 * (44px + clamp(16px, 3vw, 48px)) - 32px) * 1.25);
+          width: auto; aspect-ratio: 4 / 5; border-radius: 3px;
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.07), 0 50px 120px -30px rgba(0,0,0,1);
         }
-        .pv-num { margin-top: 10px; font-size: 11px; letter-spacing: 0.2em; color: rgba(255,255,255,0.34); }
-        .pv-title {
-          margin: 0; font-size: clamp(30px, 3.4vw, 58px); font-weight: 500;
-          letter-spacing: -0.015em; line-height: 1.04;
+        .pv-big-arrow {
+          flex: 0 0 44px; width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+          background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.24);
+          color: #fff; font-size: 21px; line-height: 1; display: grid; place-items: center;
         }
-        .pv-desc {
-          margin: 0; font-size: 13.5px; line-height: 1.75; font-weight: 300;
-          color: rgba(255,255,255,0.64);
+        .pv-big-arrow:hover { background: rgba(255,255,255,0.12); }
+        @media (max-width: 600px) {
+          .pv-big-img { height: min(calc(100svh - 120px), (100vw - 32px) * 1.25); }
+          .pv-big-arrow {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            background: rgba(0,0,0,0.55); z-index: 1;
+          }
+          .pv-big-arrow[aria-label="Previous poster"] { left: 8px; }
+          .pv-big-arrow[aria-label="Next poster"] { right: 8px; }
         }
-        .pv-modes { display: flex; gap: clamp(18px, 2.4vw, 32px); margin-top: 12px; }
+        .pv-big-close {
+          position: absolute; top: 16px; right: clamp(16px, 3vw, 40px);
+          background: none; border: 0; cursor: pointer; font: inherit; color: rgba(255,255,255,0.8);
+          font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;
+        }
+        .pv-big-count {
+          position: absolute; bottom: 16px; left: 0; right: 0; text-align: center;
+          font-size: 11px; letter-spacing: 0.18em; color: rgba(255,255,255,0.45);
+        }
+        .pv-modes { display: flex; gap: clamp(18px, 2.4vw, 32px); margin-top: 4px; }
         .pv-mode {
           border: 0; background: none; padding: 4px 0; cursor: pointer; font: inherit;
           font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase;
@@ -645,13 +765,28 @@ export default function PostersView() {
         /* ONE MEASURE DRIVES THE STAGE: the poster's height is set from
            whichever axis runs out first, and the stage is derived from it,
            so the centre poster is never taller than the box holding it. */
-        .pv-car { --pv-h: min(54svh, 74vw * 1.25, 720px); }
+        /* As tall as the page allows, and never so wide that the posters
+           either side stop showing: the centre poster is at most a little
+           over two fifths of the room beside the header column. */
+        .pv-car { --pv-h: min(78svh, 64cqw, 1000px); }
+        @media (min-width: 901px) {
+          /* The carousel sits in the middle of the page's height, not at
+             its top with an empty band beneath it. */
+          .pv-car {
+            min-height: calc(100dvh - clamp(20px, 3.4vh, 38px) - clamp(40px, 8vh, 110px));
+            display: flex; flex-direction: column; justify-content: center;
+          }
+        }
+        @media (max-width: 900px) {
+          .pv-outer { flex-direction: column; }
+          .pv-car { --pv-h: min(60svh, 92cqw); }
+        }
         .pv-stage {
           position: relative; height: calc(var(--pv-h) + 24px);
           perspective: 1600px; perspective-origin: 50% 50%;
           transform-style: preserve-3d; touch-action: pan-y;
           user-select: none; -webkit-user-select: none; cursor: grab; overflow: hidden;
-          margin-inline: calc(-1 * clamp(18px, 6vw, 96px));
+          margin-inline: calc(-1 * clamp(18px, 3vw, 48px));
         }
         .pv-stage:active { cursor: grabbing; }
         .pv-item {

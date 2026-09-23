@@ -27,7 +27,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
-import TransitionLink from "./TransitionLink";
+import ProjectRail from "./ProjectRail";
+import { GD_PROJECTS, gdBackHref } from "./graphicDesignProjects";
 import LogosStill from "./LogosStill";
 import { LOGOS, LOGO_PROJECTS } from "./logosAssets";
 
@@ -146,19 +147,19 @@ export default function LogosView() {
     <div className="relative w-full bg-black text-white" style={{ fontFamily: SANS }}>
       <div className="lg-shell">
         {/* ── LEFT: the rail ──────────────────────────────────────── */}
-        <aside className="lg-rail">
-          <TransitionLink href="/work/graphic-design" style={backLinkStyle}>
-            <span aria-hidden>←</span> Back
-          </TransitionLink>
-          <div className="lg-num">05</div>
-          <h1 className="lg-title">{LOGOS.title}</h1>
-          <p className="lg-desc">{LOGOS.description}</p>
+        <ProjectRail
+          number={GD_PROJECTS.logos.number}
+          title={LOGOS.title}
+          description={LOGOS.description}
+          backHref={gdBackHref(GD_PROJECTS.logos)}
+          gd={GD_PROJECTS.logos}
+        >
           <div className="lg-rule" />
           <p className="lg-note">{LOGOS.note}</p>
           <div className="lg-count">
             {String(active + 1).padStart(2, "0")} / {String(LOGO_PROJECTS.length).padStart(2, "0")}
           </div>
-        </aside>
+        </ProjectRail>
 
         {/* ── RIGHT: the work ─────────────────────────────────────── */}
         <main className="lg-main">
@@ -236,26 +237,11 @@ export default function LogosView() {
 
       <style>{`
         .lg-shell { display: flex; min-height: 100dvh; }
-        .lg-rail {
-          width: clamp(240px, 24vw, 360px);
-          flex: 0 0 auto;
-          border-right: 1px solid rgba(255,255,255,0.07);
-          padding: clamp(22px, 4vh, 44px) clamp(20px, 2.4vw, 40px);
-          display: flex; flex-direction: column; gap: 14px;
-        }
-        .lg-num {
-          margin-top: 18px; font-size: 11px; letter-spacing: 0.18em;
-          color: rgba(255,255,255,0.34);
-        }
-        .lg-title {
-          margin: 0; font-size: clamp(30px, 3.2vw, 54px); font-weight: 500;
-          letter-spacing: -0.015em; line-height: 1.04;
-        }
-        .lg-desc, .lg-note {
+        .lg-note {
           margin: 0; font-size: 13.5px; line-height: 1.75; font-weight: 300;
           color: rgba(255,255,255,0.64);
         }
-        .lg-rule { width: 46px; height: 1px; background: rgba(255,255,255,0.22); margin: 6px 0; }
+        .lg-rule { width: 46px; height: 1px; background: rgba(255,255,255,0.22); }
         .lg-count {
           margin-top: auto; font-size: 11px; letter-spacing: 0.18em;
           color: rgba(255,255,255,0.34);
@@ -318,8 +304,6 @@ export default function LogosView() {
         .lg-arrows button:disabled { opacity: 0.3; cursor: default; }
         @media (max-width: 900px) {
           .lg-shell { flex-direction: column; }
-          .lg-rail { width: 100%; border-right: none;
-            border-bottom: 1px solid rgba(255,255,255,0.07); }
           .lg-count { margin-top: 8px; }
         }
         @media (prefers-reduced-motion: reduce) {
@@ -330,14 +314,3 @@ export default function LogosView() {
   );
 }
 
-const backLinkStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 12,
-  fontWeight: 500,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase",
-  color: "rgba(255,255,255,0.6)",
-  textDecoration: "none",
-};
