@@ -63,11 +63,19 @@ const GAPS = [1.2, 1, 1.5, 1.9, 1, 1.9, 1.1, 1.4, 1, 1.3, 1.8];
 const OFFSETS = [0.14, -0.28, 0.24, -0.1, -0.04, 0.05, 0.28, -0.2, 0.08, -0.3, 0.18];
 /** The wall's own tilt — a plane seen at an angle, not a flat row. */
 const TILT = "rotateX(9deg) rotateZ(-5deg) scale(1.1)";
-/** How far the wall curves towards the reader, 0 = flat. */
-const CURVE = 0.4;
-/** The lens. Never shorter than the wall's own radius, so the pieces the
- *  curve brings forward at the ends grow by a few percent, not a fifth. */
-const lens = (w: number) => Math.max(1300, w * 0.9);
+/** How far the wall falls AWAY from the reader towards its ends, 0 = flat.
+ *  A convex arc: the centre is nearest and largest, and the pieces to
+ *  either side recede into depth and turn away with the surface, so the
+ *  whole wall reads as one plane going back towards a vanishing point. */
+const RECEDE = 2.5;
+/** How far forward the piece at the centre stands, px. */
+const NEAR = 60;
+/** How much of the surface's own turn each piece takes — enough to follow
+ *  the wall, not so much that a strip is foreshortened out of reading. */
+const TURN = 0.85;
+/** The lens: short enough for the depth to read as perspective, never so
+ *  short that the nearest piece distorts. */
+const lens = (w: number) => Math.max(950, w * 0.82);
 /** The drift when nothing is touching it, px/s. */
 const DRIFT = 26;
 /** How long after the last input the drift comes back, ms. */
@@ -134,7 +142,7 @@ export default function AiComicsView() {
       x += w + gap * GAPS[i];
     });
     const L1 = x;
-    const copies = Math.max(2, Math.ceil((box.w * 1.6) / L1) + 1);
+    const copies = Math.max(2, Math.ceil((box.w * 2) / L1) + 1);
     const items: Placed[] = [];
     for (let c = 0; c < copies; c++) {
       for (const o of one) items.push({ ...o, key: `${c}-${o.i}`, base: o.base + c * L1 });
@@ -149,7 +157,10 @@ export default function AiComicsView() {
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const W = box.w;
-    const R = Math.max(W * 0.9, 640);
+    // A wide arc, so no piece turns further than about thirty degrees
+    // before it has left the frame, and neighbours never slide over each
+    // other as the surface turns faster than they do.
+    const R = Math.max(W * 1.4, 900);
     const { items, L } = layout;
     const place = () => {
       const m = motion.current;
@@ -159,18 +170,18 @@ export default function AiComicsView() {
         const it = items[k];
         let x = (((it.base - m.s) % L) + L) % L;
         if (x > L / 2) x -= L;
-        // The plane is turned, so its ends reach further than the frame's
-        // own half-width: culled with room to spare.
-        if (Math.abs(x) > W * 0.62 + it.w / 2 + 80) {
+        // The ends recede and shrink, so more of the wall fits the frame
+        // than its flat width: culled with room to spare.
+        if (Math.abs(x) > W * 0.85 + it.w / 2 + 80) {
           if (el.style.visibility !== "hidden") el.style.visibility = "hidden";
           continue;
         }
         if (el.style.visibility !== "visible") el.style.visibility = "visible";
         const th = x / R;
         const X = R * Math.sin(th);
-        const Z = R * (1 - Math.cos(th)) * CURVE;
+        const Z = NEAR - R * (1 - Math.cos(th)) * RECEDE;
         const n = Math.min(1, Math.abs(x) / (W / 2));
-        el.style.transform = `translate3d(${(X - it.w / 2).toFixed(2)}px, ${it.y.toFixed(2)}px, ${Z.toFixed(2)}px) rotateY(${((-th * 180) / Math.PI) * 0.85}deg)`;
+        el.style.transform = `translate3d(${(X - it.w / 2).toFixed(2)}px, ${it.y.toFixed(2)}px, ${Z.toFixed(2)}px) rotateY(${((th * 180) / Math.PI) * TURN}deg)`;
         el.style.opacity = (1 - 0.5 * n * n).toFixed(3);
       }
     };

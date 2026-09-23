@@ -168,7 +168,10 @@ const STUDIO_FLOAT_Y = [0.14, -0.06, 0.2, 0.02, 0.1, -0.1, 0.16, -0.02];
  *  the sides and top, open at the bottom, where the floor, the pool of
  *  light and the stones are — the air under the group is what makes it
  *  float. */
-const STUDIO_FIT = { side: 0.055, top: 0.06, bottom: 0.17 };
+const STUDIO_FIT = { side: 0.08, top: 0.1, bottom: 0.2 };
+/** How far past the card's own face the studio case is drawn: enough that
+ *  the camera's slight rise never shows its edge inside the card. */
+const CASE_OVERSCAN = 1.06;
 /** The supplied stone's own largest half-extent, in its file's units. */
 const ROCK_HALF = 5.02;
 
@@ -268,7 +271,9 @@ function buildLightbox(
   scene: import("three").Scene,
   opt: SpatialCardOptions
 ) {
-  const half = opt.lightbox as number;
+  // In the studio the case runs past the card's edges (see CASE_OVERSCAN),
+  // so the card's edge is the case's own back and no rim is left inside.
+  const half = (opt.lightbox as number) * (opt.studio ? CASE_OVERSCAN : 1);
   // Proportions taken off the reference: a generous corner, a rim thin
   // enough to read as a light rather than a border, and the panel set well
   // back so the work stands clear of it.
@@ -414,6 +419,14 @@ export function mountSpatialCard<T extends SpatialCardObject>(
 ): () => void {
   const opt = { ...DEFAULT_SPATIAL_CARD_OPTIONS, ...options };
   opt.studio = !!opt.studio && opt.lightbox != null;
+  // THE CASE IS THE CARD. On the ring the case used to stand inside the
+  // card at about two thirds of its width, leaving a dark margin and a
+  // second, smaller box inside the card's own edge. In the studio its
+  // opening is now the card's whole face at the case's depth — so the fit,
+  // the stones and the haze, which all measure from it, fill the card.
+  if (opt.studio) {
+    opt.lightbox = (opt.camZ + 1.62) * Math.tan((opt.fov * Math.PI) / 360);
+  }
   let disposed = false;
 
   const renderer = new THREE.WebGLRenderer({

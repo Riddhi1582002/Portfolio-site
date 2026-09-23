@@ -227,6 +227,23 @@ export default function ArcCarousel({
     pubActiveRef.current = pubActive;
   }, [pubActive]);
 
+  // RESTORED FROM THE BACK/FORWARD CACHE, the page comes back exactly as
+  // it was left — mid-exit: the opened card still grown, still promoted,
+  // and the carousel still marked as transitioning, so it ignored clicks.
+  // Put it back to rest before the aperture opens on it.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      transitioningRef.current = false;
+      setTransitioningIndex(null);
+      for (const el of Object.values(innerRefs.current)) {
+        if (el) gsap.set(el, { scale: 1, y: 0 });
+      }
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
   useEffect(() => {
     const setHover = (index: number, on: boolean) => {
       cardRefs.current[index]?.style.setProperty("--pub-hover", on ? "1" : "0");
@@ -302,12 +319,30 @@ export default function ArcCarousel({
       // page shuts behind it while it covers the view, and the project
       // loads as it leaves. Anywhere without the moth (the category page),
       // the aperture below, as before.
+      let went = false;
+      const go = () => {
+        if (went) return;
+        went = true;
+        window.location.assign(holder.href);
+      };
       if (
-        mothFlyBy(() => {
-          pageCutOut();
-          window.setTimeout(() => window.location.assign(holder.href), 220);
-        })
+        mothFlyBy(
+          // Closed behind the wings at the pass, so the frame is never
+          // seen to shut; the page itself is only left once the moth has
+          // flown out of the picture — navigating earlier unloaded the
+          // document mid-flight and the creature vanished at full size.
+          () => pageCutOut(),
+          { onDone: go }
+        )
       ) {
+        // Fetched while the moth is still in the air, so the project is
+        // ready to open the moment it has gone.
+        const pre = document.createElement("link");
+        pre.rel = "prefetch";
+        pre.href = holder.href;
+        document.head.appendChild(pre);
+        // If the moth is taken off the page mid-flight, still go.
+        window.setTimeout(go, 1600);
         if (inner) {
           gsap.to(inner, { scale: 1.12, duration: 0.5, ease: "power2.out", transformOrigin: "50% 50%" });
         }

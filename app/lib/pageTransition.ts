@@ -105,6 +105,35 @@ export function takeRevealIntent(): boolean {
   }
 }
 
+// ── HOLDING THE REVEAL ──────────────────────────────────────────────────
+// A page that arrives closed but must rebuild what it is returning to
+// (the homepage, back to a card on the ring) can keep the aperture shut
+// until that scene has actually drawn, so the reader never watches it
+// being put together. It takes a hold in its own mount effect — which runs
+// before PageReveal's, the reveal being rendered after the page — and
+// releases it when ready. Always time-capped by the caller.
+let holds = 0;
+let waiting: (() => void) | null = null;
+export function holdReveal(): () => void {
+  holds += 1;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    holds -= 1;
+    if (holds === 0 && waiting) {
+      const go = waiting;
+      waiting = null;
+      go();
+    }
+  };
+}
+/** Runs `then` at once, or as soon as every hold has been released. */
+export function whenRevealFree(then: () => void): void {
+  if (holds === 0) then();
+  else waiting = then;
+}
+
 /**
  * The second half: the page is already closed when it paints, and the
  * aperture opens it. Same centre line, opposite direction, so the move

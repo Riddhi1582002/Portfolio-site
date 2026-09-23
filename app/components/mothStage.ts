@@ -102,7 +102,14 @@ export function setMothReturnDolly(scale: number) {
 // which is where the caller opens the project behind it. Only while a moth
 // is actually on the page and loaded; otherwise this answers false and the
 // caller does what it always did.
-export type MothFlyBy = { start: number; dur: number; onCovered: () => void; fired: boolean };
+export type MothFlyBy = {
+  start: number;
+  dur: number;
+  onCovered: () => void;
+  /** Once the creature has left the frame. */
+  onDone?: () => void;
+  fired: boolean;
+};
 export const mothFlight: { alive: boolean; flyBy: MothFlyBy | null } = {
   alive: false,
   flyBy: null,
@@ -112,13 +119,23 @@ if (typeof window !== "undefined") {
   (window as unknown as { __mothFlight?: typeof mothFlight }).__mothFlight = mothFlight;
 }
 /** Share of the flight at which the moth covers the frame. */
-export const FLYBY_COVER_AT = 0.52;
-export function mothFlyBy(onCovered: () => void, dur = 0.95): boolean {
+export const FLYBY_COVER_AT = 0.56;
+export function mothFlyBy(
+  onCovered: () => void,
+  opts: { onDone?: () => void; dur?: number } = {}
+): boolean {
+  const dur = opts.dur ?? 1.1;
   if (!mothFlight.alive || mothFlight.flyBy) return false;
   if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     return false;
   }
-  mothFlight.flyBy = { start: performance.now(), dur: dur * 1000, onCovered, fired: false };
+  mothFlight.flyBy = {
+    start: performance.now(),
+    dur: dur * 1000,
+    onCovered,
+    onDone: opts.onDone,
+    fired: false,
+  };
   return true;
 }
 

@@ -848,6 +848,11 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       let flyFrom: import("three").Vector3 | null = null;
       let flyMid: import("three").Vector3 | null = null;
       let flyEnd: import("three").Vector3 | null = null;
+      // The size ceiling in force as the flight began, eased out from.
+      let flyCap0 = 1;
+      let flyBoost = 1;
+      let lastCapped = 1;
+      const target0 = () => sizePx() * NOMINAL_DEPTH;
       // The window also leaves the page for the pass: the page itself is
       // what closes behind the creature, so a canvas inside it would be
       // closed away with it. It goes back to its own place afterwards.
@@ -1316,57 +1321,83 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         // frame of travel — up to twenty pixels at full speed.
         // ── THE FLY-ACROSS (see mothFlyBy) ─────────────────────────────
         // A scripted path takes over from wherever the creature is: in
-        // towards the lens, past it slightly off-centre — close enough to
-        // fill the frame — and on behind the camera. Position and velocity
-        // are the path's, so the wings, the heading and the light carry on
-        // as they do in any flight; nothing is placed, and nothing resets.
+        // towards the lens, past it just off-centre — close enough to fill
+        // the frame — and out of the side of the frame, still in front of
+        // the lens, so it leaves the picture rather than blinking out at
+        // the near plane. Position and velocity are the path's, so the
+        // wings, the heading and the light carry on as in any flight.
+        //
+        // The path is laid out in SCREEN position and LOG depth. Apparent
+        // size goes as 1/depth, so a path straight in depth spends most of
+        // its growth in the last few frames — the moth "pops" to full
+        // size. In log depth it grows at an even rate, is largest at the
+        // pass (where depth has its minimum and zero rate), and shrinks as
+        // it leaves. The two halves share one physical velocity at the
+        // pass, so there is no jerk where they meet.
         const fb = mothFlight.flyBy;
         let flying = false;
+        let flyCap = 1;
         if (fb) {
+          const W = target0();
           if (!flyFrom) {
-            flyFrom = pos.clone();
-            const side = pos.x >= 0 ? -1 : 1;
-            // THE PASS: just beyond the lens' near limit and a hair off
-            // centre, where the creature's own wingspan fills the frame.
-            const passDepth = Math.max(NEAR_CLIP_PX * 1.3, 0.035 * D0);
-            flyMid = new THREE.Vector3(side * 0.012 * D0, -0.006 * D0, -passDepth);
-            // THE EXIT: past the camera, to the far side — out of the
-            // frame the way something that flew past you leaves it.
-            flyEnd = new THREE.Vector3(side * 0.6 * D0, 0.04 * D0, 0.25 * D0);
+            const d0 = Math.max(NEAR_CLIP_PX * 2, -pos.z);
+            const k0 = D0 / d0;
+            flyFrom = new THREE.Vector3(vw / 2 + pos.x * k0, vh / 2 - pos.y * k0, Math.log(d0));
+            const side = flyFrom.x >= vw / 2 ? -1 : 1;
+            // Close enough that the wings span a quarter more than the
+            // frame, or as close as the near limit allows — and where that
+            // limit stops it short, the difference is made up in scale,
+            // eased in over the approach with the rest of the growth.
+            const COVER = 1.25 * vw;
+            const passDepth = Math.max(NEAR_CLIP_PX * 1.3, (W * D0) / COVER);
+            flyBoost = Math.max(1, COVER / ((W * D0) / passDepth));
+            flyMid = new THREE.Vector3(vw / 2 - side * 0.04 * vw, vh * 0.53, Math.log(passDepth));
+            // Out of frame by more than its own half-span, a little
+            // further off than the pass so it is receding as it goes.
+            const dE = passDepth * 2.4;
+            const spanE = ((W * D0) / dE) * flyBoost;
+            flyEnd = new THREE.Vector3(vw / 2 + side * (vw / 2 + spanE * 0.8), vh * 0.44, Math.log(dE));
+            flyCap0 = lastCapped;
             resizeForFlight(true);
           }
-          const u = Math.min(1, (now - fb.start) / fb.dur);
-          // Two Hermite segments meeting at the pass with ONE velocity, so
-          // the path is continuous in position and speed — in, past, out —
-          // and never stops in front of the lens.
-          const vPass = tmpA.copy(flyEnd!).sub(flyFrom).multiplyScalar(0.9);
-          const herm = (
-            out: import("three").Vector3,
-            p0: import("three").Vector3,
-            v0: import("three").Vector3,
-            p1: import("three").Vector3,
-            v1: import("three").Vector3,
-            t: number
-          ) => {
+          const u = clamp((now - fb.start) / fb.dur, 0, 1);
+          const C = FLYBY_COVER_AT;
+          // Pass velocity, per unit of the whole flight: across the frame
+          // at the exit's pace, and no change of depth at the closest point.
+          const vx = ((flyEnd!.x - flyMid!.x) / (1 - C)) * 0.9;
+          const vy = ((flyEnd!.y - flyMid!.y) / (1 - C)) * 0.9;
+          const herm1 = (p0: number, v0: number, p1: number, v1: number, t: number) => {
             const t2 = t * t;
             const t3 = t2 * t;
-            return out
-              .set(0, 0, 0)
-              .addScaledVector(p0, 2 * t3 - 3 * t2 + 1)
-              .addScaledVector(v0, t3 - 2 * t2 + t)
-              .addScaledVector(p1, -2 * t3 + 3 * t2)
-              .addScaledVector(v1, t3 - t2);
+            return (
+              (2 * t3 - 3 * t2 + 1) * p0 + (t3 - 2 * t2 + t) * v0 + (-2 * t3 + 3 * t2) * p1 + (t3 - t2) * v1
+            );
           };
-          const prev = pos.clone();
-          if (u < FLYBY_COVER_AT) {
-            const v0 = tmpB.copy(flyMid!).sub(flyFrom).multiplyScalar(0.4);
-            herm(pos, flyFrom, v0, flyMid!, vPass, u / FLYBY_COVER_AT);
+          let sx: number, sy: number, lz: number;
+          if (u < C) {
+            const t = u / C;
+            // Tangents in this segment's own time: physical velocity × C.
+            sx = herm1(flyFrom.x, (flyMid!.x - flyFrom.x) * 0.5, flyMid!.x, vx * C, t);
+            sy = herm1(flyFrom.y, (flyMid!.y - flyFrom.y) * 0.5, flyMid!.y, vy * C, t);
+            lz = herm1(flyFrom.z, (flyMid!.z - flyFrom.z) * 0.6, flyMid!.z, 0, t);
           } else {
-            herm(pos, flyMid!, vPass, flyEnd!, vPass, (u - FLYBY_COVER_AT) / (1 - FLYBY_COVER_AT));
+            const t = (u - C) / (1 - C);
+            const T = 1 - C;
+            sx = herm1(flyMid!.x, vx * T, flyEnd!.x, flyEnd!.x - flyMid!.x, t);
+            sy = herm1(flyMid!.y, vy * T, flyEnd!.y, flyEnd!.y - flyMid!.y, t);
+            lz = herm1(flyMid!.z, 0, flyEnd!.z, (flyEnd!.z - flyMid!.z) * 1.2, t);
           }
+          const d = Math.exp(lz);
+          const prev = tmpA.copy(pos);
+          pos.set(((sx - vw / 2) * d) / D0, (-(sy - vh / 2) * d) / D0, -d);
           vel.copy(pos).sub(prev).divideScalar(Math.max(dt, 1e-3));
+          // The ordinary size ceiling is let go of gradually over the
+          // approach, never in one frame.
+          const r = clamp(u / (C * 0.75), 0, 1);
+          const e = r * r * (3 - 2 * r);
+          flyCap = Math.pow(flyCap0, 1 - e) * Math.pow(flyBoost, e);
           flying = true;
-          if (!fb.fired && u >= FLYBY_COVER_AT) {
+          if (!fb.fired && u >= C) {
             fb.fired = true;
             fb.onCovered();
           }
@@ -1374,6 +1405,7 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
             mothFlight.flyBy = null;
             flyFrom = null;
             resizeForFlight(false);
+            fb.onDone?.();
           }
         }
         const nowDepth = -pos.z;
@@ -1452,7 +1484,8 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         );
         // In the fly-across it is simply as big as it is: the pass is the
         // one time it is meant to fill the frame.
-        const capped = flying ? 1 : allowed / Math.max(1e-3, apparent);
+        const capped = flying ? flyCap : allowed / Math.max(1e-3, apparent);
+        lastCapped = capped;
         moth.scale.setScalar(world * capped);
         moth.position.copy(pos);
         moth.visible = nowDepth > NEAR_CLIP_PX;

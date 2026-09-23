@@ -31,24 +31,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import InfiniteCanvas, { PIECES, type Piece } from "./InfiniteCanvas";
 import TransitionLink from "./TransitionLink";
+import ArtMediumBar, { isArtMedium } from "./ArtMediumBar";
 import { HOME_FINAL_HREF, backStyle } from "./CategoryStage";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 
-/** In the order the brief lists them, not by how many pieces each holds:
- *  this is a contents page, and a contents page keeps its own order. */
-const MEDIUMS = [
-  "Graphite/Charcoal",
-  "Pen art",
-  "Oils",
-  "Acrylics",
-  "Soft pastels",
-  "Digital art",
-] as const;
-
 export default function ArtCategoryView() {
   const [viewport, setViewport] = useState({ vw: 1440, vh: 900 });
   const [medium, setMedium] = useState<string | null>(null);
+  // ?medium=… opens straight on that medium's collection — how the bar on
+  // the homepage's own gallery hands over to this page.
+  useEffect(() => {
+    const m = new URLSearchParams(window.location.search).get("medium");
+    if (m && isArtMedium(m)) {
+      const id = requestAnimationFrame(() => setMedium(m));
+      return () => cancelAnimationFrame(id);
+    }
+  }, []);
   const [focus, setFocus] = useState<Piece | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -235,32 +234,13 @@ export default function ArtCategoryView() {
       )}
 
       {/* ── THE BAR. Above both, because it is what switches them. ──── */}
-      <nav className="ag-bar" aria-label="Mediums">
-        <button
-          type="button"
-          className={`ag-tab${medium === null ? " on" : ""}`}
-          onClick={() => {
-            setMedium(null);
-            setFocus(null);
-          }}
-        >
-          Gallery
-        </button>
-        <span className="ag-sep" aria-hidden />
-        {MEDIUMS.map((m) => (
-          <button
-            key={m}
-            type="button"
-            className={`ag-tab${medium === m ? " on" : ""}`}
-            onClick={() => {
-              setMedium(m);
-              setFocus(null);
-            }}
-          >
-            {m}
-          </button>
-        ))}
-      </nav>
+      <ArtMediumBar
+        active={medium}
+        onSelect={(m) => {
+          setMedium(m);
+          setFocus(null);
+        }}
+      />
 
       <TransitionLink href={HOME_FINAL_HREF} style={backStyle}>
         <span aria-hidden>←</span> Back
@@ -283,43 +263,6 @@ export default function ArtCategoryView() {
       )}
 
       <style>{`
-        .ag-bar {
-          /* ABOVE the Back link, which sits at z-index 40 and is rendered
-             after this, so at equal depth it won and swallowed the clicks
-             on the tabs it overlapped. */
-          position: absolute; z-index: 41;
-          top: clamp(16px, 2.4vh, 30px); left: 50%; transform: translateX(-50%);
-          display: flex; align-items: center; gap: clamp(10px, 1.2vw, 20px);
-          padding: 8px clamp(12px, 1.4vw, 20px);
-          max-width: min(94vw, 1180px);
-          overflow-x: auto; scrollbar-width: none;
-          border-radius: 999px;
-          background: rgba(10,10,12,0.66);
-          backdrop-filter: blur(14px);
-          border: 1px solid rgba(255,255,255,0.09);
-        }
-        .ag-bar::-webkit-scrollbar { display: none; }
-        /* The centred bar keeps its own width, so on anything narrower
-           than about a small laptop its left edge reaches back past where
-           the Back link sits and the two collide — measured overlapping at
-           768 and at 740 landscape. Stacking order stops it swallowing the
-           clicks; only moving it off that line stops them sharing it. */
-        @media (max-width: 860px) {
-          .ag-bar { top: calc(clamp(18px, 3.5vh, 34px) + 32px); }
-        }
-        .ag-tab {
-          flex: 0 0 auto;
-          border: 0; background: none; padding: 4px 2px; cursor: pointer;
-          font: inherit; font-size: 11px; font-weight: 500;
-          letter-spacing: 0.12em; text-transform: uppercase;
-          color: rgba(255,255,255,0.46);
-          transition: color .3s ease;
-          white-space: nowrap;
-        }
-        .ag-tab:hover { color: rgba(255,255,255,0.82); }
-        .ag-tab.on { color: #fff; }
-        .ag-sep { flex: 0 0 auto; width: 1px; height: 13px; background: rgba(255,255,255,0.16); }
-
         /* A SHEET OVER THE FIELD, opaque, so the grid is read against the
            same black and nothing of the scatter shows through it. */
         .ag-sheet {

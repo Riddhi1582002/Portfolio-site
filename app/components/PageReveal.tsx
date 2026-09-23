@@ -14,7 +14,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { pageIn, takeRevealIntent, REVEAL_ATTR } from "../lib/pageTransition";
+import { pageIn, takeRevealIntent, whenRevealFree, REVEAL_ATTR } from "../lib/pageTransition";
 
 export default function PageReveal() {
   // Keyed on the path, not mounted once: this lives in the root layout,
@@ -26,7 +26,9 @@ export default function PageReveal() {
   useEffect(() => {
     const closed = document.documentElement.getAttribute(REVEAL_ATTR) === "1";
     if (!takeRevealIntent() && !closed) return;
-    pageIn();
+    // A page rebuilding what it returns to may hold the aperture shut
+    // until that is drawn (see holdReveal).
+    whenRevealFree(pageIn);
   }, [pathname]);
   // RESTORED FROM THE BACK/FORWARD CACHE. Going Back to a page the browser
   // kept whole brings it back exactly as it was left — which is closed,

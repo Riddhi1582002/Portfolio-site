@@ -123,14 +123,13 @@ export const RECEPTION_PIECES: ReceptionPiece[] = [
     h: 1080,
   },
   {
-    // On R2 as exactly "Diwali.mp4", at the bucket root — that exact key
-    // first, then the TV/ folder the other screen videos use, by the same
-    // native <source> fallback. A 404 on the TV/ guess used to be the
-    // first thing the browser met for this piece.
+    // The supplied working URL, exactly: lowercase "diwali.mp4" at the
+    // bucket root. R2 keys are case-sensitive, so "Diwali.mp4" never
+    // resolved.
     id: "rs-diwali",
     kind: "video",
-    src: r2("Diwali.mp4"),
-    sources: [r2("Diwali.mp4"), r2("TV/Diwali.mp4")],
+    src: `${R2_BASE}/diwali.mp4`,
+    sources: [`${R2_BASE}/diwali.mp4`],
     w: 1920,
     h: 1080,
   },

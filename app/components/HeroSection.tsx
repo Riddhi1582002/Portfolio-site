@@ -41,9 +41,11 @@ import ReelVideoViewer from "./ReelVideoViewer";
 import CordSection from "./CordSection";
 import PencilSection, { IRIS_HANDOFF_AT } from "./PencilSection";
 import InfiniteCanvas from "./InfiniteCanvas";
+import ArtMediumBar from "./ArtMediumBar";
 import NarrationLine from "./NarrationLine";
 import { easeInPow, easeOutSine } from "../lib/motion";
 import MothLayer from "./MothLayer";
+import { holdReveal, pageOut } from "../lib/pageTransition";
 import { mothFlyBy } from "./mothStage";
 import { preloadBulb } from "./BulbModel";
 import { setMothCamera, type MothPhase } from "./mothStage";
@@ -657,6 +659,19 @@ export default function HeroSection() {
       raf = null;
       const el = trackRef.current;
       if (!el) return;
+      // NOT THROUGH A TRANSFORMED FRAME. While the page aperture opens or
+      // closes, #page-frame is scaled, and the track's on-screen rect —
+      // its height and its top — is scaled with it. Read then, the
+      // progress jumped by a few percent, enough to carry the ring out of
+      // its beat: returning to a card, the ring unmounted as the page
+      // opened and was rebuilt a moment later. The last true reading holds
+      // until the frame is plain again.
+      const frameEl = document.getElementById("page-frame");
+      const tf = frameEl?.style.transform;
+      if (tf && tf !== "none") {
+        raf = requestAnimationFrame(measure);
+        return;
+      }
       const rect = el.getBoundingClientRect();
       const total = rect.height - window.innerHeight;
       const scrolled = -rect.top;
@@ -857,6 +872,24 @@ export default function HeroSection() {
     if (params.has(HOME_GD_PARAM) && Number.isInteger(gd) && gd >= 0 && gd < 8) {
       const p = REELS_SPAN_END + ringCardProgress(gd) * (CORD_SPAN_END - REELS_SPAN_END);
       let raf = 0;
+      // BACK FROM A PROJECT: the page stays shut until the ring is drawn
+      // at this card — the bulb loaded, the card mounted and its
+      // neighbours' compositions arrived — so the return opens on the
+      // finished scene instead of on it being rebuilt. Capped, so a slow
+      // asset can delay the reveal but never withhold it.
+      const release = holdReveal();
+      const cap = window.setTimeout(release, 1500);
+      let settle = 0;
+      let bulbReady = false;
+      void preloadBulb().then(() => {
+        bulbReady = true;
+      });
+      const poll = window.setInterval(() => {
+        if (!bulbReady || !document.querySelector(`[data-arc-card="${gd}"]`)) return;
+        window.clearInterval(poll);
+        // The card compositions fade in over ~420ms once mounted.
+        settle = window.setTimeout(release, 460);
+      }, 30);
       const place = () => {
         const el = trackRef.current;
         if (!el) return;
@@ -875,7 +908,13 @@ export default function HeroSection() {
       raf = requestAnimationFrame(() => {
         raf = requestAnimationFrame(place);
       });
-      return () => cancelAnimationFrame(raf);
+      return () => {
+        cancelAnimationFrame(raf);
+        window.clearInterval(poll);
+        window.clearTimeout(cap);
+        window.clearTimeout(settle);
+        release();
+      };
     }
     const home = params.get(HOME_FINAL_PARAM);
     if (home === HOME_FINAL_VALUE) {
@@ -2070,6 +2109,21 @@ export default function HeroSection() {
               // scrolling with nothing behind it, before the real artwork
               // this component draws ever appeared.
               visible={scrollP > IRIS_HANDOFF_SCROLL_P}
+            />
+            {/* The gallery's mediums, as on /work/art — shown once the
+                pull-back has settled on the field. A medium opens its
+                collection there. */}
+            <ArtMediumBar
+              active={null}
+              onSelect={(m) => {
+                if (!m) return;
+                const href = `${HOME_SECTION_HREF.art}?medium=${encodeURIComponent(m)}`;
+                pageOut(() => window.location.assign(href));
+              }}
+              style={{
+                opacity: clamp01((canvasP - 0.88) / 0.1),
+                pointerEvents: canvasP > 0.95 ? "auto" : "none",
+              }}
             />
           </div>
         )}

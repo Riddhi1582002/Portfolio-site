@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import CategoryStage from "./CategoryStage";
 import CordSection from "./CordSection";
 import { preloadBulb } from "./BulbModel";
+import { holdReveal } from "../lib/pageTransition";
 import { HOME_GD_PARAM, isGdDirect, ringCardProgress } from "./graphicDesignProjects";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
@@ -69,7 +70,29 @@ export default function GraphicDesignCategoryView() {
   useEffect(() => {
     if (isGdDirect()) {
       const id = requestAnimationFrame(() => setDirect(true));
-      return () => cancelAnimationFrame(id);
+      // Back from a project to a card: shut until the ring has drawn at
+      // that card (see holdReveal), capped so it can never withhold it.
+      const k = Number(new URLSearchParams(window.location.search).get("card"));
+      if (!Number.isInteger(k) || k < 0 || k >= ARC_CARD_COUNT) return () => cancelAnimationFrame(id);
+      const release = holdReveal();
+      const cap = window.setTimeout(release, 1500);
+      let settle = 0;
+      let bulbReady = false;
+      void preloadBulb().then(() => {
+        bulbReady = true;
+      });
+      const poll = window.setInterval(() => {
+        if (!bulbReady || !document.querySelector(`[data-arc-card="${k}"]`)) return;
+        window.clearInterval(poll);
+        settle = window.setTimeout(release, 460);
+      }, 30);
+      return () => {
+        cancelAnimationFrame(id);
+        window.clearInterval(poll);
+        window.clearTimeout(cap);
+        window.clearTimeout(settle);
+        release();
+      };
     }
     const k = Number(new URLSearchParams(window.location.search).get("card"));
     const card = Number.isInteger(k) && k >= 0 && k < ARC_CARD_COUNT ? k : 0;
