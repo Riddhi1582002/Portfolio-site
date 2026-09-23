@@ -1,7 +1,6 @@
 import HeroVideoBackground from "./components/HeroVideoBackground";
 import SmoothScroll from "./components/SmoothScroll";
 import HeroSection from "./components/HeroSection";
-import SectionNav from "./components/SectionNav";
 
 export default function Home() {
   return (
@@ -10,10 +9,6 @@ export default function Home() {
           and a transformed ancestor becomes the containing block for
           position:fixed — inside it this backdrop would scroll away. */}
       <HeroVideoBackground />
-
-      {/* Outside the smoothed content for the same reason: it is fixed to
-          the window, and follows the journey (see SectionNav). */}
-      <SectionNav follow />
 
       <SmoothScroll>
         {/* ONE pinned pane for the whole sequence: the hero, the strip,

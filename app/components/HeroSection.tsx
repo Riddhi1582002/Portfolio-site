@@ -48,7 +48,6 @@ import { easeInPow, easeOutSine } from "../lib/motion";
 import MothLayer from "./MothLayer";
 import { holdReveal, pageOut } from "../lib/pageTransition";
 import { mothFlyBy } from "./mothStage";
-import { setSectionNavState } from "./sectionNavStore";
 import { preloadBulb } from "./BulbModel";
 import { setMothCamera, type MothPhase } from "./mothStage";
 import "./hero-fonts.css";
@@ -1221,21 +1220,6 @@ export default function HeroSection() {
   // move off it.
   const navOpacity = journeyDone && atFinalState ? contactOpacity : 0;
 
-  // THE SECTION NAVIGATION (top right — see SectionNav) follows the
-  // journey: the section in view is the one marked. It steps back while
-  // the A transition plays (the hero's own move, which nothing should
-  // compete with), while the row under ART is showing (the same three
-  // words twice), and under an open reel.
-  const navSection: HomeSectionKey | null =
-    scrollP < HERO_SPAN ? null : scrollP < REELS_SPAN_END ? "video" : scrollP < CORD_SPAN_END ? "graphic-design" : "art";
-  const navShow =
-    reelOpenIndex == null &&
-    viewerReelIndex == null &&
-    navOpacity < 0.05 &&
-    (atFinalState || scrollP >= HERO_SPAN * 0.96);
-  useEffect(() => {
-    setSectionNavState({ section: navSection, show: navShow });
-  }, [navSection, navShow]);
 
   const haloSize = 1500 * artScale;
 
