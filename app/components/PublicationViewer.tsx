@@ -925,6 +925,9 @@ export default function PublicationViewer({ slug }: { slug: string }) {
             <div
               ref={stageRef}
               className="pub-stage"
+              // A closed booklet opens with a click on its cover (see
+              // endDrag's tap); the cursor says so.
+              data-cursor={isBooklet && viewIndex === 0 ? "open" : "drag"}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={endDrag}

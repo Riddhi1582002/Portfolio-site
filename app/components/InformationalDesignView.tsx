@@ -575,7 +575,13 @@ export default function InformationalDesignView() {
           >
             <div
               ref={jacketRef}
+              // THE JACKET OPENS WHERE IT IS. Closed, the whole object is
+              // the control — clicking it does what "Open the jacket" below
+              // does — rather than the line under it being the only way in.
+              onClick={phase === "closed" ? open : undefined}
+              data-cursor={phase === "closed" ? "open" : undefined}
               style={{
+                cursor: phase === "closed" ? "pointer" : undefined,
                 // CENTRED BY POSITION, not by the stage's flexbox.
                 //
                 // The open spread is two panels wide and on a phone that is
