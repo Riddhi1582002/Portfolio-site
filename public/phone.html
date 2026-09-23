@@ -9,21 +9,25 @@
   html, body { margin: 0; height: 100%; background: #000; }
   body {
     display: flex; align-items: center; justify-content: center;
-    padding: 32px 28px; box-sizing: border-box;
-    color: rgba(255, 255, 255, 0.88);
-    font: 17px/1.6 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    padding: 0 8vw; box-sizing: border-box;
+    color: rgba(255, 255, 255, 0.9);
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    /* Sized to the screen, not a fixed 17px: the note fills the width of
+       a phone in either orientation instead of sitting small in the middle. */
+    font-size: clamp(20px, min(6.4vw, 6.4vh), 34px);
+    line-height: 1.5;
     letter-spacing: 0.005em;
   }
-  div { max-width: 34ch; }
+  div { width: 100%; }
   p { margin: 0; }
-  p + p { margin-top: 1.1em; }
-  .sign { margin-top: 1.8em; color: rgba(255, 255, 255, 0.62); }
+  p + p { margin-top: 1em; }
+  .sign { margin-top: 1.6em; color: rgba(255, 255, 255, 0.62); }
 </style>
 </head>
 <body>
 <div role="note">
   <p>Hey, there! I'm so glad you're interested in seeing my work.</p>
-  <p>Though, it'll be lovely if you can open this site on your pc instead, so you can experience it in the way it was meant to be experienced.</p>
+  <p>However, it'll be lovely if you can open this site on your pc instead, so you can experience it in the way it was meant to be experienced.</p>
   <p class="sign">With love,<br>Riddhi</p>
 </div>
 </body>

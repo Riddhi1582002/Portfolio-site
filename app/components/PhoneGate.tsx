@@ -45,7 +45,7 @@ export function PhoneNote() {
       <div className="phone-note-text">
         <p>Hey, there! I&apos;m so glad you&apos;re interested in seeing my work.</p>
         <p>
-          Though, it&apos;ll be lovely if you can open this site on your pc instead, so you can
+          However, it&apos;ll be lovely if you can open this site on your pc instead, so you can
           experience it in the way it was meant to be experienced.
         </p>
         <p className="phone-note-sign">

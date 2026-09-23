@@ -210,16 +210,16 @@ html[data-phone="1"] .phone-note {
   min-height: 100svh;
   align-items: center;
   justify-content: center;
-  padding: 32px 28px;
+  padding: 0 8vw;
   background: #000;
-  color: rgba(255, 255, 255, 0.88);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .phone-note-text {
-  max-width: 34ch;
+  width: 100%;
   font-family: var(--font-geist-sans), Arial, sans-serif;
-  font-size: 17px;
-  line-height: 1.6;
+  font-size: clamp(20px, min(6.4vw, 6.4vh), 34px);
+  line-height: 1.5;
   letter-spacing: 0.005em;
 }
 
