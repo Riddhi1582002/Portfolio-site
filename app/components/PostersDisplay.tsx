@@ -15,13 +15,18 @@
 
 import { useMemo } from "react";
 import ArtworkStackDisplay, { preloadStack, type StackPiece } from "./ArtworkStackDisplay";
-import type { RockPlacement } from "./sceneRocks";
 import { POSTER_ASPECT, POSTERS } from "./postersAssets";
 
 const D = Math.PI / 180;
 const FLOOR_Y = -1.35;
 const at = (height: number, sink = 0) => FLOOR_Y + height / 2 - sink;
-const src = (no: string) => POSTERS.find((p) => p.no === no)!.src;
+// Card-sized copies of the same posters (800x1000, resized, never
+// cropped): the full files run to 3MB each, which is a lot of ring to
+// wait for when the card shows them a few hundred pixels tall.
+const src = (no: string) => {
+  if (!POSTERS.some((p) => p.no === no)) throw new Error(`No poster ${no}`);
+  return `/posters/card/${no}.jpg`;
+};
 
 export const POSTER_CARD_PIECES: StackPiece[] = [
   {
@@ -78,12 +83,6 @@ export const POSTER_CARD_PIECES: StackPiece[] = [
   },
 ];
 
-// The stones, inside the case — see the note on the other cards for the
-// projection limit these respect.
-const ROCKS: RockPlacement[] = [
-  { file: "rock-02.glb", pos: [-1.02, -1.14, 1.06], rot: [0.32, 1.9, -0.18], scale: 0.082 },
-  { file: "rock-02.glb", pos: [1.12, -1.12, 0.62], rot: [-0.26, 0.7, 0.44], scale: 0.07 },
-];
 
 export function preloadPosters() {
   preloadStack(POSTER_CARD_PIECES);
@@ -97,7 +96,7 @@ export default function PostersDisplay({
   reduced?: boolean;
 }) {
   const options = useMemo(
-    () => ({ fov: 26, camZ: 10.8, camY: 0.22, contentScale: 0.8, floorY: FLOOR_Y, rocks: ROCKS }),
+    () => ({ fov: 26, camZ: 10.8, camY: 0.22, contentScale: 0.8, floorY: FLOOR_Y }),
     []
   );
   return (

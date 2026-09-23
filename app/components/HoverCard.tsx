@@ -35,12 +35,16 @@ export default function HoverCard({
   aspect = 1,
   radius,
   style,
+  glare = true,
 }: {
   children: ReactNode;
   className?: string;
   aspect?: number;
   radius?: number | string;
   style?: CSSProperties;
+  /** The screen-blended glare and sheen. Off where the content lights
+   *  itself: laid over a lit 3D case, white light only washes it out. */
+  glare?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -221,8 +225,8 @@ export default function HoverCard({
       <div ref={shellRef} className="hc-shell">
         <section className="hc-card">
           <div className="hc-content">{children}</div>
-          <div className="hc-glare" aria-hidden />
-          <div className="hc-sheen" aria-hidden />
+          {glare && <div className="hc-glare" aria-hidden />}
+          {glare && <div className="hc-sheen" aria-hidden />}
         </section>
       </div>
     </div>

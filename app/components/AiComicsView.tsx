@@ -53,9 +53,9 @@ const N = COMICS.length;
 // is a window onto the wall, and opening a strip shows all of it.
 const STRIP_H = 2.2;
 const PAGE_H = 0.82;
-/** The gap after each piece, in gap units — uneven, so it is a wall and
- *  not a ruler. */
-const GAPS = [1.2, 1, 1.5, 1.9, 1, 1.9, 1.1, 1.4, 1, 1.3, 1.8];
+/** The gap between pieces, in gap units — the same between every pair,
+ *  so the wall reads as one even run and only its depth varies. */
+const GAP_UNITS = 1.4;
 /** Each piece's vertical offset from centre, of the wall height. */
 // Strips are shifted up or down so different stretches of each are in the
 // frame, but never so far that one ends inside it: every strip runs through
@@ -70,9 +70,11 @@ const TILT = "rotateX(9deg) rotateZ(-5deg) scale(1.1)";
 const RECEDE = 2.5;
 /** How far forward the piece at the centre stands, px. */
 const NEAR = 60;
-/** How much of the surface's own turn each piece takes — enough to follow
- *  the wall, not so much that a strip is foreshortened out of reading. */
-const TURN = 0.85;
+/** How much of the surface's own turn each piece takes. All of it: each
+ *  piece lies flat on the arc, so the gap between neighbours is the same
+ *  all the way along — a piece turning less than the surface closed its
+ *  gaps towards the ends and opened them in the middle. */
+const TURN = 1;
 /** The lens: short enough for the depth to read as perspective, never so
  *  short that the nearest piece distorts. */
 const lens = (w: number) => Math.max(950, w * 0.82);
@@ -83,6 +85,17 @@ const IDLE_MS = 1600;
 const MAX_V = 3600;
 
 const pad = (n: number) => String(n).padStart(2, "0");
+
+/** A piece's two shade layers, looked up once and kept on the element. */
+const shadeCache = new WeakMap<HTMLElement, [HTMLElement | null, HTMLElement | null]>();
+function shadesOf(el: HTMLElement): [HTMLElement | null, HTMLElement | null] {
+  let s = shadeCache.get(el);
+  if (!s) {
+    s = [el.querySelector<HTMLElement>(".ac-shade-l"), el.querySelector<HTMLElement>(".ac-shade-r")];
+    shadeCache.set(el, s);
+  }
+  return s;
+}
 
 type Placed = { i: number; key: string; base: number; w: number; h: number; y: number };
 
@@ -139,7 +152,7 @@ export default function AiComicsView() {
       const h = (c.strip ? STRIP_H : PAGE_H) * H;
       const w = (h * c.w) / c.h;
       one.push({ i, base: x + w / 2, w, h, y: (H - h) / 2 + OFFSETS[i] * H });
-      x += w + gap * GAPS[i];
+      x += w + gap * GAP_UNITS;
     });
     const L1 = x;
     const copies = Math.max(2, Math.ceil((box.w * 2) / L1) + 1);
@@ -182,7 +195,17 @@ export default function AiComicsView() {
         const Z = NEAR - R * (1 - Math.cos(th)) * RECEDE;
         const n = Math.min(1, Math.abs(x) / (W / 2));
         el.style.transform = `translate3d(${(X - it.w / 2).toFixed(2)}px, ${it.y.toFixed(2)}px, ${Z.toFixed(2)}px) rotateY(${((th * 180) / Math.PI) * TURN}deg)`;
-        el.style.opacity = (1 - 0.5 * n * n).toFixed(3);
+        // DEPTH BY SHADOW, NOT BY FADING. Every piece is at full strength;
+        // a receding piece is instead shaded along the edge that sits
+        // behind its nearer neighbour (the side facing the centre), more
+        // the further back it lies. Opacity of a fixed gradient layer, so
+        // the drift repaints nothing.
+        const shade = (0.12 + 0.5 * n).toFixed(3);
+        const [shL, shR] = shadesOf(el);
+        if (shL && shR) {
+          shL.style.opacity = x > 0 ? shade : "0";
+          shR.style.opacity = x < 0 ? shade : "0";
+        }
       }
     };
     const tick = () => {
@@ -456,6 +479,7 @@ export default function AiComicsView() {
         ref={wallRef}
         className="ac-wall"
         data-ac-wall
+        data-cursor="drag"
         style={{ perspective: `${lens(box.w)}px` }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -471,6 +495,7 @@ export default function AiComicsView() {
               key={it.key}
               type="button"
               className="ac-item"
+              data-cursor="view"
               data-ac-i={it.i}
               data-ac-copy={it.key}
               tabIndex={it.key.startsWith("0-") ? 0 : -1}
@@ -490,6 +515,8 @@ export default function AiComicsView() {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={c.wall} alt="" draggable={false} decoding="async" />
+              <span className="ac-shade ac-shade-l" aria-hidden />
+              <span className="ac-shade ac-shade-r" aria-hidden />
             </button>
           );
         })}
@@ -620,20 +647,30 @@ export default function AiComicsView() {
           user-select: none; -webkit-user-select: none;
         }
         .ac-wall:active { cursor: grabbing; }
-        /* The wall goes into the dark at both ends rather than being cut by
-           the frame. */
-        .ac-wall::before, .ac-wall::after {
+        /* The tall strips run past the frame's top and bottom; they go into
+           the dark there rather than being cut by the frame. The sides are
+           NOT faded: the pieces at the ends are shaded by depth instead. */
+        .ac-wall::after {
           content: ""; position: absolute; inset: 0;
           z-index: 2; pointer-events: none;
+          background: linear-gradient(to bottom, #000, rgba(0,0,0,0) 9%, rgba(0,0,0,0) 91%, #000);
         }
-        .ac-wall::before { background: linear-gradient(to right, #000, rgba(0,0,0,0) 10%, rgba(0,0,0,0) 90%, #000); }
-        .ac-wall::after { background: linear-gradient(to bottom, #000, rgba(0,0,0,0) 9%, rgba(0,0,0,0) 91%, #000); }
         .ac-item {
           position: absolute; left: 50%; top: 0; padding: 0; border: 0;
           background: #0b0b0c; border-radius: 10px; overflow: hidden; cursor: zoom-in;
-          will-change: transform, opacity; backface-visibility: hidden;
-          box-shadow: 0 0 0 1px rgba(255,255,255,0.07), 0 30px 70px -30px rgba(0,0,0,0.95);
+          will-change: transform; backface-visibility: hidden;
+          /* A soft shadow thrown to both sides: on the arc every piece
+             stands in front of its outer neighbour, so it falls across
+             the piece behind it. */
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.07), 0 30px 70px -30px rgba(0,0,0,0.95),
+                      0 0 46px 6px rgba(0,0,0,0.55);
         }
+        .ac-shade {
+          position: absolute; top: 0; bottom: 0; width: 55%; pointer-events: none;
+          opacity: 0; will-change: opacity;
+        }
+        .ac-shade-l { left: 0; background: linear-gradient(to right, rgba(0,0,0,0.92), rgba(0,0,0,0.35) 45%, rgba(0,0,0,0)); }
+        .ac-shade-r { right: 0; background: linear-gradient(to left, rgba(0,0,0,0.92), rgba(0,0,0,0.35) 45%, rgba(0,0,0,0)); }
         .ac-item img {
           display: block; width: 100%; height: 100%; max-width: none;
           pointer-events: none; transition: filter .4s ease;

@@ -7,10 +7,9 @@
 // social posts, 16:9 screen pieces — and the mistake would be to lay them
 // out as a grid of pictures inside a 3D frame. They are staged instead:
 // each piece is a thin printed panel with actual thickness, leaning and
-// overlapping on the same lit surface, against the same dark stones the
-// publications stand on.
+// overlapping on the same lit surface the publications stand on.
 //
-// Everything below the composition — renderer, lights, floor, rocks,
+// Everything below the composition — renderer, lights, floor,
 // hover, parallax, the load-then-arrive sequence — is SpatialCardEngine,
 // unchanged and shared with the publications card, so all three cards on
 // the ring move and light the same way. Only the objects differ.
@@ -189,7 +188,7 @@ export default function ArtworkStackDisplay({
         (piece) => buildPanel(THREE, piece),
         lumRef,
         reduced,
-        { rocks: true, studio: true, ...options }
+        { studio: true, ...options }
       );
     })().catch((err) => {
       // Decoration on a scroll beat, but a silent failure reads on screen

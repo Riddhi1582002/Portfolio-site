@@ -445,6 +445,7 @@ export default function ReelStrip({
                         revealed on hover of this same card. */}
                     <div
                       className="reel-card-face"
+                      data-cursor={reel.videos?.length ? "view" : undefined}
                       role={reel.videos?.length ? "button" : undefined}
                       tabIndex={reel.videos?.length ? 0 : undefined}
                       aria-label={reel.videos?.length ? `Open ${reel.title}` : undefined}

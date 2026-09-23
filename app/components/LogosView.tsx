@@ -71,6 +71,7 @@ export default function LogosView() {
                 key={b.id}
                 type="button"
                 className="lb-card"
+                data-cursor="open"
                 data-logo-brand={i}
                 ref={(el) => {
                   cardRefs.current[i] = el;

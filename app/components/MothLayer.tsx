@@ -1631,6 +1631,13 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           else mat?.dispose();
         });
         renderer.dispose();
+        // dispose() frees three's own resources but leaves the browser's
+        // WebGL context alive until garbage collection, and Chrome keeps only
+        // about sixteen: the ring's cards remount as they rotate, so contexts
+        // piled up until the browser started killing the OLDEST ones — the
+        // moth, a bulb, a card still on screen — which then went blank or had
+        // to rebuild. Released here, the count stays at what is on screen.
+        renderer.forceContextLoss();
         renderer.domElement.remove();
         cutMothContinuity();
       };

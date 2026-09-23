@@ -364,6 +364,7 @@ export default function ReceptionDepthCarousel() {
       <div
         ref={stageRef}
         className="dc-stage"
+        data-cursor="drag"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={release}

@@ -41,7 +41,7 @@ import ReelVideoViewer from "./ReelVideoViewer";
 import CordSection from "./CordSection";
 import { ARC_CARD_COUNT } from "./ArcCarousel";
 import PencilSection, { IRIS_HANDOFF_AT } from "./PencilSection";
-import InfiniteCanvas from "./InfiniteCanvas";
+import InfiniteCanvas, { GALLERY_ARRIVED_AT, galleryArrival } from "./InfiniteCanvas";
 import ArtMediumBar from "./ArtMediumBar";
 import NarrationLine from "./NarrationLine";
 import { easeInPow, easeOutSine } from "../lib/motion";
@@ -49,6 +49,7 @@ import MothLayer from "./MothLayer";
 import { holdReveal, pageOut } from "../lib/pageTransition";
 import { mothFlyBy } from "./mothStage";
 import { preloadBulb } from "./BulbModel";
+import { preloadRingCards } from "./ArcCarousel";
 import { setMothCamera, type MothPhase } from "./mothStage";
 import "./hero-fonts.css";
 import "./hero-hint.css";
@@ -290,7 +291,13 @@ const PENCIL_VH = 420;
 // the return to page one is a dedicated gesture-driven transition (see
 // InfiniteCanvas), so the track only has to cover the pull-back plus
 // enough settled gallery for the return to be armed in.
-const CANVAS_VH = 220;
+//
+// 100, not 220: the pull-back used to take the first half of this and the
+// second half was 110vh of scrolling in which nothing on screen changed —
+// the gallery sat there, not yet draggable-to-leave, and its mediums bar
+// only faded in over the last few percent. The pull-back is now 60vh (see
+// REVEAL_END) and what follows it is only what arming the return needs.
+const CANVAS_VH = 100;
 const SCROLL_LENGTH_VH = HERO_VH + REELS_VH + CORD_VH + PENCIL_VH + CANVAS_VH;
 // Beat boundaries as shares of the whole track. Every beat keeps the
 // scroll length in vh it always had; only the track they sit on changed.
@@ -331,8 +338,15 @@ const HERO_BEATS_END = BEATS_VH / HERO_VH;
 // The keys, hrefs and the two query parameters live in homeSections.ts so
 // the category routes can read them without importing this whole file.
 
-/** Where the journey counts as finished: the settled gallery at the end. */
-const JOURNEY_DONE_AT = 0.965;
+/** Where the journey counts as finished: the gallery has arrived — the
+ *  pull-back out of the iris has landed (see galleryArrival). Derived, so
+ *  it stays on that moment whatever the beats' lengths are.
+ *
+ *  A function, read when it is used: InfiniteCanvas imports this module's
+ *  constants, so a module-level read of its export here ran before it was
+ *  initialised whenever InfiniteCanvas was the module loaded first (the
+ *  /work/art route) — and that route failed to load at all. */
+const journeyDoneAt = () => PENCIL_SPAN_END + GALLERY_ARRIVED_AT * (1 - PENCIL_SPAN_END);
 
 // THE BULB HAND-OVER. CordSection's bulb and PencilSection's are two
 // BulbModel instances, and a fresh one needs hundreds of milliseconds —
@@ -343,7 +357,9 @@ const JOURNEY_DONE_AT = 0.965;
 // the glow and the cord, and nothing hanging from it. PencilSection is
 // now mounted this far ahead, invisible and paused once warm, and it only
 // takes over once its bulb reports a real frame (see onBulbReady).
-const PENCIL_WARM_LEAD = 0.04;
+// 0.07 of the track (~2 screens): a slow GPU compiling the glass and bloom
+// shaders for a fresh context needs that much lead at a brisk scroll.
+const PENCIL_WARM_LEAD = 0.07;
 
 const HOME_NAV_LINKS: { key: HomeSectionKey; label: string }[] = [
   { key: "video", label: "VIDEO" },
@@ -854,6 +870,32 @@ export default function HeroSection() {
     return () => window.clearTimeout(t);
   }, []);
 
+  // THE RING'S WORK, fetched while the reels play. The ring used to ask for
+  // its cards only when it mounted — a few viewport-heights before the
+  // cord beat — so on a first visit every card arrived visibly late. From
+  // the moment the reels begin there are hundreds of viewport-heights of
+  // scrolling left in which to fetch ~7MB; idle-scheduled so it never
+  // lands on a frame the strip needs.
+  const inReels = scrollP > HERO_SPAN;
+  useEffect(() => {
+    if (!inReels) return;
+    const idle = (
+      window as typeof window & {
+        requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+      }
+    ).requestIdleCallback;
+    if (idle) {
+      const id = idle(() => preloadRingCards(), { timeout: 1500 });
+      return () => {
+        (
+          window as typeof window & { cancelIdleCallback?: (h: number) => void }
+        ).cancelIdleCallback?.(id);
+      };
+    }
+    const t = window.setTimeout(() => preloadRingCards(), 300);
+    return () => window.clearTimeout(t);
+  }, [inReels]);
+
   // HAS THE READER BEEN ALL THE WAY THROUGH? Read once on mount (a real
   // navigation back from a category re-mounts this component), then kept
   // up to date by the scroll clock below.
@@ -1088,7 +1130,7 @@ export default function HeroSection() {
       // homepage" means; from then on the final state carries the three
       // category links. Guarded by its own ref so this fires once, not on
       // every frame past the threshold.
-      if (scrollSmoothRef.current >= JOURNEY_DONE_AT) markJourneyDone();
+      if (scrollSmoothRef.current >= journeyDoneAt()) markJourneyDone();
       setT((now - start) / 1000);
       raf = requestAnimationFrame(tick);
     };
@@ -1150,7 +1192,12 @@ export default function HeroSection() {
   // Only while the bulb is actually on screen (the descent: the first
   // 0.6 of the beat — see PencilSection's FALL) does the hand-over wait on
   // PencilSection's bulb; past that the beat is the iris, which needs none.
-  const pencilBulbPending = !pencilBulbReady && pencilP < 0.6;
+  //
+  // And only for the first quarter of it: if the bulb is still not ready
+  // by then, the descent goes on without waiting — a reader scrolling
+  // through a beat that refuses to move is worse than a bulb that appears
+  // a moment late.
+  const pencilBulbPending = !pencilBulbReady && pencilP < 0.25;
   const canvasP = clamp01((scrollP - PENCIL_SPAN_END) / (1 - PENCIL_SPAN_END));
 
   const p = SCROLL_TO_P(clamp01(heroP / HERO_BEATS_END));
@@ -2121,14 +2168,16 @@ export default function HeroSection() {
         )}
 
         {/* And the cord beat, same pane again. */}
-        {scrollP > REELS_SPAN_END - 0.004 &&
+        {scrollP > REELS_SPAN_END - 0.012 &&
           (scrollP < CORD_SPAN_END + 0.003 || pencilBulbPending) && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
             <CordSection
               progress={cordP}
               sans={SANS}
-              // Mounted early (the -0.004 above) so its WebGL context and
-              // GLTF are warm before the beat needs them — but NOT visible
+              // Mounted early (the -0.012 above, ~36vh) so its WebGL
+              // context, GLTF and shaders are warm before the beat needs
+              // them — a fast scroll crossed the old ~12vh lead in one
+              // wheel notch and met a bulb still compiling — but NOT visible
               // yet. It was opaque from the frame it mounted, and its own
               // progress is clamped to 0 until the boundary, so for 12vh of
               // scrolling it covered the still-scrubbing strip with a
@@ -2237,8 +2286,11 @@ export default function HeroSection() {
                 pageOut(() => window.location.assign(href));
               }}
               style={{
-                opacity: clamp01((canvasP - 0.88) / 0.1),
-                pointerEvents: canvasP > 0.95 ? "auto" : "none",
+                // With the gallery itself, not at the far end of its
+                // track: it comes in as the pull-back lands, together with
+                // the "Drag to explore" hint.
+                opacity: galleryArrival(canvasP),
+                pointerEvents: galleryArrival(canvasP) > 0.9 ? "auto" : "none",
               }}
             />
           </div>

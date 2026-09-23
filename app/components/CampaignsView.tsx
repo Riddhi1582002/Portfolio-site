@@ -158,6 +158,7 @@ export default function CampaignsView() {
                   key={item.src}
                   type="button"
                   onClick={() => openImages(images, i)}
+                  data-cursor="view"
                   style={tileStyle}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -177,7 +178,13 @@ export default function CampaignsView() {
           {tab === "carousels" && (
             <div className="cs-grid cs-grid--wide">
               {carousels.map((c) => (
-                <button key={c.id} type="button" onClick={() => openCarousel(c)} style={tileStyle}>
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => openCarousel(c)}
+                  data-cursor="view"
+                  style={tileStyle}
+                >
                   {/* The stacked edges behind the first slide are what make
                       a carousel read as a carousel at a glance — the piece
                       itself is the real first slide at full size, never a

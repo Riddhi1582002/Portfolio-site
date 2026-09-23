@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import PageReveal from "./components/PageReveal";
+import ContextCursor from "./components/ContextCursor";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -63,6 +64,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           {children}
         </div>
         <PageReveal />
+        {/* Outside the page frame, so the aperture never clips it. */}
+        <ContextCursor />
       </body>
     </html>
   );

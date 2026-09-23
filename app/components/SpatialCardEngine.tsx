@@ -5,7 +5,7 @@
 // Extracted from what was originally Publications-only code in
 // PublicationsDisplay.tsx: the lit-display-case renderer that stands a
 // small group of real 3D objects inside an arc card, answers the card's own
-// hover as one group (lift, parallax, brighten), and fades the whole
+// hover as one group (depth, lift, parallax), and fades the whole
 // composition in together once every object has loaded. Publications is the
 // first category to use it, but nothing below refers to a book, a
 // publication, or five of anything — a future Graphic Design category
@@ -55,8 +55,6 @@ export type SpatialCardOptions = {
   /** The pointer's own contribution, in radians of group yaw/pitch. */
   parallaxYaw: number;
   parallaxPitch: number;
-  hoverInTau: number;
-  hoverOutTau: number;
   pointerTau: number;
   /** How long the whole composition takes to fade/settle in once every
    *  object has finished loading — one shared clock, not one per object. */
@@ -67,8 +65,7 @@ export type SpatialCardOptions = {
   floorY: number;
   /** Dark irregular stones at the base, echoing a physical still-life.
    *  `true` uses this engine's default pair; an array places them
-   *  explicitly, which is how each card on the ring gets stones of its
-   *  own rather than the same two in the same two spots every time. */
+   *  explicitly. Ignored in the studio, whose cards carry none. */
   rocks: boolean | RockPlacement[];
   /**
    * THE LIGHTBOX — the display case every card on this ring is staged
@@ -120,9 +117,8 @@ export type SpatialCardOptions = {
    * THE STUDIO — the ring's still-life look, taken from the reference the
    * cards are matched to: the pieces float at varied tilts and fill the
    * case; a warm spot from overhead and a gold rim from behind light them;
-   * the floor is glossy and dark with a warm pool under the group; stones
-   * sit at the base corners. Only with a lightbox, and only where a card
-   * asks for it, so the /logos page's own still keeps its layout.
+   * the floor is glossy and dark with a warm pool under the group. Only
+   * with a lightbox, and only where a card asks for it.
    *
    * The lightbox itself, and every hover movement, are unchanged by it.
    */
@@ -136,8 +132,6 @@ export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
   groupLiftZ: 0.62,
   parallaxYaw: 5 * (Math.PI / 180),
   parallaxPitch: 4.5 * (Math.PI / 180),
-  hoverInTau: 190,
-  hoverOutTau: 120,
   pointerTau: 260,
   compositionArriveMs: 420,
   floorY: -1.35,
@@ -164,16 +158,45 @@ export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
 const STUDIO_TILT_Z = [-6, 5, -3.5, 7, -5, 4, -7, 3].map((d) => (d * Math.PI) / 180);
 const STUDIO_TILT_X = [3, -2.5, 4, -2, 2.5, -3, 2, -1.5].map((d) => (d * Math.PI) / 180);
 const STUDIO_FLOAT_Y = [0.14, -0.06, 0.2, 0.02, 0.1, -0.1, 0.16, -0.02];
-/** Where the fitted group sits in the opening, as shares of it: tight at
- *  the sides and top, open at the bottom, where the floor, the pool of
- *  light and the stones are — the air under the group is what makes it
- *  float. */
-const STUDIO_FIT = { side: 0.08, top: 0.1, bottom: 0.2 };
+/** Where the fitted group sits in the opening, as shares of it. The work
+ *  is the point of the card, so it takes nearly all of it: a sliver at the
+ *  sides and top, and a little more at the bottom for the glossy floor and
+ *  its pool of light — the air under the group is what makes it float.
+ *  (There were stones down there too; the studio no longer has them.) */
+const STUDIO_FIT = { side: 0.035, top: 0.055, bottom: 0.08 };
+/** A group wider than the card is fitted by its HEIGHT, and may run this
+ *  much past the width it would otherwise be held to — the outer pieces
+ *  crop at the card's edge, like a photograph's frame, rather than the
+ *  whole group shrinking to a strip across the middle of the card. */
+const STUDIO_OVERFLOW = 0.1;
 /** How far past the card's own face the studio case is drawn: enough that
  *  the camera's slight rise never shows its edge inside the card. */
 const CASE_OVERSCAN = 1.06;
-/** The supplied stone's own largest half-extent, in its file's units. */
-const ROCK_HALF = 5.02;
+
+// ── THE HOVER ───────────────────────────────────────────────────────────
+//
+// A physical answer, not a brighter one. Hover used to raise every light
+// and the exposure with it, which read as the work going pale — white
+// washed over the artwork rather than anything happening to it. The light
+// now stays exactly where it is and the OBJECTS respond: the group opens
+// out in depth (the nearest pieces come forward, the furthest settle
+// back), every piece rises a little and turns toward the reader as its
+// resting tilt relaxes, and the group follows the pointer further — so
+// the layers visibly separate as the hand moves. It arrives on a spring
+// with a small overshoot, so it lands like something with weight, and
+// leaves critically damped, so letting go never wobbles.
+/** Depth the group opens by, in world units, back piece to front piece. */
+const HOVER_DEPTH = 1.15;
+/** How far each piece rises. */
+const HOVER_RISE = 0.1;
+/** How much of the studio's resting tilt each piece lets go of. */
+const HOVER_STRAIGHTEN = 0.6;
+/** The group's pointer-follow while hovered, over the resting values. */
+const HOVER_PARALLAX = 1.6;
+/** Spring: angular frequency (rad/s) and damping ratio, in and out. */
+const HOVER_OMEGA = 15;
+const HOVER_ZETA_IN = 0.6;
+const HOVER_ZETA_OUT = 1;
 
 /** A soft radial gradient on a canvas, as a texture. Stops are [t, rgba]. */
 function radialTexture(
@@ -192,34 +215,6 @@ function radialTexture(
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, N, N);
   return new THREE.CanvasTexture(canvas);
-}
-
-/** The stones for a studio card: a large one forward left, one back
- *  right, a small one forward right — all inside the case at this lens. */
-function studioRocks(opt: SpatialCardOptions): RockPlacement[] {
-  const half = opt.lightbox as number;
-  // The case's inner edge carried forward to depth z, at six sevenths so
-  // a stone is clearly inside it rather than touching it.
-  const edge = (z: number) => ((half * (opt.camZ - z)) / (opt.camZ + 1.62)) * (6 / 7);
-  const place = (
-    side: -1 | 1,
-    z: number,
-    scale: number,
-    inset: number,
-    rot: [number, number, number]
-  ): RockPlacement => ({
-    file: "rock-02.glb",
-    // Sitting ON the floor, not sunk into it: a sunk stone's buried half
-    // still projects, and at the front that put it below the case.
-    pos: [side * (edge(z) - ROCK_HALF * scale - inset), opt.floorY + 2.94 * scale * 0.9, z],
-    rot,
-    scale,
-  });
-  return [
-    place(-1, 0.05, 0.085, 0.08, [0.4, 2.3, 0.2]),
-    place(1, -0.8, 0.078, 0, [-0.3, 1.4, 0.5]),
-    place(1, 0.45, 0.034, 0.32, [0.9, 0.6, -0.3]),
-  ];
 }
 
 // ── THE LIGHTBOX ────────────────────────────────────────────────────────
@@ -549,12 +544,10 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     }
   }
 
-  if (opt.rocks) {
-    const placements: RockPlacement[] = opt.studio
-      ? studioRocks(opt)
-      : Array.isArray(opt.rocks)
-        ? opt.rocks
-        : DEFAULT_ROCKS;
+  // Never in the studio: the ring's cards are the work alone now, with
+  // nothing at their base competing with it.
+  if (opt.rocks && !opt.studio) {
+    const placements: RockPlacement[] = Array.isArray(opt.rocks) ? opt.rocks : DEFAULT_ROCKS;
     // Staged as the reference does: one rock at the back right for the
     // smallest piece to stand against and to close the gap beneath it, one
     // forward and left, on the surface in front of the group — the SAME
@@ -566,26 +559,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     // The renderer goes in so the stones get an environment to reflect —
     // scoped to them alone, so nothing else in this case changes. See
     // addRocks and getStoneEnvironment.
-    const before = new Set(group.children);
-    void addRocks(THREE, group, placements, renderer).then(() => {
-      if (!opt.studio || disposed) return;
-      // STUDIO STONES ARE BLACK AND GLOSSY, the reference's volcanic rock:
-      // under the warm spot the shared stone went pale brown. Their
-      // materials are per-instance (see addRocks), so this touches only
-      // this card's own.
-      for (const child of group.children) {
-        if (before.has(child)) continue;
-        child.traverse((o) => {
-          const mesh = o as import("three").Mesh;
-          if (!mesh.isMesh) return;
-          const mat = mesh.material as import("three").MeshStandardMaterial;
-          mat.color.multiplyScalar(0.38);
-          mat.roughness = 0.5;
-          mat.envMapIntensity = 0.32;
-          mat.needsUpdate = true;
-        });
-      }
-    });
+    void addRocks(THREE, group, placements, renderer);
   }
 
   if (opt.lightbox) buildLightbox(THREE, scene, opt);
@@ -633,6 +607,10 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     /** Where it rests: the authored pose, plus the studio's float/tilt. */
     pos: [number, number, number];
     rot: [number, number, number];
+    /** The studio's own added tilt (x, z) — what hover relaxes. */
+    tilt: [number, number];
+    /** Front-to-back rank, -0.5 (furthest) .. 0.5 (nearest). */
+    depth: number;
   };
   const loaded: Loaded[] = [];
   const textures: import("three").Texture[] = [];
@@ -681,8 +659,16 @@ export function mountSpatialCard<T extends SpatialCardObject>(
           : [...item.rot];
         holder.position.set(...pos);
         holder.rotation.set(...rot);
-        loaded.push({ item, node: holder, pos, rot });
+        const tilt: [number, number] = opt.studio
+          ? [STUDIO_TILT_X[k % STUDIO_TILT_X.length], STUDIO_TILT_Z[k % STUDIO_TILT_Z.length]]
+          : [0, 0];
+        loaded.push({ item, node: holder, pos, rot, tilt, depth: 0 });
       }
+      // Rank by resting depth, so hover can open the group out front to back.
+      const byZ = [...loaded].sort((a, b) => a.pos[2] - b.pos[2]);
+      byZ.forEach((l, i) => {
+        l.depth = byZ.length > 1 ? i / (byZ.length - 1) - 0.5 : 0.5;
+      });
       if (opt.studio) fitToCase();
       compositionReadyAt = performance.now();
     }
@@ -729,7 +715,10 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     const tanH = Math.tan((camera.fov * Math.PI) / 360);
     for (let pass = 0; pass < 4; pass++) {
       let m = measure();
-      const k = Math.min((tx1 - tx0) / (m.x1 - m.x0), (ty1 - ty0) / (m.y1 - m.y0));
+      const k = Math.min(
+        ((tx1 - tx0) / (m.x1 - m.x0)) * (1 + STUDIO_OVERFLOW),
+        (ty1 - ty0) / (m.y1 - m.y0)
+      );
       content.scale.multiplyScalar(k);
       m = measure();
       const d = camera.position.z - m.zc;
@@ -738,15 +727,22 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     }
   }
 
+  // Sized off the HOST, not the window: a ring card that has rotated out
+  // of range is kept mounted but hidden (display: none), and a window
+  // resize while it is hidden would have sized it to 1x1 and left it
+  // there. The observer skips the hidden, zero-size state and catches
+  // the moment the card is shown again at its real size.
   const resize = () => {
-    const w = host.clientWidth || 1;
-    const h = host.clientHeight || 1;
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    if (!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   };
   resize();
-  window.addEventListener("resize", resize);
+  const ro = new ResizeObserver(resize);
+  ro.observe(host);
 
   let visible = true;
   const io = new IntersectionObserver(
@@ -767,6 +763,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   const coarse = window.matchMedia("(hover: none)").matches;
 
   let hover = 0;
+  let hoverVel = 0;
   let px = 0.5;
   let py = 0.5;
   let last = performance.now();
@@ -793,9 +790,19 @@ export function mountSpatialCard<T extends SpatialCardObject>(
       !coarse && arcCard
         ? parseFloat(getComputedStyle(arcCard).getPropertyValue("--pub-hover")) || 0
         : 0;
-    const tau = wanted > hover ? opt.hoverInTau : opt.hoverOutTau;
-    hover += (wanted - hover) * (1 - Math.exp(-dt / tau));
-    if (Math.abs(wanted - hover) < 0.004) hover = wanted;
+    // THE SPRING (see THE HOVER). Integrated in small fixed steps so a
+    // long frame cannot make it overshoot further than it is meant to.
+    const zeta = wanted > 0.5 ? HOVER_ZETA_IN : HOVER_ZETA_OUT;
+    for (let rem = dt / 1000; rem > 0; rem -= 1 / 120) {
+      const st = Math.min(rem, 1 / 120);
+      const acc = HOVER_OMEGA * HOVER_OMEGA * (wanted - hover) - 2 * zeta * HOVER_OMEGA * hoverVel;
+      hoverVel += acc * st;
+      hover += hoverVel * st;
+    }
+    if (Math.abs(wanted - hover) < 0.001 && Math.abs(hoverVel) < 0.01) {
+      hover = wanted;
+      hoverVel = 0;
+    }
 
     if (wrapper) {
       const cs = getComputedStyle(wrapper);
@@ -806,7 +813,10 @@ export function mountSpatialCard<T extends SpatialCardObject>(
       py += (ty - py) * kp;
     }
 
-    const h = reduced ? 0 : hover * hover * (3 - 2 * hover);
+    const h = reduced ? 0 : hover;
+    // Hover distances are in world units; the pieces live inside `content`,
+    // which the studio fit has scaled.
+    const inv = 1 / (content.scale.x || 1);
 
     const arriveT =
       compositionReadyAt == null
@@ -814,7 +824,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
         : Math.min(1, (now - compositionReadyAt) / opt.compositionArriveMs);
     const arrive = arriveT * arriveT * (3 - 2 * arriveT);
 
-    for (const { item, node, pos, rot } of loaded) {
+    for (const { item, node, pos, rot, tilt, depth } of loaded) {
       // THE ARRIVAL FADE, and putting back exactly what it found.
       //
       // This used to end by forcing every material it had touched to
@@ -870,30 +880,33 @@ export function mountSpatialCard<T extends SpatialCardObject>(
 
       node.position.set(
         pos[0] + item.lift[0] * h,
-        pos[1] + item.lift[1] * h + fy + (1 - arrive) * 0.22,
-        pos[2] + (item.lift[2] + opt.groupLiftZ * item.parallax) * h + fz
+        pos[1] + (item.lift[1] + HOVER_RISE * inv) * h + fy + (1 - arrive) * 0.22,
+        pos[2] +
+          (item.lift[2] + opt.groupLiftZ * item.parallax + HOVER_DEPTH * depth * inv) * h +
+          fz
       );
       node.rotation.set(
-        rot[0] + item.turn[0] * h,
+        rot[0] + (item.turn[0] - tilt[0] * HOVER_STRAIGHTEN) * h,
         rot[1] + item.turn[1] * h,
-        rot[2] + item.turn[2] * h
+        rot[2] + (item.turn[2] - tilt[1] * HOVER_STRAIGHTEN) * h
       );
       if (opt.focusRef) {
         node.scale.setScalar(item.scale * (1 + 0.05 * f - 0.03 * (1 - f)));
       }
     }
 
-    group.rotation.y = (px - 0.5) * 2 * opt.parallaxYaw * h;
-    group.rotation.x = -(py - 0.5) * 2 * opt.parallaxPitch * h;
+    group.rotation.y = (px - 0.5) * 2 * opt.parallaxYaw * HOVER_PARALLAX * h;
+    group.rotation.x = -(py - 0.5) * 2 * opt.parallaxPitch * HOVER_PARALLAX * h;
 
-    const lum = lumRef.current * (1 + 0.14 * h);
-    key.intensity = (2.1 + 0.55 * h) * lum;
-    fill.intensity = (0.5 + 0.1 * h) * lum;
-    bounce.intensity = (0.28 + 0.14 * h) * lum;
-    ambient.intensity = (0.42 + 0.08 * h) * lum;
-    if (spot) spot.intensity = (5.2 + 1.2 * h) * lum;
-    if (rimLight) rimLight.intensity = (4 + 0.8 * h) * lum;
-    renderer.toneMappingExposure = 1.16 + 0.07 * h;
+    // The light does NOT answer hover (see THE HOVER): only the card's
+    // place on the ring dims it.
+    const lum = lumRef.current;
+    key.intensity = 2.1 * lum;
+    fill.intensity = 0.5 * lum;
+    bounce.intensity = 0.28 * lum;
+    ambient.intensity = 0.42 * lum;
+    if (spot) spot.intensity = 5.2 * lum;
+    if (rimLight) rimLight.intensity = 4 * lum;
 
     renderer.render(scene, camera);
   };
@@ -905,7 +918,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     releaseEnv?.();
     cancelAnimationFrame(raf);
     io.disconnect();
-    window.removeEventListener("resize", resize);
+    ro.disconnect();
     for (const t of textures) t.dispose();
     scene.traverse((o) => {
       const mesh = o as import("three").Mesh;
@@ -921,6 +934,13 @@ export function mountSpatialCard<T extends SpatialCardObject>(
       }
     });
     renderer.dispose();
+    // dispose() frees three's own resources but leaves the browser's
+    // WebGL context alive until garbage collection, and Chrome keeps only
+    // about sixteen: the ring's cards remount as they rotate, so contexts
+    // piled up until the browser started killing the OLDEST ones — the
+    // moth, a bulb, a card still on screen — which then went blank or had
+    // to rebuild. Released here, the count stays at what is on screen.
+    renderer.forceContextLoss();
     renderer.domElement.remove();
   };
 }

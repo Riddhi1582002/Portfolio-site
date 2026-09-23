@@ -194,11 +194,6 @@ const GROUP_LIFT_Z = 0.32;
 const PARALLAX_YAW = 5 * D;
 const PARALLAX_PITCH = 4.5 * D;
 
-// Time constants for the hover ease, in ms. Coming forward is slower than
-// going back, the same asymmetry the art cards' hover uses: arriving has
-// weight, leaving is clean.
-const HOVER_IN_TAU = 190;
-const HOVER_OUT_TAU = 120;
 // The pointer parallax follows on its own, slower constant so a fast flick
 // of the cursor across the card does not snap the group about.
 const POINTER_TAU = 260;
@@ -453,12 +448,9 @@ export default function PublicationsDisplay({
         groupLiftZ: GROUP_LIFT_Z,
         parallaxYaw: PARALLAX_YAW,
         parallaxPitch: PARALLAX_PITCH,
-        hoverInTau: HOVER_IN_TAU,
-        hoverOutTau: HOVER_OUT_TAU,
         pointerTau: POINTER_TAU,
         compositionArriveMs: COMPOSITION_ARRIVE_MS,
         contentScale: 0.74,
-        rocks: true,
         studio: true,
       });
     })().catch((err) => {

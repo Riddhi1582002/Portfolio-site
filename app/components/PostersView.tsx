@@ -593,6 +593,7 @@ export default function PostersView() {
           <div
             ref={stageRef}
             className="pv-stage"
+            data-cursor="drag"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={release}
@@ -643,6 +644,7 @@ export default function PostersView() {
                   key={p.id}
                   type="button"
                   className="pv-cell"
+                  data-cursor="view"
                   ref={(el) => {
                     cellRefs.current[i] = el;
                   }}

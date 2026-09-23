@@ -134,10 +134,3 @@ export const RECEPTION_PIECES: ReceptionPiece[] = [
     h: 1080,
   },
 ];
-
-/** What a still composition can actually stage: the images, plus a motion
- *  piece's own poster frame where one was extracted. In sequence order, so
- *  the card shows this work in the order the work is in. */
-export const RECEPTION_CARD_PIECES = RECEPTION_PIECES.map((p) =>
-  p.kind === "image" ? p.src : p.poster
-).filter((s): s is string => Boolean(s));

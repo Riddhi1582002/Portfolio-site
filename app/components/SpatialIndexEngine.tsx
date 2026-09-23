@@ -21,6 +21,7 @@
 
 import type * as THREEModule from "three";
 import { addRocks, makeFadedFloor } from "./sceneRocks";
+import { setCursorContext } from "../lib/cursor";
 
 export type SpatialIndexPlacement = {
   scale: number;
@@ -462,6 +463,24 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
   host.addEventListener("pointerleave", onPointerLeave);
   host.addEventListener("click", onClick as EventListener);
 
+  // ── PARALLAX: the camera slides a hair with the pointer. ─────────────
+  // It slides while still looking at a point behind the table — twice as
+  // far as the objects — so the layers separate by their real depth: the
+  // far floor barely moves (~1-2px), the publications about 4px, and the
+  // nearest things about 6px, which is the most a still life on a table
+  // would. Mouse only, and off entirely under reduced motion.
+  const stillPref = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const par = { x: 0, y: 0, tx: 0, ty: 0 };
+  const onWindowPointer = (ev: PointerEvent) => {
+    if (ev.pointerType !== "mouse") return;
+    par.tx = (ev.clientX / window.innerWidth) * 2 - 1;
+    par.ty = (ev.clientY / window.innerHeight) * 2 - 1;
+  };
+  if (!coarse && !stillPref) {
+    window.addEventListener("pointermove", onWindowPointer, { passive: true });
+  }
+  const camDist = Math.hypot(opt.camY, opt.camZ);
+
   // A read-only handle for verification harnesses.
   (host as HTMLElement & { __spatialIndex?: unknown }).__spatialIndex = {
     camera,
@@ -488,6 +507,18 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
     const dt = Math.min(250, Math.max(1, now - last));
     last = now;
 
+    if (!coarse && !stillPref) {
+      const kp = 1 - Math.exp(-dt / 420);
+      par.x += (par.tx - par.x) * kp;
+      par.y += (par.ty - par.y) * kp;
+      const focalPx = host.clientHeight / 2 / Math.tan((opt.fov * Math.PI) / 360);
+      const shift = focalPx > 0 ? (9 * camDist) / focalPx : 0;
+      camera.position.set(par.x * shift, opt.camY - par.y * shift, opt.camZ);
+      // On the resting line of sight, twice as far out: at rest this is the
+      // same view as looking at the origin.
+      camera.lookAt(0, -opt.camY, -opt.camZ);
+    }
+
     // Raycast (mouse only — touch selects by tap, not hover) and report
     // changes up so a caller's own text index can highlight in return.
     if (!coarse && pointerInside && loaded.length) {
@@ -508,10 +539,12 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
       if (id !== rayHoverId) {
         rayHoverId = id;
         onHoverObject(id);
+        setCursorContext("pubindex", id ? "open" : null);
       }
     } else if (rayHoverId !== null && (!pointerInside || coarse)) {
       rayHoverId = null;
       onHoverObject(null);
+      setCursorContext("pubindex", null);
     }
 
     const activeId = selectedIdRef.current ?? hoveredIdRef.current;
@@ -653,6 +686,8 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
     host.removeEventListener("pointermove", onPointerMove);
     host.removeEventListener("pointerleave", onPointerLeave);
     host.removeEventListener("click", onClick as EventListener);
+    window.removeEventListener("pointermove", onWindowPointer);
+    setCursorContext("pubindex", null);
     // The OBJECTS' geometry is shared with a cache root — never disposed
     // here. The floor and the stones are this engine's own, and are.
     for (const t of sharedTextures) t.dispose();
@@ -663,6 +698,13 @@ export function mountSpatialIndex<T extends SpatialIndexObject>(
       m.dispose();
     }
     renderer.dispose();
+    // dispose() frees three's own resources but leaves the browser's
+    // WebGL context alive until garbage collection, and Chrome keeps only
+    // about sixteen: the ring's cards remount as they rotate, so contexts
+    // piled up until the browser started killing the OLDEST ones — the
+    // moth, a bulb, a card still on screen — which then went blank or had
+    // to rebuild. Released here, the count stays at what is on screen.
+    renderer.forceContextLoss();
     renderer.domElement.remove();
   };
 }

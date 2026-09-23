@@ -150,13 +150,24 @@ export function pageIn(): void {
   // The inline script's CSS cover comes off only once GSAP holds the same
   // closed aperture, so there is never a frame with neither.
   document.documentElement.removeAttribute(REVEAL_ATTR);
-  gsap.to(el, {
-    clipPath: OPEN,
-    scale: 1,
-    duration: IN_S,
-    ease: "power3.out",
-    onComplete: () => release(el),
-  });
+  // fromTo, not to: a plain `to` reads its start back from the element,
+  // where the browser has shortened CLOSED to `inset(50% 0%)` — two
+  // numbers against OPEN's four, so GSAP animated only the top edge and
+  // dropped the bottom one to 0 on the first frame. The page appeared
+  // from the bottom up under a black band across the top, and on a heavy
+  // scene (the ring, the bulb) that band lingered for seconds. Given the
+  // same four-number shape at both ends, both edges open from the centre.
+  gsap.fromTo(
+    el,
+    { clipPath: CLOSED },
+    {
+      clipPath: OPEN,
+      scale: 1,
+      duration: IN_S,
+      ease: "power3.out",
+      onComplete: () => release(el),
+    }
+  );
 }
 
 /**

@@ -36,6 +36,8 @@ import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay"
 import CampaignsDisplay, { preloadCampaigns } from "./CampaignsDisplay";
 import ReceptionScreenDisplay, { preloadReceptionScreen } from "./ReceptionScreenDisplay";
 import LogosDisplay, { preloadLogos } from "./LogosDisplay";
+import ComicsDisplay, { preloadComics } from "./ComicsDisplay";
+import { setCursorContext } from "../lib/cursor";
 import PostersDisplay, { preloadPosters } from "./PostersDisplay";
 import InformationalDesignDisplay, {
   preloadInformationalDesign,
@@ -77,16 +79,24 @@ const CARD_HOLDERS: CardHolder[] = [
   },
   { index: 4, label: "Posters", href: "/posters", Display: PostersDisplay },
   { index: 5, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
-  // Project 09. The card is established — its place, label and link — and
-  // left empty inside: its contents have not been decided.
-  { index: 6, label: "Comics — Post Production", href: "/ai-comics", Display: EmptyDisplay },
+  { index: 6, label: "Comics — Post Production", href: "/ai-comics", Display: ComicsDisplay },
 ];
 
-function EmptyDisplay() {
-  return null;
-}
-
 const holderAt = (i: number) => CARD_HOLDERS.find((h) => h.index === i) ?? null;
+
+/** Every card's work, fetched and cached ahead of the ring. Idempotent —
+ *  each display keeps its own module cache — so the homepage can call it
+ *  while the reels are still playing (see HeroSection) and the ring's own
+ *  mount calling it again costs nothing. */
+export function preloadRingCards() {
+  preloadPublications();
+  preloadCampaigns();
+  preloadReceptionScreen();
+  preloadLogos();
+  preloadPosters();
+  preloadInformationalDesign();
+  preloadComics();
+}
 // Angle between neighbouring cards on the ring. 7 x 30 = 210 degrees
 // occupied, so 150 degrees of the ring stays empty: the gap that stops it
 // reading as a loop.
@@ -165,12 +175,7 @@ export default function ArcCarousel({
   // Idempotent (see the module cache in PublicationsDisplay), so this is
   // simply "as early as possible," not "the only place it's requested."
   useEffect(() => {
-    preloadPublications();
-    preloadCampaigns();
-    preloadReceptionScreen();
-    preloadLogos();
-    preloadPosters();
-    preloadInformationalDesign();
+    preloadRingCards();
   }, []);
 
   // THE PUBLICATIONS CARD'S HOVER AND CLICK, MEASURED IN PLAIN 2D — NOT
@@ -273,9 +278,12 @@ export default function ArcCarousel({
       if (e.pointerType !== "mouse") return;
       const over = holderUnder(e.clientX, e.clientY);
       for (const h of CARD_HOLDERS) setHover(h.index, over?.index === h.index);
+      // This ring hit-tests for itself, so it tells the cursor too.
+      setCursorContext("ring", over ? "open" : null);
     };
     const onDocLeave = () => {
       for (const h of CARD_HOLDERS) setHover(h.index, false);
+      setCursorContext("ring", null);
     };
     const onClick = (e: MouseEvent) => {
       // Guards against a second click starting a second timeline while the
@@ -373,6 +381,7 @@ export default function ArcCarousel({
       window.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerleave", onDocLeave);
       window.removeEventListener("click", onClick);
+      setCursorContext("ring", null);
     };
   }, []);
 
@@ -393,6 +402,21 @@ export default function ArcCarousel({
   // Which card index is at the front. Runs from before the first to past
   // the last, so both ends of the arc are empty frames.
   const rot = -ARC_LEAD + p * (ARC_CARD_COUNT - 1 + ARC_LEAD * 2);
+
+  // Which cards have been in view since the ring mounted (see inRange).
+  // Recorded a frame after they first appear, so rendering stays pure.
+  const [seen, setSeen] = useState<Set<number>>(() => new Set());
+  const inView = Array.from({ length: ARC_CARD_COUNT }, (_, i) => i)
+    .filter((i) => Math.abs((i - rot) * ARC_STEP_DEG) < FADE_END_DEG)
+    .join(",");
+  useEffect(() => {
+    if (!inView) return;
+    const fresh = inView.split(",").map(Number);
+    const id = requestAnimationFrame(() =>
+      setSeen((prev) => (fresh.every((i) => prev.has(i)) ? prev : new Set([...prev, ...fresh])))
+    );
+    return () => cancelAnimationFrame(id);
+  }, [inView]);
 
   return (
     <div
@@ -416,7 +440,6 @@ export default function ArcCarousel({
       {Array.from({ length: ARC_CARD_COUNT }, (_, i) => {
         const deg = (i - rot) * ARC_STEP_DEG;
         const absDeg = Math.abs(deg);
-        if (absDeg >= FADE_END_DEG) return null;
 
         const rad = (deg * Math.PI) / 180;
         // On the ring, with the front of the ring pulled to z = 0 so the
@@ -436,7 +459,12 @@ export default function ArcCarousel({
           ? span(Math.abs(x) - card / 2, 0.12 * vw, 0.5 * vw)
           : span(outerEdge, EDGE_FADE_START * vw, EDGE_FADE_END * vw);
         const opacity = Math.min(1 - span(absDeg, FADE_START_DEG, FADE_END_DEG), 1 - edgeFade);
-        if (opacity <= 0.001) return null;
+        // OUT OF RANGE: a card that has never been in view is not built
+        // yet; one that has is kept, hidden, rather than torn down — each
+        // rebuild was a new WebGL context, its textures fetched and its
+        // shaders compiled again, every time it rotated back round.
+        const inRange = absDeg < FADE_END_DEG && opacity > 0.001;
+        if (!inRange && !seen.has(i)) return null;
 
         // A partial yaw: enough that the card reads as sitting on a ring,
         // not so much that the piece is seen edge-on and unreadable.
@@ -446,10 +474,9 @@ export default function ArcCarousel({
 
         const holder = holderAt(i);
         const isPublications = holder != null;
-        // A holder's own light, before hover: it rides the same `dist` the
-        // glow below already uses, so a piece turned away from the reader
-        // is dimmer. The hover part is added inside the display, off the
-        // same `--pub-hover` everything else here reads.
+        // A holder's own light: it rides the same `dist` the glow below
+        // already uses, so a piece turned away from the reader is dimmer.
+        // Hover does not change it (see SpatialCardEngine's THE HOVER).
         const pubLuminance = Math.max(0.55, 1 - dist * 0.17);
 
         return (
@@ -489,6 +516,7 @@ export default function ArcCarousel({
                   ? 1000
                   : 10 + Math.round(Math.cos(rad) * 100),
               willChange: "transform, opacity",
+              display: inRange ? undefined : "none",
             }}
           >
             <div
@@ -527,7 +555,10 @@ export default function ArcCarousel({
                     : undefined,
                 }}
               />
-              <HoverCard aspect={1} radius={14}>
+              {/* No glare: white light screened over the lit case is what
+                  made hover wash the work out. The work answers hover
+                  itself, physically (see SpatialCardEngine's THE HOVER). */}
+              <HoverCard aspect={1} radius={14} glare={false}>
                 {isPublications ? (
                   /* THE PUBLICATIONS DISPLAY. The five real publications,
                      inside the card. It reads HoverCard's own pointer state
@@ -571,11 +602,11 @@ export default function ArcCarousel({
                     }}
                   >
                     {/* The case's own inner light — brightest where the
-                        publications stand, brightening a touch further on
-                        hover, never bright enough to wash the artwork out.
-                        Near-neutral (a hint of warmth, not the bulb's
-                        yellow) so it lights the case without tinting the
-                        covers. */}
+                        publications stand, never bright enough to wash the
+                        artwork out, and constant: hover moves the work,
+                        it does not light it. Near-neutral (a hint of
+                        warmth, not the bulb's yellow) so it lights the case
+                        without tinting the covers. */}
                     <div
                       aria-hidden
                       style={{
@@ -583,8 +614,7 @@ export default function ArcCarousel({
                         inset: 0,
                         background:
                           "radial-gradient(120% 95% at 50% 42%, rgba(250,248,244,0.14) 0%, rgba(244,240,234,0.06) 34%, rgba(240,236,228,0) 66%)",
-                        opacity: "calc(0.7 + 0.3 * var(--pub-hover, 0))",
-                        transition: "opacity 420ms cubic-bezier(0.16,1,0.3,1)",
+                        opacity: 0.7,
                         pointerEvents: "none",
                       }}
                     />
