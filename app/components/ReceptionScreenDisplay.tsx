@@ -14,15 +14,14 @@
 // is not decoding a 5760px original for a screen a few hundred pixels
 // wide.
 //
-// THE COMPOSITION is a hero and its supporting frames, not a spread of
-// equals, and it runs on a DIAGONAL: 16:9 screens set side by side make a
-// group three times as wide as it is tall, which in a square card is a
-// thin strip with the card empty above it. Stepped back and up instead —
-// the hero large at the front, one screen behind it to the left and
-// higher, one further back to the right and higher again, and a small
-// detail at the near right — the group fills the card. They hang in the
-// studio's air like everything else on the ring, each a screen with a
-// real housing.
+// THE COMPOSITION: a pyramid of screens, one behind another. The hero is
+// large, level and forward; two screens stand behind it to either side,
+// turned a few degrees in towards it and raised so their upper halves
+// show over its shoulders; the smallest sits highest and furthest back,
+// centred. Every screen is a clear step deeper than the one in front of
+// it, and none is turned far enough for its housing to reach into its
+// neighbour's — the earlier wide turns had one screen passing through
+// another.
 //
 // Everything below the composition — renderer, lights, floor,
 // hover, parallax, the load-then-arrive sequence — is SpatialCardEngine,
@@ -50,56 +49,55 @@ type Slot = Omit<StackPiece, "src" | "aspect">;
 
 const SLOTS: Slot[] = [
   {
-    // BACK RIGHT, highest and deepest: the top of the diagonal.
+    // BACK, CENTRED, HIGHEST: the top of the pyramid.
     id: "rs-back-right",
-    height: 1.12,
+    height: 0.92,
     scale: 1,
-    pos: [0.74, 1.28, -0.95],
-    rot: [-1.5 * D, -20 * D, 1.2 * D],
-    lift: [0.04, 0.05, 0.05],
-    turn: [0, -2.2 * D, 0],
-    parallax: 0.4,
-    bezel: BEZEL * 1.12,
+    pos: [0, 1.3, -1.2],
+    rot: [-1 * D, 0 * D, 0],
+    lift: [0, 0.05, 0.04],
+    turn: [0, 0 * D, 0],
+    parallax: 0.35,
+    bezel: BEZEL * 0.92,
     emissive: 0.34,
   },
   {
-    // MIDDLE LEFT, a step nearer.
+    // LEFT, a step nearer, turned in towards the hero.
     id: "rs-back-left",
-    height: 1.14,
+    height: 1.08,
     scale: 1,
-    pos: [-0.94, 0.4, -0.5],
-    rot: [-2 * D, 18 * D, -1.4 * D],
-    lift: [-0.04, 0.06, 0.05],
+    pos: [-1.28, 0.42, -0.6],
+    rot: [-1 * D, 11 * D, 0],
+    lift: [-0.05, 0.06, 0.05],
     turn: [0, 2.4 * D, 0],
-    parallax: 0.5,
-    bezel: BEZEL * 1.14,
+    parallax: 0.55,
+    bezel: BEZEL * 1.08,
     emissive: 0.36,
   },
   {
-    // NEAR RIGHT, small: the detail, closest to the lens and the last
-    // thing the eye reaches.
+    // RIGHT, its mirror.
     id: "rs-front-right",
-    height: 0.76,
+    height: 1.08,
     scale: 1,
-    pos: [1.5, -0.98, 1.15],
-    rot: [-2.4 * D, -26 * D, 2.6 * D],
-    lift: [0.06, 0.08, 0.1],
-    turn: [0, -3 * D, 0],
-    parallax: 0.78,
-    bezel: BEZEL * 0.76,
+    pos: [1.28, 0.36, -0.6],
+    rot: [-1 * D, -11 * D, 0],
+    lift: [0.05, 0.06, 0.05],
+    turn: [0, -2.4 * D, 0],
+    parallax: 0.55,
+    bezel: BEZEL * 1.08,
     emissive: 0.38,
   },
   {
-    // THE HERO: largest and nearest, at the foot of the diagonal.
+    // THE HERO: largest, level, forward and centred.
     id: "rs-hero",
-    height: 1.48,
+    height: 1.5,
     scale: 1,
-    pos: [0.26, -0.52, 0.75],
-    rot: [-1.8 * D, -6 * D, -0.6 * D],
-    lift: [0.01, 0.1, 0.14],
-    turn: [0, -1.4 * D, 0],
+    pos: [0, -0.62, 0.5],
+    rot: [-1 * D, 0 * D, 0],
+    lift: [0, 0.1, 0.14],
+    turn: [0, 0 * D, 0],
     parallax: 1,
-    bezel: BEZEL * 1.48,
+    bezel: BEZEL * 1.5,
     emissive: 0.46,
   },
 ];

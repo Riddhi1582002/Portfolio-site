@@ -26,64 +26,63 @@ const SRC = {
   employee1: EMPLOYEE_POSTS[0].src,
 };
 
-// Every `pos[1]` is the groundline (floorY, -1.35) plus that panel's own
-// half-height, so each square sits ON the surface rather than floating
-// above it — the same rule the publications' own placements follow.
 const FLOOR_Y = -1.35;
-const at = (height: number, sink = 0) => FLOOR_Y + height / 2 - sink;
 
+// A PYRAMID OF POSTS: the lead post large and forward; two behind it to
+// either side, turned a few degrees in and raised so they show over its
+// shoulders; the fourth highest and furthest back, centred. Each a clear
+// step deeper than the one in front, so the stack reads in layers.
 export const CAMPAIGN_CARD_PIECES: StackPiece[] = [
   {
-    // Back left, leaning in: the deepest of the four.
+    // Back, centred, highest.
     id: "dept-002",
     src: SRC.dept2,
     aspect: 1,
-    height: 1.74,
+    height: 1.3,
     scale: 1,
-    pos: [-1.3, at(1.74), -1.05],
-    rot: [-3 * D, 15 * D, -4 * D],
-    lift: [-0.05, 0.1, 0.06],
-    turn: [0, 3 * D, 0],
-    parallax: 0.45,
+    pos: [0, 1.26, -1.2],
+    rot: [-1 * D, 0 * D, 0],
+    lift: [0, 0.06, 0.04],
+    turn: [0, 0 * D, 0],
+    parallax: 0.35,
   },
   {
-    // Back right, the tallest edge of the group.
-    id: "dept-003",
-    src: SRC.dept3,
-    aspect: 1,
-    height: 1.82,
-    scale: 1,
-    pos: [1.32, at(1.82), -0.8],
-    rot: [-2 * D, -16 * D, 3 * D],
-    lift: [0.05, 0.11, 0.06],
-    turn: [0, -3 * D, 0],
-    parallax: 0.5,
-  },
-  {
-    // Left, half in front of the back pair.
+    // Left, a step nearer, turned in.
     id: "employee-001",
     src: SRC.employee1,
     aspect: 1,
-    height: 1.54,
+    height: 1.5,
     scale: 1,
-    pos: [-1.16, at(1.54, 0.06), 0.2],
-    rot: [-4 * D, 11 * D, 5 * D],
-    lift: [-0.06, 0.13, 0.1],
+    pos: [-1.22, 0.32, -0.6],
+    rot: [-1 * D, 10 * D, 0],
+    lift: [-0.05, 0.1, 0.06],
     turn: [0, 2.5 * D, 0],
-    parallax: 0.72,
+    parallax: 0.55,
   },
   {
-    // THE DOMINANT ONE: forward, centred, and the largest — the piece the
-    // eye lands on before it reads the rest as a group behind it.
+    // Right, its mirror.
+    id: "dept-003",
+    src: SRC.dept3,
+    aspect: 1,
+    height: 1.5,
+    scale: 1,
+    pos: [1.22, 0.28, -0.6],
+    rot: [-1 * D, -10 * D, 0],
+    lift: [0.05, 0.1, 0.06],
+    turn: [0, -2.5 * D, 0],
+    parallax: 0.55,
+  },
+  {
+    // THE LEAD POST: forward, centred, the largest.
     id: "dept-001",
     src: SRC.dept1,
     aspect: 1,
-    height: 2.08,
+    height: 2.05,
     scale: 1,
-    pos: [0.28, at(2.08, 0.1), 1.04],
-    rot: [-3 * D, -4 * D, -1.5 * D],
-    lift: [0.02, 0.16, 0.16],
-    turn: [0, -1.5 * D, 0],
+    pos: [0, -0.55, 0.5],
+    rot: [-1 * D, 0 * D, 0],
+    lift: [0, 0.16, 0.16],
+    turn: [0, 0 * D, 0],
     parallax: 1,
   },
 ];

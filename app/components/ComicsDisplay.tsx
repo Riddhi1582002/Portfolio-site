@@ -58,9 +58,22 @@ export default function ComicsDisplay({ luminance = 1 }: { luminance?: number })
         height: "100%",
         overflow: "hidden",
         background: "linear-gradient(160deg, #1b1c21 0%, #101115 60%, #0a0b0d 100%)",
-        filter: luminance < 0.999 ? `brightness(${luminance.toFixed(3)})` : undefined,
       }}
     >
+      {/* The ring's dimming, as a dark layer's opacity rather than a CSS
+          filter: a filter re-rasterises the whole card on every change,
+          and this changes on every frame the ring turns. */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          background: "#000",
+          opacity: Math.max(0, 1 - luminance).toFixed(3),
+          pointerEvents: "none",
+        }}
+      />
       {/* The rack: turned onto the diagonal, and oversized so the turn
           never shows a corner of empty card. */}
       <div

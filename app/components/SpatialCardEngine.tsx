@@ -155,9 +155,12 @@ export const DEFAULT_SPATIAL_CARD_OPTIONS: SpatialCardOptions = {
 // standing; then the whole group is fitted to the case's opening, so every
 // card fills its frame the same amount whatever size its pieces were
 // authored at. Deterministic: the same card always lands the same way.
-const STUDIO_TILT_Z = [-6, 5, -3.5, 7, -5, 4, -7, 3].map((d) => (d * Math.PI) / 180);
-const STUDIO_TILT_X = [3, -2.5, 4, -2, 2.5, -3, 2, -1.5].map((d) => (d * Math.PI) / 180);
-const STUDIO_FLOAT_Y = [0.14, -0.06, 0.2, 0.02, 0.1, -0.1, 0.16, -0.02];
+// Kept small on purpose: at the old ±7° every card read as pieces dropped
+// at random rather than placed. A couple of degrees is enough to catch the
+// light differently on each piece without breaking the arrangement.
+const STUDIO_TILT_Z = [-2, 1.5, -1.2, 2, -1.5, 1.2, -2, 1].map((d) => (d * Math.PI) / 180);
+const STUDIO_TILT_X = [1.5, -1, 1.5, -1, 1, -1.2, 1, -0.8].map((d) => (d * Math.PI) / 180);
+const STUDIO_FLOAT_Y = [0.04, -0.02, 0.05, 0, 0.03, -0.03, 0.04, 0];
 /** Where the fitted group sits in the opening, as shares of it. The work
  *  is the point of the card, so it takes nearly all of it: a sliver at the
  *  sides and top, and a little more at the bottom for the glossy floor and
@@ -169,6 +172,8 @@ const STUDIO_FIT = { side: 0.035, top: 0.055, bottom: 0.08 };
  *  crop at the card's edge, like a photograph's frame, rather than the
  *  whole group shrinking to a strip across the middle of the card. */
 const STUDIO_OVERFLOW = 0.1;
+/** Nothing may be placed deeper than about -1.3: the case's back panel is
+ *  at -1.62, and a piece behind it simply is not seen. */
 /** How far past the card's own face the studio case is drawn: enough that
  *  the camera's slight rise never shows its edge inside the card. */
 const CASE_OVERSCAN = 1.06;
@@ -431,7 +436,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     powerPreference: "high-performance",
   });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(1.75, window.devicePixelRatio || 1));
+  renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.16;
   renderer.shadowMap.enabled = true;
@@ -508,8 +513,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
   // filling the card, objects standing over an invisible plane read as
   // floating in the case rather than set down in it. See makeFadedFloor for
   // why it fades rather than ending at a horizon.
-  group.add(
-    makeFadedFloor(THREE, {
+  const floor = makeFadedFloor(THREE, {
       size: 7,
       y: opt.floorY,
       // Studio: dark and glossy, so the rim light runs along it.
@@ -517,10 +521,11 @@ export function mountSpatialCard<T extends SpatialCardObject>(
       core: opt.studio ? 0.26 : 0.18,
       roughness: opt.studio ? 0.32 : 0.5,
       metalness: opt.studio ? 0.3 : 0.18,
-    })
-  );
+  });
+  group.add(floor);
   // THE POOL: the overhead spot landing on the floor under the group,
   // warm and soft-edged, the floor's brightest place.
+  let pool: import("three").Mesh | null = null;
   if (opt.studio) {
     const tex = radialTexture(THREE, [
       [0, "rgba(255,176,96,0.34)"],
@@ -529,7 +534,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
       [1, "rgba(0,0,0,0)"],
     ]);
     if (tex) {
-      const pool = new THREE.Mesh(
+      pool = new THREE.Mesh(
         new THREE.PlaneGeometry(3.2, 1.7),
         new THREE.MeshBasicMaterial({
           map: tex,
@@ -578,6 +583,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
         pmrem.dispose();
         scene.environment = target.texture;
         scene.environmentIntensity = intensity;
+        needsDraw = true;
         releaseEnv = () => {
           scene.environment = null;
           target.texture.dispose();
@@ -669,7 +675,10 @@ export function mountSpatialCard<T extends SpatialCardObject>(
       byZ.forEach((l, i) => {
         l.depth = byZ.length > 1 ? i / (byZ.length - 1) - 0.5 : 0.5;
       });
-      if (opt.studio) fitToCase();
+      if (opt.studio) {
+        fitToCase();
+        settleFloor();
+      }
       compositionReadyAt = performance.now();
     }
   );
@@ -698,7 +707,7 @@ export function mountSpatialCard<T extends SpatialCardObject>(
       content.updateMatrixWorld(true);
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, zc = 0;
       for (const { node } of loaded) {
-        box.setFromObject(node, true);
+        boundsOf(node, box);
         zc += (box.min.z + box.max.z) / 2;
         for (let c = 0; c < 8; c++) {
           const p = ndc(
@@ -727,6 +736,46 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     }
   }
 
+  /** What the last drawn frame showed — see DRAW ONLY WHEN THE PICTURE CHANGED. */
+  let lastSig: number[] = [];
+  let needsDraw = true;
+
+  /**
+   * THE FLOOR GOES UNDER THE WORK. The fit scales and moves the pieces but
+   * the floor stayed at its authored height, so a fitted group hung
+   * through it — and the floor, drawn late and depth-tested, laid a dark
+   * band across the bottom of every piece that reached below it. It now
+   * sits a hand's breadth under the lowest piece, where it catches their
+   * shadows instead of covering them.
+   */
+  /** A piece's bounds, leaving out anything marked `noFit` (its drop
+   *  shadow), which should neither size the fit nor the floor. */
+  function boundsOf(node: import("three").Object3D, out: import("three").Box3) {
+    out.makeEmpty();
+    const part = new THREE.Box3();
+    node.traverse((o) => {
+      const mesh = o as import("three").Mesh;
+      if (!mesh.isMesh || mesh.userData.noFit) return;
+      part.setFromObject(mesh, true);
+      out.union(part);
+    });
+    return out;
+  }
+
+  function settleFloor() {
+    content.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    let minY = Infinity;
+    for (const { node } of loaded) {
+      boundsOf(node, box);
+      minY = Math.min(minY, box.min.y);
+    }
+    if (!Number.isFinite(minY)) return;
+    const y = minY - 0.12;
+    floor.position.y = y;
+    if (pool) pool.position.y = y + 0.004;
+  }
+
   // Sized off the HOST, not the window: a ring card that has rotated out
   // of range is kept mounted but hidden (display: none), and a window
   // resize while it is hidden would have sized it to 1x1 and left it
@@ -739,6 +788,8 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    // Resizing clears the drawing buffer.
+    needsDraw = true;
   };
   resize();
   const ro = new ResizeObserver(resize);
@@ -908,6 +959,22 @@ export function mountSpatialCard<T extends SpatialCardObject>(
     if (spot) spot.intensity = 5.2 * lum;
     if (rimLight) rimLight.intensity = 4 * lum;
 
+    // DRAW ONLY WHEN THE PICTURE CHANGED. The ring turns these cards with
+    // CSS, which moves the canvas without touching what is in it — so a
+    // card at rest has nothing new to draw, and six of them redrawing
+    // every frame (shadow pass and all) is what took the frame rate, the
+    // cursor and the moth down with it from this beat on. Hover, the
+    // pointer, arrival, focus and the ring's dimming are what change it.
+    let focusSum = 0;
+    for (const v of focusAmount.values()) focusSum += v;
+    const sig = [h, group.rotation.x, group.rotation.y, arrive, lum, focusSum, loaded.length];
+    let changed = needsDraw;
+    for (let i = 0; i < sig.length && !changed; i++) {
+      if (Math.abs(sig[i] - lastSig[i]) > 1e-4) changed = true;
+    }
+    if (!changed) return;
+    lastSig = sig;
+    needsDraw = false;
     renderer.render(scene, camera);
   };
   raf = requestAnimationFrame(tick);

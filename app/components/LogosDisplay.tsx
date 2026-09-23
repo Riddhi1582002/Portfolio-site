@@ -5,7 +5,7 @@
 // The five supplied brand mockups, staged as printed panels the way the
 // campaigns card stages its posts: the Fruit Rush bottle forward and
 // largest, Clear Wave and Shaap Shaap either side of it, the Mercury
-// letterhead and the Orient tote behind and above. Each is the
+// letterhead and the Orient tote hung level behind. Each is the
 // supplied photograph whole, at its own proportion — card-sized copies
 // (resized, never cropped or retouched), so nothing about a mark on
 // screen is anything but the designer's own file.
@@ -22,74 +22,76 @@ const FLOOR_Y = -1.35;
 
 const src = (name: string) => `/logos/card/${name}.jpg`;
 
-// A cascade rather than a row: the two flat pieces (letterhead, tote)
-// hang behind and ABOVE the two bottles and the can, so every one of
-// the five shows, and the group is about as tall as it is wide — which is
-// what lets it fill a square card instead of a strip across it.
+// TWO ROWS, as a board of work is hung: the two flat pieces (letterhead,
+// tote) side by side at the back, level and high, and the three
+// packaging shots in front of them — the bottles either side, turned a
+// few degrees in, and the Fruit Rush bottle forward and largest in the
+// middle. Symmetric on purpose: this is a brand showcase, and a set of
+// marks reads as considered when it is lined up, not scattered.
 export const LOGOS_CARD_PIECES: StackPiece[] = [
   {
-    // Back left, high: the deepest of the five.
+    // Back row, left.
     id: "mercury-letterhead",
     src: src("mercury-letterhead"),
     aspect: 1,
-    height: 1.72,
+    height: 1.6,
     scale: 1,
-    pos: [-0.95, 1.2, -1.3],
-    rot: [-3 * D, 14 * D, -4 * D],
-    lift: [-0.05, 0.1, 0.06],
-    turn: [0, 3 * D, 0],
-    parallax: 0.45,
+    pos: [-0.88, 1.05, -1.15],
+    rot: [-1 * D, 3 * D, 0],
+    lift: [-0.04, 0.08, 0.05],
+    turn: [0, 2 * D, 0],
+    parallax: 0.4,
   },
   {
-    // Back right, a little lower than its partner.
+    // Back row, right.
     id: "orient-tote",
     src: src("orient-tote"),
     aspect: 1,
-    height: 1.78,
+    height: 1.6,
     scale: 1,
-    pos: [1.0, 1.0, -1.1],
-    rot: [-2 * D, -15 * D, 3 * D],
-    lift: [0.05, 0.11, 0.06],
-    turn: [0, -3 * D, 0],
-    parallax: 0.5,
+    pos: [0.88, 1.05, -1.15],
+    rot: [-1 * D, -3 * D, 0],
+    lift: [0.04, 0.08, 0.05],
+    turn: [0, -2 * D, 0],
+    parallax: 0.4,
   },
   {
-    // Front left, beside the hero.
+    // Front row, left, turned in.
     id: "clear-wave-bottle",
     src: src("clear-wave-bottle"),
     aspect: 768 / 1024,
-    height: 2.0,
+    height: 1.95,
     scale: 1,
-    pos: [-1.35, -0.45, 0.25],
-    rot: [-4 * D, 12 * D, 5 * D],
-    lift: [-0.06, 0.13, 0.1],
+    pos: [-1.32, -0.45, -0.35],
+    rot: [-1 * D, 9 * D, 0],
+    lift: [-0.05, 0.12, 0.1],
     turn: [0, 2.5 * D, 0],
     parallax: 0.72,
   },
   {
-    // Front right, the same step forward on the other side.
+    // Front row, right, its mirror.
     id: "shaap-shaap-can",
     src: src("shaap-shaap-can"),
     aspect: 819 / 1024,
-    height: 1.96,
+    height: 1.95,
     scale: 1,
-    pos: [1.35, -0.5, 0.4],
-    rot: [-3 * D, -12 * D, -4 * D],
-    lift: [0.06, 0.13, 0.1],
+    pos: [1.32, -0.45, -0.35],
+    rot: [-1 * D, -9 * D, 0],
+    lift: [0.05, 0.12, 0.1],
     turn: [0, -2.5 * D, 0],
-    parallax: 0.74,
+    parallax: 0.72,
   },
   {
     // THE ONE THE EYE LANDS ON: forward, centred, the largest.
     id: "fruit-rush-bottle",
     src: src("fruit-rush-bottle"),
     aspect: 819 / 1024,
-    height: 2.34,
+    height: 2.3,
     scale: 1,
-    pos: [0, -0.3, 1.05],
-    rot: [-3 * D, -4 * D, -1.5 * D],
-    lift: [0.02, 0.16, 0.16],
-    turn: [0, -1.5 * D, 0],
+    pos: [0, -0.36, 0.55],
+    rot: [-1 * D, 0 * D, 0],
+    lift: [0, 0.16, 0.16],
+    turn: [0, 0 * D, 0],
     parallax: 1,
   },
 ];

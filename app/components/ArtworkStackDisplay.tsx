@@ -76,6 +76,54 @@ function loadTexture(THREE: typeof THREEModule, src: string) {
   return cached;
 }
 
+// THE DROP SHADOW. Every piece throws a soft, offset shadow onto whatever
+// is behind it — the next piece, or the case — the way a print held off a
+// board does. A blurred card drawn once, not the shadow map: shadow-map
+// shadows on these thin, overlapping panels came out as hard dark bands
+// laid across the artwork, which is exactly what read as random overlays.
+let shadowTex: import("three").Texture | null = null;
+function dropShadowTexture(THREE: typeof THREEModule) {
+  if (shadowTex) return shadowTex;
+  const N = 256;
+  const pad = 48;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = N;
+  const ctx = canvas.getContext("2d")!;
+  ctx.filter = "blur(18px)";
+  ctx.fillStyle = "rgba(0,0,0,1)";
+  ctx.fillRect(pad, pad, N - pad * 2, N - pad * 2);
+  shadowTex = new THREE.CanvasTexture(canvas);
+  return shadowTex;
+}
+/** How far the shadow falls: down and a little right, as from the key. */
+const SHADOW_OFFSET: [number, number] = [0.07, -0.11];
+
+function addDropShadow(
+  THREE: typeof THREEModule,
+  group: import("three").Group,
+  w: number,
+  h: number,
+  z: number
+) {
+  // The texture's shape is inset by pad/N on each side, so the plane is
+  // sized up to put the shadow's solid part at the panel's own edge.
+  const grow = 256 / (256 - 96);
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(w * grow * 1.04, h * grow * 1.04),
+    new THREE.MeshBasicMaterial({
+      map: dropShadowTexture(THREE),
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+    })
+  );
+  plane.position.set(SHADOW_OFFSET[0], SHADOW_OFFSET[1], z);
+  plane.renderOrder = -1;
+  // Not part of the piece's size: the card is fitted to the work itself.
+  plane.userData.noFit = true;
+  group.add(plane);
+}
+
 async function buildPanel(
   THREE: typeof THREEModule,
   piece: StackPiece
@@ -126,8 +174,8 @@ async function buildPanel(
       shellMat
     );
     shell.castShadow = true;
-    shell.receiveShadow = true;
     group.add(shell);
+    addDropShadow(THREE, group, w + b * 2, h + b * 2, -shellDepth / 2 - 0.03);
 
     // The picture sits just proud of the housing's front face, so the
     // bezel reads as a rim around it rather than a border drawn on it.
@@ -142,8 +190,8 @@ async function buildPanel(
     [edge, edge, edge, edge, face, edge]
   );
   mesh.castShadow = true;
-  mesh.receiveShadow = true;
   group.add(mesh);
+  addDropShadow(THREE, group, w, h, -PANEL_DEPTH / 2 - 0.03);
   return group;
 }
 

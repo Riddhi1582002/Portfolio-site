@@ -2,7 +2,7 @@
 
 // THE CURSOR — desktop only, and deliberately small.
 //
-// A 5px dot on the pointer and a thin 26px ring that follows it a beat
+// A 5px dot on the pointer and a thin 26px ring that follows it a hair
 // behind. Over something that can be opened, dragged, viewed or backed
 // out of, the ring opens a little and a one-word label sits beside it;
 // over any other link or button it only opens a little. That is all: no
@@ -46,8 +46,10 @@ export default function ContextCursor() {
     const still = window.matchMedia("(prefers-reduced-motion: reduce)");
     const html = document.documentElement;
 
-    const ringX = gsap.quickTo(ring, "x", { duration: still.matches ? 0 : 0.2, ease: "power3.out" });
-    const ringY = gsap.quickTo(ring, "y", { duration: still.matches ? 0 : 0.2, ease: "power3.out" });
+    // A short follow: long enough to read as a ring trailing the dot, short
+    // enough that the pointer never feels like it is sliding on ice.
+    const ringX = gsap.quickTo(ring, "x", { duration: still.matches ? 0 : 0.08, ease: "power2.out" });
+    const ringY = gsap.quickTo(ring, "y", { duration: still.matches ? 0 : 0.08, ease: "power2.out" });
 
     let shown = false;
     let state: State = "idle";
