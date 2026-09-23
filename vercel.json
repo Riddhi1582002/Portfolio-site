@@ -1,0 +1,16 @@
+{
+  "redirects": [
+    {
+      "source": "/:path((?!phone\\.html$)(?!_next/)(?!favicon).*)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(iphone|ipod|android.+mobile|windows phone|blackberry|bb10|opera mini|iemobile).*"
+        }
+      ],
+      "destination": "/phone.html",
+      "permanent": false
+    }
+  ]
+}

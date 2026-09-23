@@ -9,22 +9,26 @@
 // site as before.
 //
 // Whether this is a phone is decided before the first paint by an inline
-// script in the document head (it sets `data-phone` on <html>, and
-// globals.css hides the page and shows the note from that alone), so a
-// phone never sees the site flash up first. This component then keeps the
-// page's own components from mounting at all there — the WebGL scenes and
-// their downloads — rather than merely hiding them.
+// script in the document head, which sends it to the standalone note at
+// /phone.html (see PHONE_SCRIPT), so a phone neither sees the site flash
+// up nor downloads it. What follows is only the fallback for
+// a browser where that script could not do so: the page is hidden by CSS
+// from the same attribute, and its components are kept from mounting.
 
 import { useSyncExternalStore, type ReactNode } from "react";
 
 export const PHONE_ATTR = "data-phone";
 
 /** Inline, pre-paint: a coarse pointer on a screen under 600px on its
- *  short side is a phone, in either orientation. */
+ *  short side is a phone, in either orientation. A phone is sent straight
+ *  to /phone.html — the note alone, a single small file — and leaving
+ *  this document cancels everything it had started to fetch, so a phone
+ *  downloads none of the site. */
 export const PHONE_SCRIPT =
   "try{if(matchMedia('(pointer: coarse)').matches&&" +
-  "Math.min(screen.width,screen.height)<600)" +
-  `document.documentElement.setAttribute('${PHONE_ATTR}','1');}catch(e){}`;
+  "Math.min(screen.width,screen.height)<600){" +
+  `document.documentElement.setAttribute('${PHONE_ATTR}','1');` +
+  "location.replace('/phone.html');}}catch(e){}";
 
 const isPhone = () => document.documentElement.getAttribute(PHONE_ATTR) === "1";
 const subscribe = () => () => {};
