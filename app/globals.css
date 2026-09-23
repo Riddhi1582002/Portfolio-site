@@ -194,3 +194,40 @@ html.cc-on * {
 .cc[data-pressed][data-state="drag"] .cc-ring {
   transform: scale(1.12);
 }
+
+/* PHONES (see PhoneGate): the page is hidden before it can paint, and a
+   note is shown in its place. */
+.phone-note {
+  display: none;
+}
+
+html[data-phone="1"] #page-frame {
+  display: none;
+}
+
+html[data-phone="1"] .phone-note {
+  display: flex;
+  min-height: 100svh;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 28px;
+  background: #000;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.phone-note-text {
+  max-width: 34ch;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  letter-spacing: 0.005em;
+}
+
+.phone-note-text p + p {
+  margin-top: 1.1em;
+}
+
+.phone-note-sign {
+  margin-top: 1.8em !important;
+  color: rgba(255, 255, 255, 0.62);
+}

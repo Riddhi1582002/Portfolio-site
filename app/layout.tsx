@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import PageReveal from "./components/PageReveal";
 import ContextCursor from "./components/ContextCursor";
+import PhoneGate, { PhoneNote, PHONE_SCRIPT } from "./components/PhoneGate";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,7 +39,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           as="fetch"
           href="/model/moth-final.glb"
           crossOrigin="anonymous"
+          // Not on a phone, which is shown a note instead (see PhoneGate).
+          media="(pointer: fine), (min-width: 700px)"
         />
+        {/* A PHONE IS KNOWN BEFORE THE FIRST PAINT — see PhoneGate. */}
+        <script dangerouslySetInnerHTML={{ __html: PHONE_SCRIPT }} />
         {/* CLOSED BEFORE THE FIRST PAINT. A page arrived at through the
             transition has to already be at its closed aperture when it
             paints — a React effect runs several frames later, and those
@@ -61,8 +66,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             rest it carries no clip and no transform, so it is an ordinary
             wrapper and establishes no containing block. */}
         <div id="page-frame" className="flex flex-1 flex-col">
-          {children}
+          <PhoneGate>{children}</PhoneGate>
         </div>
+        <PhoneNote />
         <PageReveal />
         {/* Outside the page frame, so the aperture never clips it. */}
         <ContextCursor />
