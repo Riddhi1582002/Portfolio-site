@@ -6,8 +6,11 @@
 // order lists it — but the ring does not: there is no card for it.
 //
 //   01 Publications  02 Campaigns / Social  03 Logos
-//   04 Informational Design  06 Posters  07 Applications
-//   08 Reception Screen  09 Comics — Post Production
+//   04 Informational Design  06 Posters  08 Reception Screen
+//   09 Comics — Post Production
+//
+// Project 07, Applications, was removed altogether; the numbers the others
+// were approved with are kept.
 
 export type GdProject = { number: string; card: number; title: string; href: string };
 
@@ -22,14 +25,13 @@ export const GD_PROJECTS = {
     href: "/informational-design",
   },
   posters: { number: "06", card: 4, title: "Posters", href: "/posters" },
-  applications: { number: "07", card: 5, title: "Applications", href: "/applications" },
   receptionScreen: {
     number: "08",
-    card: 6,
+    card: 5,
     title: "Reception Screen",
     href: "/reception-screen",
   },
-  comics: { number: "09", card: 7, title: "Comics — Post Production", href: "/ai-comics" },
+  comics: { number: "09", card: 6, title: "Comics — Post Production", href: "/ai-comics" },
 } satisfies Record<string, GdProject>;
 
 /** Back from a project: the ring, opened on the card that project was
@@ -94,13 +96,13 @@ export function resolveGdBackHref(p: GdProject): string {
  * Where ring card `k` is square to the lens, as a share of the cord
  * section's own progress: CordSection hands the arc its progress from
  * 0.51 on, and ArcCarousel turns that into a rotation from -2.6 to
- * 8 - 1 + 2.6 cards. Shared by the category page and the homepage, so the
+ * 7 - 1 + 2.6 cards. Shared by the category page and the homepage, so the
  * two can never open the ring on different cards for the same number.
  */
 export function ringCardProgress(k: number): number {
   const CORD_ARC_START = 0.51;
   const ARC_LEAD = 2.6;
-  const ARC_CARD_COUNT = 8;
+  const ARC_CARD_COUNT = 7;
   return (
     CORD_ARC_START +
     ((ARC_LEAD + k) / (ARC_CARD_COUNT - 1 + ARC_LEAD * 2)) * (1 - CORD_ARC_START)

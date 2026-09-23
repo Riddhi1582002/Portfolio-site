@@ -29,7 +29,7 @@ const CORD_VH = 1200;
 // ArcCarousel turns that into a ring rotation that runs from -ARC_LEAD to
 // ARC_CARD_COUNT - 1 + ARC_LEAD. Card 0 is square to the lens when that
 // rotation reaches 0. If either constant is retuned, this follows.
-const ARC_CARD_COUNT = 8;
+const ARC_CARD_COUNT = 7;
 /** Where card `k` is square to the lens, as a share of the track. */
 const cardAt = ringCardProgress;
 const OPEN_AT = cardAt(0);

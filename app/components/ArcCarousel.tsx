@@ -36,13 +36,12 @@ import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay"
 import CampaignsDisplay, { preloadCampaigns } from "./CampaignsDisplay";
 import ReceptionScreenDisplay, { preloadReceptionScreen } from "./ReceptionScreenDisplay";
 import LogosDisplay, { preloadLogos } from "./LogosDisplay";
-import ApplicationsDisplay, { preloadApplications } from "./ApplicationsDisplay";
 import PostersDisplay, { preloadPosters } from "./PostersDisplay";
 import InformationalDesignDisplay, {
   preloadInformationalDesign,
 } from "./InformationalDesignDisplay";
 
-export const ARC_CARD_COUNT = 8;
+export const ARC_CARD_COUNT = 7;
 /**
  * THE CARDS THAT HOLD REAL WORK.
  *
@@ -64,7 +63,8 @@ type CardHolder = {
 };
 
 // THE APPROVED ORDER — see graphicDesignProjects for the numbering. There
-// is no project 05, and no card for it: eight cards, no empty slot.
+// is no project 05, and no card for it; Applications (07) has been
+// removed altogether. Seven cards, no empty slot.
 const CARD_HOLDERS: CardHolder[] = [
   { index: 0, label: "Publications", href: "/publications", Display: PublicationsDisplay },
   { index: 1, label: "Campaigns / Social", href: "/campaigns", Display: CampaignsDisplay },
@@ -76,11 +76,10 @@ const CARD_HOLDERS: CardHolder[] = [
     Display: InformationalDesignDisplay,
   },
   { index: 4, label: "Posters", href: "/posters", Display: PostersDisplay },
-  { index: 5, label: "Applications", href: "/applications", Display: ApplicationsDisplay },
-  { index: 6, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
+  { index: 5, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
   // Project 09. The card is established — its place, label and link — and
   // left empty inside: its contents have not been decided.
-  { index: 7, label: "Comics — Post Production", href: "/ai-comics", Display: EmptyDisplay },
+  { index: 6, label: "Comics — Post Production", href: "/ai-comics", Display: EmptyDisplay },
 ];
 
 function EmptyDisplay() {
@@ -88,8 +87,8 @@ function EmptyDisplay() {
 }
 
 const holderAt = (i: number) => CARD_HOLDERS.find((h) => h.index === i) ?? null;
-// Angle between neighbouring cards on the ring. 8 x 30 = 240 degrees
-// occupied, so 90 degrees of the ring stays empty: the gap that stops it
+// Angle between neighbouring cards on the ring. 7 x 30 = 210 degrees
+// occupied, so 150 degrees of the ring stays empty: the gap that stops it
 // reading as a loop.
 const ARC_STEP_DEG = 30;
 // How far past the ends the rotation runs, in cards. At 2.6 the first and
@@ -170,7 +169,6 @@ export default function ArcCarousel({
     preloadReceptionScreen();
     preloadLogos();
     preloadPosters();
-    preloadApplications();
     preloadInformationalDesign();
   }, []);
 

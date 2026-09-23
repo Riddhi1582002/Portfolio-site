@@ -869,7 +869,7 @@ export default function HeroSection() {
     clearGdDirect();
     const params = new URLSearchParams(window.location.search);
     const gd = Number(params.get(HOME_GD_PARAM));
-    if (params.has(HOME_GD_PARAM) && Number.isInteger(gd) && gd >= 0 && gd < 8) {
+    if (params.has(HOME_GD_PARAM) && Number.isInteger(gd) && gd >= 0 && gd < 7) {
       const p = REELS_SPAN_END + ringCardProgress(gd) * (CORD_SPAN_END - REELS_SPAN_END);
       let raf = 0;
       // BACK FROM A PROJECT: the page stays shut until the ring is drawn
