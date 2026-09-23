@@ -28,5 +28,18 @@ export default function PageReveal() {
     if (!takeRevealIntent() && !closed) return;
     pageIn();
   }, [pathname]);
+  // RESTORED FROM THE BACK/FORWARD CACHE. Going Back to a page the browser
+  // kept whole brings it back exactly as it was left — which is closed,
+  // because the aperture shut on it on the way out. No effect above runs
+  // (nothing remounts), so the aperture is opened again here.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      takeRevealIntent();
+      pageIn();
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
   return null;
 }

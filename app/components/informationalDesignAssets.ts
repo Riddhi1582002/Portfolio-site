@@ -77,7 +77,16 @@ export const JACKET = {
    * this line is in front of a stored leaflet; everything above it is
    * open, which is why a leaflet leaves upward.
    */
-  pocketTop: 0.6,
+  pocketTop: 0.611,
+  /**
+   * THE POCKET FLAP ITSELF — the navy shape on the right panel, measured
+   * off the supplied spread: its left edge as a share of the panel's
+   * width, and its rounded top-left corner as a share of the jacket's
+   * height. Only this shape is in front of the leaflets; the photograph
+   * and the white beside it are behind them.
+   */
+  pocketLeft: 0.128,
+  pocketRadius: 0.06,
 } as const;
 
 /**

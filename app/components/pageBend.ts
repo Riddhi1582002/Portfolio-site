@@ -89,6 +89,8 @@ export type PageBendHandle = {
 };
 
 const DEG = 180 / Math.PI;
+/** How far each strip's face runs under the next one, in px. */
+const SEAM = 2;
 
 /** Enough pieces for the arc to read as a curve, not a fan.
  *
@@ -158,11 +160,14 @@ export function createPageBend(opt: PageBendOptions): PageBendHandle {
         top: "0",
         bottom: "0",
         left: "0",
-        // A sliver of overlap: adjacent strips would otherwise show a
-        // hairline of the page beneath at the seams. Kept as small as it
-        // can be — the overlap itself reads as a crease once the strip is
-        // turned, so more of it is not safer.
-        right: "-0.75px",
+        // OVERLAP, so the seams never open. At 0.75px the overlap was less
+        // than a device pixel at most zooms and adjacent strips — each
+        // rotated a little differently — let hairlines of the page beneath
+        // flicker through as the leaf turned. The overlapping pixels are
+        // the neighbour's own (the background runs on continuously), so a
+        // wider overlap cannot be seen; the shading below runs over the overlap
+        // too, holding the strip's end tone there.
+        right: `-${SEAM}px`,
         backfaceVisibility: "hidden",
         backgroundRepeat: "no-repeat",
         backgroundSize: `${half ? W * 2 : W}px ${H}px`,
@@ -186,11 +191,18 @@ export function createPageBend(opt: PageBendOptions): PageBendHandle {
       const s = document.createElement("div");
       Object.assign(s.style, {
         position: "absolute",
-        inset: "0",
+        top: "0",
+        bottom: "0",
+        left: "0",
+        right: "0",
         pointerEvents: "none",
+        // Over the whole face, overlap included — an unshaded overlap is a
+        // light hairline at every seam once the sheet darkens. The ramp is
+        // pinned to the strip's own width; the overlap holds its end tone,
+        // which is the neighbour's start tone, so the seam cannot show.
         background: flip
-          ? "linear-gradient(90deg, rgba(4,4,6,var(--a2,0)), rgba(4,4,6,var(--a1,0)))"
-          : "linear-gradient(90deg, rgba(4,4,6,var(--a1,0)), rgba(4,4,6,var(--a2,0)))",
+          ? `linear-gradient(90deg, rgba(4,4,6,var(--a2,0)) 0px, rgba(4,4,6,var(--a1,0)) ${sw}px)`
+          : `linear-gradient(90deg, rgba(4,4,6,var(--a1,0)) 0px, rgba(4,4,6,var(--a2,0)) ${sw}px)`,
       } as Partial<CSSStyleDeclaration>);
       return s;
     };
@@ -198,15 +210,18 @@ export function createPageBend(opt: PageBendOptions): PageBendHandle {
       const g = document.createElement("div");
       Object.assign(g.style, {
         position: "absolute",
-        inset: "0",
+        top: "0",
+        bottom: "0",
+        left: "0",
+        right: "0",
         pointerEvents: "none",
         mixBlendMode: "soft-light",
         // A GRADIENT, not a level. A flat value per strip steps at every
         // seam, and eighteen steps of light across a page is exactly the
         // banding the nested-strip trick exists to avoid.
         background: flip
-          ? "linear-gradient(90deg, rgba(255,255,255,var(--g2,0)), rgba(255,255,255,var(--g1,0)))"
-          : "linear-gradient(90deg, rgba(255,255,255,var(--g1,0)), rgba(255,255,255,var(--g2,0)))",
+          ? `linear-gradient(90deg, rgba(255,255,255,var(--g2,0)) 0px, rgba(255,255,255,var(--g1,0)) ${sw}px)`
+          : `linear-gradient(90deg, rgba(255,255,255,var(--g1,0)) 0px, rgba(255,255,255,var(--g2,0)) ${sw}px)`,
       } as Partial<CSSStyleDeclaration>);
       return g;
     };

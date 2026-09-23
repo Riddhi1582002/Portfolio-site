@@ -27,7 +27,12 @@ import {
   JOURNEY_DONE_KEY,
   type HomeSectionKey,
 } from "./homeSections";
-import { HOME_GD_PARAM, ringCardProgress } from "./graphicDesignProjects";
+import {
+  HOME_GD_PARAM,
+  clearGdDirect,
+  markGdDirect,
+  ringCardProgress,
+} from "./graphicDesignProjects";
 import usePinnedPane from "./usePinnedPane";
 import ReelStrip, { REELS } from "./ReelStrip";
 import useReelOverlays from "./useReelOverlays";
@@ -39,6 +44,7 @@ import InfiniteCanvas from "./InfiniteCanvas";
 import NarrationLine from "./NarrationLine";
 import { easeInPow, easeOutSine } from "../lib/motion";
 import MothLayer from "./MothLayer";
+import { mothFlyBy } from "./mothStage";
 import { preloadBulb } from "./BulbModel";
 import { setMothCamera, type MothPhase } from "./mothStage";
 import "./hero-fonts.css";
@@ -843,9 +849,12 @@ export default function HeroSection() {
   // reader carries on scrolling to Art rather than being left on a page
   // that ends with the ring.
   useEffect(() => {
+    // Back on the homepage: whatever direct entry into Graphic Design was
+    // made before has ended; its three links set it again when used.
+    clearGdDirect();
     const params = new URLSearchParams(window.location.search);
     const gd = Number(params.get(HOME_GD_PARAM));
-    if (params.has(HOME_GD_PARAM) && Number.isInteger(gd) && gd >= 0 && gd < 9) {
+    if (params.has(HOME_GD_PARAM) && Number.isInteger(gd) && gd >= 0 && gd < 8) {
       const p = REELS_SPAN_END + ringCardProgress(gd) * (CORD_SPAN_END - REELS_SPAN_END);
       let raf = 0;
       const place = () => {
@@ -1877,6 +1886,10 @@ export default function HeroSection() {
               <TransitionLink
                 key={item.key}
                 href={HOME_SECTION_HREF[item.key]}
+                // Graphic Design opened from here is a destination of its
+                // own, ending in Back; reached any other way it is part of
+                // the journey — see graphicDesignProjects.
+                onNavigate={item.key === "graphic-design" ? markGdDirect : undefined}
                 className="relative inline-block before:absolute before:bottom-0 before:left-0 before:h-px before:w-full before:origin-right before:scale-x-0 before:bg-white before:transition-transform before:duration-200 before:ease-[cubic-bezier(0.4,0,0.2,1)] before:content-[''] hover:before:origin-left hover:before:scale-x-100 focus:before:origin-left focus:before:scale-x-100"
                 style={{
                   textDecoration: "none",
@@ -1944,7 +1957,14 @@ export default function HeroSection() {
             hero's last frame; nothing scrolls between them. */}
         {scrollP <= REELS_SPAN_END && scrollP > HERO_SPAN && (
           <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
-            <ReelStrip progress={reelsP} onOpenReel={openReel} />
+            <ReelStrip
+              progress={reelsP}
+              // The moth flies across and the project opens behind it,
+              // revealed as it leaves; without the moth, as before.
+              onOpenReel={(id) => {
+                if (!mothFlyBy(() => openReel(id))) openReel(id);
+              }}
+            />
           </div>
         )}
 

@@ -123,13 +123,14 @@ export const RECEPTION_PIECES: ReceptionPiece[] = [
     h: 1080,
   },
   {
-    // Already on R2 as "Diwali.mp4" — mapped, not re-uploaded. Tried under
-    // the TV/ folder the other screen videos live in first, then at the
-    // bucket root, by the same <source> fallback as the two above.
+    // On R2 as exactly "Diwali.mp4", at the bucket root — that exact key
+    // first, then the TV/ folder the other screen videos use, by the same
+    // native <source> fallback. A 404 on the TV/ guess used to be the
+    // first thing the browser met for this piece.
     id: "rs-diwali",
     kind: "video",
-    src: r2("TV/Diwali.mp4"),
-    sources: r2Candidates("TV/Diwali.mp4"),
+    src: r2("Diwali.mp4"),
+    sources: [r2("Diwali.mp4"), r2("TV/Diwali.mp4")],
     w: 1920,
     h: 1080,
   },

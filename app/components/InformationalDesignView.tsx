@@ -25,10 +25,11 @@
 // that same element, so "back to its exact place in the fan" is the same
 // numbers the fan was built from, not a re-layout.
 //
-// ORDER IS STACKING, and the draw-out depends on it. The slots, the pocket
-// band and the cover share one stacking context, so a leaflet can sit
-// behind the band while it is in the fan and in front of everything once
-// it is picked, with no other element in between changing.
+// ORDER IS DEPTH. The leaflets, the pocket flap and the cover share one 3D
+// space, each at its own distance from the lens (see zFan and the Z_
+// constants), so what hides what is the browser's own depth sort: a
+// leaflet is behind the flap in the pocket and passes in front of the
+// others only as it actually comes nearer.
 //
 // GSAP only, on the site's existing timeline system.
 
@@ -40,40 +41,48 @@ import { INFORMATIONAL_DESIGN, JACKET, LEAFLETS } from "./informationalDesignAss
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 
-// THE FAN. Each leaflet turns about one point low in the pocket, from the
-// back one — furthest over, towards the fold — to the front one, nearly
-// upright. The numbers were solved, not picked: across the whole range,
-// every leaflet's two edges cross the band's top inside the right panel,
-// its foot stays inside the jacket and its head stays below the jacket's
-// top edge. Change one and re-check all four.
-const FAN_FROM = -27;
-const FAN_TO = -1;
+// THE FAN, as the reference photograph of the real jacket has it: sheets
+// nearly the jacket's full height, the front one standing upright over the
+// right panel, the others turned about their own bottom-left corner — low
+// in the pocket, behind the flap — so their heads swing out over the left
+// panel, the back one furthest.
+// Measured off the reference: the back sheet's head reaches about a third
+// of the way into the spread, every foot stays inside the jacket, and the
+// bottom edges of all of them are behind the flap.
+const FAN_FROM = -26;
+const FAN_TO = 0;
 /** The pivot, as a fraction of a leaflet: low on its left edge. */
-const PIVOT_X = 0.1;
-const PIVOT_Y = 0.8;
+const PIVOT_X = 0;
+const PIVOT_Y = 1;
 /** The fan's own offset in the pocket, as fractions of the jacket height. */
-const FAN_DX = 0.04;
-const FAN_Y = 0.08;
+const FAN_DX = -0.02;
+const FAN_Y = 0.026;
 /** A leaflet's height, as a share of the jacket's: nearly as tall as it,
  *  the way a sheet in a folder stands. Re-solve the fan if this changes. */
-const LEAF_H = 0.84;
-/** How far a chosen leaflet rises clear of the front one, of its height. */
-const RISE = 0.2;
+const LEAF_H = 0.96;
+/** How far a chosen leaflet slides up out of its place in the stack, along
+ *  its own length, before it comes forward — a share of its height. */
+const EXTRACT = 0.14;
 /** How far a leaflet lifts in the fan when its name is pointed at. */
 const LIFT = 0.035;
-/** The rest of the fan, while one leaflet is being read. */
-const DIM = 0.08;
-/** The jacket itself, while one leaflet is being read. */
-const JACKET_DIM = 0.3;
+/** How dark the room goes behind a leaflet that is being read. */
+const SCRIM = 0.62;
 
-// Stacking, in the jacket's one context. Fan order is back-to-front; the
-// band sits over every leaflet in the fan; the cover is over everything
-// while shut and under the leaflets once it has turned past its spine.
-const Z_FAN = 10;
-const Z_BAND = 50;
+// REAL DEPTH, NOT STACKING ORDER. Every part of the object sits at its own
+// distance from the lens (px, towards the reader), and the browser's own
+// 3D sorting decides what hides what — so a leaflet coming forward passes
+// in front of the others continuously, the moment it is actually nearer,
+// instead of jumping to the top of a z-index. The inside face is the back
+// (0); the leaflets stand in front of it, back to front; the pocket flap
+// is in front of them all; a leaflet being read comes well forward of
+// everything; the cover is in front while shut and lies behind the
+// leaflets, on the left panel, once open.
+const zFan = (i: number) => 2 + i * 1.2;
+const Z_FLAP = 2 + LEAFLETS.length * 1.2 + 2;
+const Z_SCRIM = 40;
+const Z_PICKED = 120;
 const Z_COVER_SHUT = 60;
-const Z_COVER_OPEN = 5;
-const Z_PICKED = 100;
+const Z_COVER_OPEN = -1;
 
 const EASE_OUT = "power3.out";
 const EASE_IO = "power2.inOut";
@@ -82,10 +91,6 @@ type Phase = "closed" | "open" | "picked";
 type Pose = { x: number; y: number; rotation: number; scale: number };
 
 const N = LEAFLETS.length;
-const FRONT = N - 1;
-const zFan = (i: number) => Z_FAN + i * 2;
-/** Directly under the front leaflet, over every other one. */
-const Z_UNDER_FRONT = zFan(FRONT) - 1;
 
 export default function InformationalDesignView() {
   const [phase, setPhase] = useState<Phase>("closed");
@@ -139,7 +144,7 @@ export default function InformationalDesignView() {
   // little proud of the jacket's top edge.
   const jacketH = Math.max(
     140,
-    Math.min(box.h * 0.82, (box.w * 0.97) / (JACKET.spreadW / JACKET.spreadH), 820)
+    Math.min(box.h * 0.84, (box.w * 0.97) / (JACKET.spreadW / JACKET.spreadH), 820)
   );
   const panelW = jacketH * (JACKET.panelW / JACKET.panelH);
   const spreadW = jacketH * (JACKET.spreadW / JACKET.spreadH);
@@ -200,13 +205,10 @@ export default function InformationalDesignView() {
     const r = (p.rotation * Math.PI) / 180;
     return { ...p, x: p.x + Math.sin(r) * d, y: p.y - Math.cos(r) * d };
   };
-  /** Clear of the front leaflet: where a chosen one comes out from under it. */
-  const drawnPose = raise(fanPose(FRONT), RISE * leafH);
 
   // ── HELPERS ──────────────────────────────────────────────────────────
   const slots = () => slotRefs.current.filter(Boolean) as HTMLDivElement[];
-  const jacketParts = () =>
-    [fixedRef.current, bandRef.current, ...coverFaceRefs.current].filter(Boolean) as HTMLElement[];
+  const scrimRef = useRef<HTMLDivElement>(null);
 
   // Everything that can be asked for mid-motion is queued rather than
   // dropped, and run the moment the object comes to rest.
@@ -238,8 +240,9 @@ export default function InformationalDesignView() {
     //    Past its spine the cover drops under the leaflets, which are about
     //    to fan out over its inside face.
     if (coverRef.current) {
-      tl.to(coverRef.current, { rotateY: -180, duration: 0.88, ease: EASE_IO }, 0);
-      tl.set(coverRef.current, { zIndex: Z_COVER_OPEN }, 0.44);
+      // It swings back from in front of everything to lie behind the
+      // leaflets on the left panel — the depth travels with the turn.
+      tl.to(coverRef.current, { rotateY: -180, z: Z_COVER_OPEN, duration: 0.88, ease: EASE_IO }, 0);
     }
     if (jacketRef.current) {
       tl.to(jacketRef.current, { x: 0, duration: 0.88, ease: EASE_IO }, 0);
@@ -291,46 +294,28 @@ export default function InformationalDesignView() {
       setActive(i);
       setFlipped(false);
       setPhase("picked");
-      const others = slots().filter((o) => o !== el);
       const tl = gsap.timeline({ onComplete: settle });
-      let t = 0;
-      // 1. TUCK. At its own place in the stacking order it is under every
-      //    leaflet in front of it, so it slides round BEHIND them to the
-      //    front leaflet's exact pose — where it is completely covered —
-      //    and only then takes the place directly under the front one.
-      //    The front leaflet itself needs no tuck: it is already there.
-      if (i !== FRONT) {
-        const f = fanPose(FRONT);
-        tl.to(el, { x: f.x, y: f.y, rotation: f.rotation, duration: 0.52, ease: "sine.inOut" }, 0);
-        tl.set(el, { zIndex: Z_UNDER_FRONT }, 0.52);
-        t = 0.52;
+      // 1. OUT OF ITS PLACE. It slides up along its own length, at its own
+      //    depth in the stack — still behind every leaflet in front of it
+      //    and still behind the flap, the way a sheet is drawn out of a
+      //    hand of them.
+      const out = raise(fanPose(i), EXTRACT * leafH);
+      tl.to(el, { x: out.x, y: out.y, duration: 0.55, ease: "sine.inOut" }, 0);
+      // 2. TOWARDS THE READER. From there it comes forward and round to the
+      //    middle, rising in depth the whole way, so it passes in front of
+      //    the others only as it actually gets nearer than they are — one
+      //    continuous path, overlapping the draw, nothing faded and nothing
+      //    jumping to the top.
+      tl.to(
+        el,
+        { ...pickedPose, z: Z_PICKED, duration: 1.0, ease: "power3.inOut" },
+        0.32
+      );
+      if (scrimRef.current) {
+        tl.to(scrimRef.current, { opacity: SCRIM, duration: 0.7, ease: "power1.out" }, 0.45);
       }
-      // 2. DRAW. Up out from under the front leaflet, along its own edge,
-      //    the way a card is drawn from the back of a hand.
-      tl.to(
-        el,
-        { x: drawnPose.x, y: drawnPose.y, rotation: drawnPose.rotation, duration: 0.56, ease: "sine.inOut" },
-        t
-      );
-      // The rest of the fan and the jacket step back as it clears, so the
-      // one moment it has to pass in front of the front leaflet happens
-      // over a leaflet that is already mostly gone.
-      // The jacket only dims once they have: the band going translucent
-      // over leaflets that were still fully there would show them standing
-      // behind it and give the pocket away.
-      tl.to(others, { opacity: DIM, duration: 0.3, ease: "power1.out" }, t + 0.05);
-      tl.to(jacketParts(), { opacity: JACKET_DIM, duration: 0.45, ease: "power1.out" }, t + 0.3);
-      // 3. FORWARD, over everything, to the middle of the stage.
-      // Overlapping the draw, so the sheet never stops between leaving the
-      // fan and coming forward: one continuous path, not three moves.
-      tl.set(el, { zIndex: Z_PICKED }, t + 0.36);
-      tl.to(
-        el,
-        { ...pickedPose, duration: 0.9, ease: "power3.inOut" },
-        t + 0.36
-      );
     },
-    [fanPose, drawnPose.x, drawnPose.y, drawnPose.rotation, pickedPose.x, pickedPose.y, pickedPose.scale, settle] // eslint-disable-line react-hooks/exhaustive-deps
+    [fanPose, pickedPose.x, pickedPose.y, pickedPose.scale, leafH, settle] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const unpick = useCallback(() => {
@@ -340,7 +325,6 @@ export default function InformationalDesignView() {
     if (!el) return;
     busyRef.current = true;
     phaseRef.current = "open";
-    const others = slots().filter((o) => o !== el);
     const tl = gsap.timeline({
       onComplete: () => {
         setPhase("open");
@@ -356,26 +340,22 @@ export default function InformationalDesignView() {
       tl.to(flip, { rotateY: 0, duration: 0.56, ease: EASE_IO }, 0);
       t = 0.34;
     }
-    // Exactly the reverse of the draw: back above the front leaflet...
+    // Exactly the reverse: back from the reader to just above its own
+    // place, sinking in depth as it goes, so the leaflets in front of it
+    // close over it again as it passes behind them...
+    const own = fanPose(i);
+    const out = raise(own, EXTRACT * leafH);
     tl.to(
       el,
-      { ...drawnPose, duration: 0.8, ease: "power3.inOut" },
+      { x: out.x, y: out.y, rotation: own.rotation, scale: 1, z: zFan(i), duration: 1.0, ease: "power3.inOut" },
       t
     );
-    tl.to(jacketParts(), { opacity: 1, duration: 0.55, ease: "power1.inOut" }, t + 0.25);
-    // ...down under it while the fan comes back up around it...
-    tl.set(el, { zIndex: i === FRONT ? zFan(FRONT) : Z_UNDER_FRONT }, t + 0.8);
-    // The fan comes back only once the band is solid again.
-    tl.to(others, { opacity: 1, duration: 0.34, ease: "power1.inOut" }, t + 0.84);
-    const f = fanPose(FRONT);
-    tl.to(el, { x: f.x, y: f.y, rotation: f.rotation, duration: 0.52, ease: "sine.inOut" }, t + 0.8);
-    // ...and round behind the others to its own place, at its own depth.
-    if (i !== FRONT) {
-      const own = fanPose(i);
-      tl.set(el, { zIndex: zFan(i) }, t + 1.32);
-      tl.to(el, { x: own.x, y: own.y, rotation: own.rotation, duration: 0.52, ease: "sine.inOut" }, t + 1.32);
+    if (scrimRef.current) {
+      tl.to(scrimRef.current, { opacity: 0, duration: 0.6, ease: "power1.inOut" }, t + 0.2);
     }
-  }, [fanPose, drawnPose, settle]);
+    // ...and down along its own length into the stack it came out of.
+    tl.to(el, { x: own.x, y: own.y, duration: 0.55, ease: "sine.inOut" }, t + 0.78);
+  }, [fanPose, leafH, settle]);
 
   // ── TURN IT OVER ─────────────────────────────────────────────────────
   // A real turn: one sheet, front on one face and back on the other.
@@ -432,8 +412,7 @@ export default function InformationalDesignView() {
     // 3. ...and the front leaf bends back over them on the same fold,
     //    coming back over the leaflets as it passes its spine.
     if (coverRef.current) {
-      tl.to(coverRef.current, { rotateY: 0, duration: 0.86, ease: EASE_IO }, 0.72);
-      tl.set(coverRef.current, { zIndex: Z_COVER_SHUT }, 0.72 + 0.43);
+      tl.to(coverRef.current, { rotateY: 0, z: Z_COVER_SHUT, duration: 0.86, ease: EASE_IO }, 0.72);
     }
     if (jacketRef.current) {
       tl.to(jacketRef.current, { x: closedShift, duration: 0.86, ease: EASE_IO }, 0.72);
@@ -489,11 +468,7 @@ export default function InformationalDesignView() {
     s.forEach((el, i) => {
       const isPicked = p === "picked" && i === a;
       const pose = p === "closed" ? storedPose : isPicked ? pickedPose : fanPose(i);
-      gsap.set(el, {
-        ...pose,
-        zIndex: isPicked ? Z_PICKED : zFan(i),
-        opacity: p === "picked" && !isPicked ? DIM : 1,
-      });
+      gsap.set(el, { ...pose, z: isPicked ? Z_PICKED : zFan(i) });
       const flip = flipRefs.current[i];
       if (flip) {
         gsap.set(flip, {
@@ -502,7 +477,8 @@ export default function InformationalDesignView() {
         });
       }
     });
-    gsap.set(jacketParts(), { opacity: p === "picked" ? JACKET_DIM : 1 });
+    if (bandRef.current) gsap.set(bandRef.current, { z: Z_FLAP });
+    if (scrimRef.current) gsap.set(scrimRef.current, { z: Z_SCRIM, opacity: p === "picked" ? SCRIM : 0 });
     // THE FOLDED OBJECT ITSELF — shut, one panel shifted half a panel left
     // to sit on the stage's centre; open, the whole spread, no shift.
     if (jacketRef.current) {
@@ -511,7 +487,7 @@ export default function InformationalDesignView() {
     if (coverRef.current) {
       gsap.set(coverRef.current, {
         rotateY: p === "closed" ? 0 : -180,
-        zIndex: p === "closed" ? Z_COVER_SHUT : Z_COVER_OPEN,
+        z: p === "closed" ? Z_COVER_SHUT : Z_COVER_OPEN,
       });
     }
   }, [storedY, pickedPose.x, pickedPose.y, pickedPose.scale, fanPose, closedShift, box.w, box.h]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -696,12 +672,9 @@ export default function InformationalDesignView() {
                 />
               </div>
 
-              {/* 2. THE LEAFLETS — between the inside face and the pocket
-                     band, which is what makes them stored. The layer takes
-                     NO z-index on purpose: without one it is not a stacking
-                     context, so each slot is ordered directly against the
-                     band and the cover — behind the band in the fan, in
-                     front of everything once it is picked. */}
+              {/* 2. THE LEAFLETS — in front of the inside face and behind
+                     the pocket flap, by depth, which is what makes them
+                     stored. */}
               <div
                 style={{
                   position: "absolute",
@@ -711,6 +684,9 @@ export default function InformationalDesignView() {
                   width: panelW,
                   height: "100%",
                   pointerEvents: "none",
+                  // Part of the jacket's one 3D space, so each leaflet's
+                  // own depth sorts it against the flap and the cover.
+                  transformStyle: "preserve-3d",
                 }}
               >
                 {LEAFLETS.map((l, i) => {
@@ -729,6 +705,7 @@ export default function InformationalDesignView() {
                         width: leafW,
                         height: leafH,
                         transformOrigin: "50% 50%",
+                        transformStyle: "preserve-3d",
                         willChange: "transform",
                         pointerEvents: phase === "closed" ? "none" : "auto",
                       }}
@@ -795,26 +772,29 @@ export default function InformationalDesignView() {
                 })}
               </div>
 
-              {/* 3. THE POCKET, drawn over the leaflets — which is the
-                     whole of what makes them STORED rather than lying on
-                     top of the artwork. The band is the bottom strip of
-                     the same inside spread, same right half, so its edge
-                     lines up with the face behind it exactly. It is never
-                     hidden: the pocket is part of the inside face, and
-                     with the cover shut the cover is over both. */}
+              {/* 3. THE POCKET FLAP, in front of the leaflets — and only
+                     the flap: the navy shape of the supplied inside spread,
+                     cut to its own outline (straight left edge, rounded
+                     top-left corner, measured off the artwork). Drawn a
+                     second time, over the leaflets and at the same place
+                     as the face behind them, so a leaflet in the pocket is
+                     genuinely behind it. Nothing else of the spread is in
+                     front of them: no band, no slit. */}
               <div
                 ref={bandRef}
                 aria-hidden
+                data-id-flap=""
                 style={{
                   position: "absolute",
                   left: panelW,
                   width: panelW,
-                  top: `${JACKET.pocketTop * 100}%`,
-                  bottom: 0,
-                  zIndex: Z_BAND,
+                  top: 0,
+                  height: "100%",
                   overflow: "clip",
-                  borderRadius: "0 0 3px 3px",
                   pointerEvents: "none",
+                  clipPath: `inset(${JACKET.pocketTop * 100}% 0 0 ${JACKET.pocketLeft * 100}% round ${(
+                    JACKET.pocketRadius * jacketH
+                  ).toFixed(1)}px 0 3px 0)`,
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -824,24 +804,29 @@ export default function InformationalDesignView() {
                   style={{
                     position: "absolute",
                     left: -panelW,
-                    top: `-${(JACKET.pocketTop / (1 - JACKET.pocketTop)) * 100}%`,
+                    top: 0,
                     width: spreadW,
                     maxWidth: "none",
-                    height: `${100 / (1 - JACKET.pocketTop)}%`,
+                    height: "100%",
                     objectFit: "fill",
                   }}
                 />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    height: 14,
-                    background: "linear-gradient(to bottom, rgba(0,0,0,0.46), rgba(0,0,0,0))",
-                  }}
-                />
               </div>
+
+              {/* The room behind a leaflet being read: a dark veil in front
+                  of the jacket and the rest of the fan, and behind the one
+                  leaflet that has come forward. */}
+              <div
+                ref={scrimRef}
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: "-30% -20%",
+                  background: "#000",
+                  opacity: 0,
+                  pointerEvents: "none",
+                }}
+              />
 
               {/* 4. THE MOVING LEAF — the front cover, hinged on the fold.
                      ─────────────────────────────────────────────────────

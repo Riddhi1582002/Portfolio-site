@@ -32,13 +32,11 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
-import TransitionLink from "./TransitionLink";
 import ProjectRail from "./ProjectRail";
 import { GD_PROJECTS, gdBackHref } from "./graphicDesignProjects";
 import {
   AI_COMICS_CONTENT,
   COMICS,
-  NEXT_PROJECT_HREF,
   PAGE_ONE,
   PAGE_TWO,
 } from "./aiComicsAssets";
@@ -53,13 +51,16 @@ const N = COMICS.length;
 // past the frame's top and bottom, at a different height from its
 // neighbours; pages stand whole beside them. Nothing is cropped: the frame
 // is a window onto the wall, and opening a strip shows all of it.
-const STRIP_H = 1.7;
+const STRIP_H = 2.2;
 const PAGE_H = 0.82;
 /** The gap after each piece, in gap units — uneven, so it is a wall and
  *  not a ruler. */
 const GAPS = [1.2, 1, 1.5, 1.9, 1, 1.9, 1.1, 1.4, 1, 1.3, 1.8];
 /** Each piece's vertical offset from centre, of the wall height. */
-const OFFSETS = [0.12, -0.3, 0.26, -0.12, -0.04, 0.05, 0.3, -0.22, 0.08, -0.34, 0.2];
+// Strips are shifted up or down so different stretches of each are in the
+// frame, but never so far that one ends inside it: every strip runs through
+// the whole frame, top to bottom, the way the reference wall does.
+const OFFSETS = [0.14, -0.28, 0.24, -0.1, -0.04, 0.05, 0.28, -0.2, 0.08, -0.3, 0.18];
 /** The wall's own tilt — a plane seen at an angle, not a flat row. */
 const TILT = "rotateX(9deg) rotateZ(-5deg) scale(1.1)";
 /** How far the wall curves towards the reader, 0 = flat. */
@@ -123,7 +124,7 @@ export default function AiComicsView() {
   const layout = useMemo(() => {
     const H = box.h;
     if (!H || !box.w) return null;
-    const gap = Math.max(28, H * 0.05);
+    const gap = Math.max(18, H * 0.028);
     const one: Omit<Placed, "key">[] = [];
     let x = 0;
     COMICS.forEach((c, i) => {
@@ -391,7 +392,10 @@ export default function AiComicsView() {
         ? null
         : COMICS[open].id === PAGE_ONE
           ? { label: "Next page", to: COMICS.findIndex((c) => c.id === PAGE_TWO) }
-          : null,
+          : // Every other piece — page two and every strip — goes on to the
+            // next comic in this project, round to the first after the
+            // last. The viewer never leaves the project.
+            { label: "Next comic", to: (open + 1) % N },
     [open]
   );
 
@@ -422,11 +426,15 @@ export default function AiComicsView() {
 
   return (
     <div className="ac-outer" style={{ fontFamily: SANS }}>
+      {/* The header sits at the same top-left place as every project's,
+          over the wall rather than beside it: the wall is the page. */}
       <ProjectRail
+        variant="overlay"
         number={GD_PROJECTS.comics.number}
         title={AI_COMICS_CONTENT.title}
+        description={AI_COMICS_CONTENT.description}
         backHref={gdBackHref(GD_PROJECTS.comics)}
-          gd={GD_PROJECTS.comics}
+        gd={GD_PROJECTS.comics}
       >
         <div className="ac-hint">Drag or scroll the wall · click a piece to open it</div>
       </ProjectRail>
@@ -498,9 +506,16 @@ export default function AiComicsView() {
             <span className="ac-count">
               {pad(open + 1)} / {pad(N)}
             </span>
-            <TransitionLink href={NEXT_PROJECT_HREF} className="ac-ctl ac-next-project">
-              Next project <span aria-hidden>→</span>
-            </TransitionLink>
+            {nextStep && (
+              <button
+                type="button"
+                className="ac-ctl ac-next-project"
+                data-ac-bar-next=""
+                onClick={() => goTo(nextStep.to)}
+              >
+                {nextStep.label} <span aria-hidden>→</span>
+              </button>
+            )}
           </div>
 
           <div ref={contentRef} key={current.id} className="ac-content">
@@ -520,11 +535,18 @@ export default function AiComicsView() {
                     backgroundImage: `url("${current.wall}")`,
                   }}
                 />
-                <div className="ac-end ac-fade">
-                  <TransitionLink href={NEXT_PROJECT_HREF} className="ac-ctl ac-pill">
-                    Next project <span aria-hidden>→</span>
-                  </TransitionLink>
-                </div>
+                {nextStep && (
+                  <div className="ac-end ac-fade">
+                    <button
+                      type="button"
+                      className="ac-ctl ac-pill"
+                      data-ac-next=""
+                      onClick={() => goTo(nextStep.to)}
+                    >
+                      {nextStep.label} <span aria-hidden>→</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="ac-pagewrap" style={{ paddingTop: BAR }}>
@@ -548,15 +570,6 @@ export default function AiComicsView() {
                     {nextStep.label} <span aria-hidden>→</span>
                   </button>
                 )}
-                {/* Page two is the end of the piece: what follows it is the
-                    next project, not more of this one. */}
-                {current.id === PAGE_TWO && (
-                  <span className="ac-fade" data-ac-next-project="">
-                    <TransitionLink href={NEXT_PROJECT_HREF} className="ac-ctl ac-pill">
-                      Next project <span aria-hidden>→</span>
-                    </TransitionLink>
-                  </span>
-                )}
               </div>
             )}
           </div>
@@ -565,25 +578,29 @@ export default function AiComicsView() {
 
       <style>{`
         .ac-outer {
-          width: 100%; height: 100svh; min-height: 330px; background: #000; color: #fff;
-          display: flex; overflow: hidden;
+          position: relative; width: 100%; height: 100svh; min-height: 360px;
+          background: #000; color: #fff; overflow: hidden;
         }
-        .ac-main {
-          flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
-          padding: clamp(14px, 2.4vh, 26px) 0;
+        /* THE WALL IS THE PAGE: edge to edge, top to bottom, with the
+           project header laid over its top-left corner. */
+        .ac-main { position: absolute; inset: 0; display: flex; flex-direction: column; }
+        /* The header reads against the dark that the wall's own edges fall
+           into, not against a panel. */
+        .ac-outer .pr-overlay {
+          background: linear-gradient(to right, rgba(0,0,0,0.88), rgba(0,0,0,0.55) 70%, rgba(0,0,0,0));
+          padding-right: clamp(40px, 6vw, 90px);
+          height: auto;
         }
         .ac-hint {
           font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-          color: rgba(255,255,255,0.36); line-height: 1.6; margin-top: auto;
+          color: rgba(255,255,255,0.4); line-height: 1.6;
         }
         .ac-plane {
           position: absolute; inset: 0; transform-style: preserve-3d;
           transform-origin: 50% 50%;
         }
         @media (max-width: 900px) {
-          .ac-outer { flex-direction: column; height: auto; overflow: visible; }
-          .ac-main { height: 78svh; }
-          .ac-hint { margin-top: 0; }
+          .ac-outer .pr-overlay { right: 0; padding-right: clamp(20px, 2.2vw, 36px); }
         }
         .ac-wall {
           position: relative; flex: 1 1 auto; min-height: 200px;
@@ -602,7 +619,7 @@ export default function AiComicsView() {
         .ac-wall::after { background: linear-gradient(to bottom, #000, rgba(0,0,0,0) 9%, rgba(0,0,0,0) 91%, #000); }
         .ac-item {
           position: absolute; left: 50%; top: 0; padding: 0; border: 0;
-          background: #0b0b0c; border-radius: 6px; overflow: hidden; cursor: zoom-in;
+          background: #0b0b0c; border-radius: 10px; overflow: hidden; cursor: zoom-in;
           will-change: transform, opacity; backface-visibility: hidden;
           box-shadow: 0 0 0 1px rgba(255,255,255,0.07), 0 30px 70px -30px rgba(0,0,0,0.95);
         }

@@ -2,12 +2,12 @@
 
 // The arc of work around the bulb.
 //
-// Nine square pieces sit on a ring centred on the bulb. Scroll rotates the
+// Eight square pieces sit on a ring centred on the bulb. Scroll rotates the
 // ring: each piece swings in from the right, comes to the front, and swings
 // out to the left. Nothing moves on its own — the ring's angle IS the
 // progress value, so a stopped scroll is a stopped carousel.
 //
-// The ring is an ARC, not a loop. Nine cards at ARC_STEP apart occupy less
+// The ring is an ARC, not a loop. Eight cards at ARC_STEP apart occupy less
 // than a full turn, and the rotation range runs from "card 0 not yet on"
 // to "card 8 already off". There is therefore always a gap behind the last
 // card — scrolling past the end never brings the first one round again,
@@ -28,7 +28,8 @@
 
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import gsap from "gsap";
-import { OUT_S as TRANSITION_OUT_S, pageOut } from "../lib/pageTransition";
+import { OUT_S as TRANSITION_OUT_S, pageCutOut, pageOut } from "../lib/pageTransition";
+import { mothFlyBy } from "./mothStage";
 import HoverCard from "./HoverCard";
 import { rememberGdOrigin } from "./graphicDesignProjects";
 import PublicationsDisplay, { preloadPublications } from "./PublicationsDisplay";
@@ -41,7 +42,7 @@ import InformationalDesignDisplay, {
   preloadInformationalDesign,
 } from "./InformationalDesignDisplay";
 
-export const ARC_CARD_COUNT = 9;
+export const ARC_CARD_COUNT = 8;
 /**
  * THE CARDS THAT HOLD REAL WORK.
  *
@@ -62,8 +63,8 @@ type CardHolder = {
   Display: ComponentType<{ luminance?: number }>;
 };
 
-// THE APPROVED ORDER — see graphicDesignProjects for the numbering. Slot
-// 4 (project 05) is held empty, exactly as the order lists it.
+// THE APPROVED ORDER — see graphicDesignProjects for the numbering. There
+// is no project 05, and no card for it: eight cards, no empty slot.
 const CARD_HOLDERS: CardHolder[] = [
   { index: 0, label: "Publications", href: "/publications", Display: PublicationsDisplay },
   { index: 1, label: "Campaigns / Social", href: "/campaigns", Display: CampaignsDisplay },
@@ -74,12 +75,12 @@ const CARD_HOLDERS: CardHolder[] = [
     href: "/informational-design",
     Display: InformationalDesignDisplay,
   },
-  { index: 5, label: "Posters", href: "/posters", Display: PostersDisplay },
-  { index: 6, label: "Applications", href: "/applications", Display: ApplicationsDisplay },
-  { index: 7, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
+  { index: 4, label: "Posters", href: "/posters", Display: PostersDisplay },
+  { index: 5, label: "Applications", href: "/applications", Display: ApplicationsDisplay },
+  { index: 6, label: "Reception Screen", href: "/reception-screen", Display: ReceptionScreenDisplay },
   // Project 09. The card is established — its place, label and link — and
   // left empty inside: its contents have not been decided.
-  { index: 8, label: "Comics — Post Production", href: "/ai-comics", Display: EmptyDisplay },
+  { index: 7, label: "Comics — Post Production", href: "/ai-comics", Display: EmptyDisplay },
 ];
 
 function EmptyDisplay() {
@@ -87,7 +88,7 @@ function EmptyDisplay() {
 }
 
 const holderAt = (i: number) => CARD_HOLDERS.find((h) => h.index === i) ?? null;
-// Angle between neighbouring cards on the ring. 9 x 30 = 270 degrees
+// Angle between neighbouring cards on the ring. 8 x 30 = 240 degrees
 // occupied, so 90 degrees of the ring stays empty: the gap that stops it
 // reading as a loop.
 const ARC_STEP_DEG = 30;
@@ -297,6 +298,21 @@ export default function ArcCarousel({
       // replaced, still true, so this is still a real navigation to the
       // existing route rather than a client transition; it fires once the
       // page has closed, not the instant the card is clicked.
+      // ON THE HOMEPAGE, THE MOTH OPENS IT: it flies across the frame, the
+      // page shuts behind it while it covers the view, and the project
+      // loads as it leaves. Anywhere without the moth (the category page),
+      // the aperture below, as before.
+      if (
+        mothFlyBy(() => {
+          pageCutOut();
+          window.setTimeout(() => window.location.assign(holder.href), 220);
+        })
+      ) {
+        if (inner) {
+          gsap.to(inner, { scale: 1.12, duration: 0.5, ease: "power2.out", transformOrigin: "50% 50%" });
+        }
+        return;
+      }
       const tl = pageOut(() => window.location.assign(holder.href));
       if (inner) {
         // Still travelling as the aperture closes over it: the card is

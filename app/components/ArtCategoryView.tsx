@@ -93,6 +93,80 @@ export default function ArtCategoryView() {
     return () => window.removeEventListener("keydown", onKey);
   }, [focus]);
 
+  // ── THE GRID SCROLLS UNDER THE HAND ──────────────────────────────────
+  // Wheel, a click-and-drag and touch all move the one sheet, with no
+  // scrollbar to reach for. The wheel is eased toward where it is heading
+  // rather than stepping; a drag follows the pointer and carries its speed
+  // on release. Touch is the browser's own native scroll.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetTarget = useRef(0);
+  const sheetDrag = useRef<{
+    active: boolean;
+    y: number;
+    top: number;
+    vel: number;
+    lastY: number;
+    lastT: number;
+    moved: number;
+    suppress: boolean;
+  }>({ active: false, y: 0, top: 0, vel: 0, lastY: 0, lastT: 0, moved: 0, suppress: false });
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!medium || !el) return;
+    sheetTarget.current = el.scrollTop;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const max = el.scrollHeight - el.clientHeight;
+      const d = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY;
+      sheetTarget.current = Math.max(0, Math.min(max, sheetTarget.current + d));
+      gsap.to(el, { scrollTop: sheetTarget.current, duration: 0.55, ease: "power3.out", overwrite: true });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [medium]);
+  const onSheetDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    const el = sheetRef.current;
+    if (!el) return;
+    gsap.killTweensOf(el);
+    const d = sheetDrag.current;
+    d.active = true;
+    d.y = e.clientY;
+    d.top = el.scrollTop;
+    d.vel = 0;
+    d.lastY = e.clientY;
+    d.lastT = performance.now();
+    d.moved = 0;
+  };
+  const onSheetMove = (e: React.PointerEvent) => {
+    const d = sheetDrag.current;
+    const el = sheetRef.current;
+    if (!d.active || !el) return;
+    const dy = e.clientY - d.y;
+    d.moved = Math.max(d.moved, Math.abs(dy));
+    if (d.moved < 4) return;
+    e.preventDefault();
+    const now = performance.now();
+    const dt = Math.max(1, now - d.lastT);
+    d.vel = d.vel * 0.6 + (((e.clientY - d.lastY) / dt) * 1000) * 0.4;
+    d.lastY = e.clientY;
+    d.lastT = now;
+    el.scrollTop = d.top - dy;
+    sheetTarget.current = el.scrollTop;
+  };
+  const onSheetUp = () => {
+    const d = sheetDrag.current;
+    const el = sheetRef.current;
+    if (!d.active || !el) return;
+    d.active = false;
+    if (d.moved < 4) return;
+    d.suppress = true;
+    const fresh = performance.now() - d.lastT < 90;
+    const max = el.scrollHeight - el.clientHeight;
+    sheetTarget.current = Math.max(0, Math.min(max, el.scrollTop - (fresh ? d.vel * 0.35 : 0)));
+    gsap.to(el, { scrollTop: sheetTarget.current, duration: 0.9, ease: "power3.out", overwrite: true });
+  };
+
   // A document navigation, for the reason CategoryStage's own Back gives.
   const goHome = useCallback(() => {
     // The return gesture has already played its own full camera move, so
@@ -121,7 +195,22 @@ export default function ArtCategoryView() {
       />
 
       {medium && (
-        <div className="ag-sheet">
+        <div
+          ref={sheetRef}
+          className="ag-sheet"
+          onPointerDown={onSheetDown}
+          onPointerMove={onSheetMove}
+          onPointerUp={onSheetUp}
+          onPointerCancel={onSheetUp}
+          onClickCapture={(e) => {
+            // The click that ends a drag is not a choice of artwork.
+            if (sheetDrag.current.suppress) {
+              sheetDrag.current.suppress = false;
+              e.stopPropagation();
+              e.preventDefault();
+            }
+          }}
+        >
           <div ref={gridRef} className="ag-grid">
             {shown.map((p) => (
               <figure
@@ -236,9 +325,12 @@ export default function ArtCategoryView() {
         .ag-sheet {
           position: absolute; inset: 0; z-index: 30;
           background: #000; overflow-y: auto; overscroll-behavior: contain;
+          scrollbar-width: none; cursor: grab; user-select: none;
           padding: calc(clamp(16px, 2.4vh, 30px) + 58px) clamp(16px, 4vw, 64px)
                    clamp(48px, 9vh, 110px);
         }
+        .ag-sheet::-webkit-scrollbar { display: none; }
+        .ag-sheet:active { cursor: grabbing; }
         /* COLUMNS, NOT A ROW GRID: every artwork keeps its own proportions,
            so equal-height rows would mean cropping something. */
         .ag-grid {

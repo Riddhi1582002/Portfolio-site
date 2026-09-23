@@ -59,8 +59,6 @@ export const PAGE_TWO = "4-3-002";
 export const AI_COMICS_CONTENT = {
   number: "09",
   title: "Comics — Post Production",
+  description:
+    "A collection of comic-based visual work created using AI-generated imagery as part of the process. The final pieces take shape through image selection, post-production, composition, sequencing and immersive presentation, using the comic format as a space for visual experimentation rather than a fixed storytelling style.",
 } as const;
-
-/** Where NEXT PROJECT goes. This is the last project on the ring, so the
- *  next one is the first: Publications, project 01. */
-export const NEXT_PROJECT_HREF = "/publications";

@@ -36,8 +36,10 @@
 
 import { useEffect, useRef } from "react";
 import {
+  FLYBY_COVER_AT,
   cutMothContinuity,
   mothDebug,
+  mothFlight,
   mothStage,
   type MothPhase,
 } from "./mothStage";
@@ -579,6 +581,8 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         renderer.compile(scene, camera);
         moth.visible = false;
         loaded = true;
+          // Only a creature that is actually drawn can fly across.
+          mothFlight.alive = true;
       });
 
       // ── SOURCES ─────────────────────────────────────────────────────
@@ -839,6 +843,30 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       };
       resize();
       window.addEventListener("resize", resize);
+      // For the fly-across only: the window becomes the whole frame, and
+      // goes back to the creature-sized square the moment it is over.
+      let flyFrom: import("three").Vector3 | null = null;
+      let flyMid: import("three").Vector3 | null = null;
+      let flyEnd: import("three").Vector3 | null = null;
+      // The window also leaves the page for the pass: the page itself is
+      // what closes behind the creature, so a canvas inside it would be
+      // closed away with it. It goes back to its own place afterwards.
+      const resizeForFlight = (on: boolean) => {
+        if (!on) {
+          if (canvas.parentElement !== host) host.appendChild(canvas);
+          canvas.style.position = "absolute";
+          canvas.style.zIndex = "";
+          resize();
+          return;
+        }
+        document.body.appendChild(canvas);
+        canvas.style.position = "fixed";
+        canvas.style.zIndex = "9999";
+        canvas.style.pointerEvents = "none";
+        renderer.setSize(vw, vh, false);
+        canvas.style.width = `${vw}px`;
+        canvas.style.height = `${vh}px`;
+      };
 
       let shown = false;
       let last = performance.now();
@@ -1286,6 +1314,68 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
         // size, the tile and the reported numbers have to be about where
         // it actually is, or the square it is drawn in trails it by a
         // frame of travel — up to twenty pixels at full speed.
+        // ── THE FLY-ACROSS (see mothFlyBy) ─────────────────────────────
+        // A scripted path takes over from wherever the creature is: in
+        // towards the lens, past it slightly off-centre — close enough to
+        // fill the frame — and on behind the camera. Position and velocity
+        // are the path's, so the wings, the heading and the light carry on
+        // as they do in any flight; nothing is placed, and nothing resets.
+        const fb = mothFlight.flyBy;
+        let flying = false;
+        if (fb) {
+          if (!flyFrom) {
+            flyFrom = pos.clone();
+            const side = pos.x >= 0 ? -1 : 1;
+            // THE PASS: just beyond the lens' near limit and a hair off
+            // centre, where the creature's own wingspan fills the frame.
+            const passDepth = Math.max(NEAR_CLIP_PX * 1.3, 0.035 * D0);
+            flyMid = new THREE.Vector3(side * 0.012 * D0, -0.006 * D0, -passDepth);
+            // THE EXIT: past the camera, to the far side — out of the
+            // frame the way something that flew past you leaves it.
+            flyEnd = new THREE.Vector3(side * 0.6 * D0, 0.04 * D0, 0.25 * D0);
+            resizeForFlight(true);
+          }
+          const u = Math.min(1, (now - fb.start) / fb.dur);
+          // Two Hermite segments meeting at the pass with ONE velocity, so
+          // the path is continuous in position and speed — in, past, out —
+          // and never stops in front of the lens.
+          const vPass = tmpA.copy(flyEnd!).sub(flyFrom).multiplyScalar(0.9);
+          const herm = (
+            out: import("three").Vector3,
+            p0: import("three").Vector3,
+            v0: import("three").Vector3,
+            p1: import("three").Vector3,
+            v1: import("three").Vector3,
+            t: number
+          ) => {
+            const t2 = t * t;
+            const t3 = t2 * t;
+            return out
+              .set(0, 0, 0)
+              .addScaledVector(p0, 2 * t3 - 3 * t2 + 1)
+              .addScaledVector(v0, t3 - 2 * t2 + t)
+              .addScaledVector(p1, -2 * t3 + 3 * t2)
+              .addScaledVector(v1, t3 - t2);
+          };
+          const prev = pos.clone();
+          if (u < FLYBY_COVER_AT) {
+            const v0 = tmpB.copy(flyMid!).sub(flyFrom).multiplyScalar(0.4);
+            herm(pos, flyFrom, v0, flyMid!, vPass, u / FLYBY_COVER_AT);
+          } else {
+            herm(pos, flyMid!, vPass, flyEnd!, vPass, (u - FLYBY_COVER_AT) / (1 - FLYBY_COVER_AT));
+          }
+          vel.copy(pos).sub(prev).divideScalar(Math.max(dt, 1e-3));
+          flying = true;
+          if (!fb.fired && u >= FLYBY_COVER_AT) {
+            fb.fired = true;
+            fb.onCovered();
+          }
+          if (u >= 1) {
+            mothFlight.flyBy = null;
+            flyFrom = null;
+            resizeForFlight(false);
+          }
+        }
         const nowDepth = -pos.z;
         const nowK = D0 / Math.max(8, nowDepth);
         const nowSx = vw / 2 + pos.x * nowK;
@@ -1360,7 +1450,9 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           MOTH_SIZE.MIN_PX,
           closePassing ? target * MOTH_CLOSE_PASS_MAX : MOTH_SIZE.MAX_PX
         );
-        const capped = allowed / Math.max(1e-3, apparent);
+        // In the fly-across it is simply as big as it is: the pass is the
+        // one time it is meant to fill the frame.
+        const capped = flying ? 1 : allowed / Math.max(1e-3, apparent);
         moth.scale.setScalar(world * capped);
         moth.position.copy(pos);
         moth.visible = nowDepth > NEAR_CLIP_PX;
@@ -1468,6 +1560,13 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
           shown = true;
           canvas.style.visibility = "visible";
         }
+        if (flying) {
+          // The whole frame, for the length of the pass.
+          canvas.style.transform = "translate3d(0px, 0px, 0)";
+          camera.setViewOffset(vw, vh, 0, 0, vw, vh);
+          renderer.render(scene, camera);
+          return;
+        }
         const tx = nowSx - tile / 2;
         const ty = nowSy - tile / 2;
         canvas.style.transform = `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0)`;
@@ -1483,6 +1582,8 @@ export default function MothLayer({ reduced = false }: { reduced?: boolean }) {
       raf = requestAnimationFrame(tick);
 
       cleanup = () => {
+        mothFlight.alive = false;
+        mothFlight.flyBy = null;
         cancelAnimationFrame(raf);
         window.removeEventListener("resize", resize);
         window.removeEventListener("pointermove", onPointer);

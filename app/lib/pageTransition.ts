@@ -129,3 +129,18 @@ export function pageIn(): void {
     onComplete: () => release(el),
   });
 }
+
+/**
+ * The page shuts at once, with no aperture — for when something already
+ * covers the whole frame (the moth's fly-across) and the cut happens
+ * behind it. The destination still opens with the usual aperture.
+ */
+export function pageCutOut(): void {
+  try {
+    sessionStorage.setItem(KEY, String(Date.now()));
+  } catch {
+    // As in pageOut.
+  }
+  const el = frame();
+  if (el) gsap.set(el, { clipPath: CLOSED });
+}

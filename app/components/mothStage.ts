@@ -93,6 +93,35 @@ export function setMothReturnDolly(scale: number) {
   mothStage.cameraScale = scale;
 }
 
+// ── THE FLY-ACROSS ──────────────────────────────────────────────────────
+//
+// Opening a project from the homepage's Video or Graphic Design carousel
+// sends the moth across the frame: from wherever it is, rushing past close
+// to the lens — big enough to cover the view for a moment — and on out
+// past the camera. `onCovered` runs at the moment it covers the frame,
+// which is where the caller opens the project behind it. Only while a moth
+// is actually on the page and loaded; otherwise this answers false and the
+// caller does what it always did.
+export type MothFlyBy = { start: number; dur: number; onCovered: () => void; fired: boolean };
+export const mothFlight: { alive: boolean; flyBy: MothFlyBy | null } = {
+  alive: false,
+  flyBy: null,
+};
+if (typeof window !== "undefined") {
+  // Read-only, for browser tests: whether a moth is ready to fly across.
+  (window as unknown as { __mothFlight?: typeof mothFlight }).__mothFlight = mothFlight;
+}
+/** Share of the flight at which the moth covers the frame. */
+export const FLYBY_COVER_AT = 0.52;
+export function mothFlyBy(onCovered: () => void, dur = 0.95): boolean {
+  if (!mothFlight.alive || mothFlight.flyBy) return false;
+  if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return false;
+  }
+  mothFlight.flyBy = { start: performance.now(), dur: dur * 1000, onCovered, fired: false };
+  return true;
+}
+
 /** "What follows is a different shot" — see `epoch`. */
 export function cutMothContinuity() {
   mothStage.epoch += 1;

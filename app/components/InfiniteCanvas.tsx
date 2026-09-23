@@ -653,6 +653,10 @@ export default function InfiniteCanvas({
   visible?: boolean;
 }) {
   const p = clamp01(progress);
+  const visibleRef = useRef(visible);
+  useEffect(() => {
+    visibleRef.current = visible;
+  }, [visible]);
   // The surface's own root, so the drive loop can publish the field's
   // state to the HUD drawn over it without a render per frame.
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1386,6 +1390,9 @@ export default function InfiniteCanvas({
       e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * vh : e.deltaY;
 
     const onWheel = (e: WheelEvent) => {
+      // Hidden (a medium's grid is over it), the field answers nothing: its
+      // window-wide listeners were swallowing the grid's own scrolling.
+      if (!visibleRef.current) return;
       if (returningRef.current) {
         e.preventDefault();
         advance(wheelPx(e) / RETURN_WHEEL_PX);
@@ -1404,12 +1411,17 @@ export default function InfiniteCanvas({
     // swallowed, which is the lock.
     let touchY: number | null = null;
     const onTouchStart = (e: TouchEvent) => {
+      if (!visibleRef.current) {
+        touchY = null;
+        return;
+      }
       touchY =
         returningRef.current || (armedRef.current && e.touches.length >= 2)
           ? e.touches[0].clientY
           : null;
     };
     const onTouchMove = (e: TouchEvent) => {
+      if (!visibleRef.current) return;
       if (returningRef.current) {
         e.preventDefault();
         if (touchY == null) touchY = e.touches[0].clientY;
@@ -1432,6 +1444,7 @@ export default function InfiniteCanvas({
     const DOWN = ["ArrowDown", "PageDown", "End", " ", "Spacebar"];
     const UP = ["ArrowUp", "PageUp", "Home"];
     const onKeyDown = (e: KeyboardEvent) => {
+      if (!visibleRef.current) return;
       if (returningRef.current) {
         if (DOWN.includes(e.key)) {
           e.preventDefault();

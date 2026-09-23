@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import CategoryStage from "./CategoryStage";
 import CordSection from "./CordSection";
 import { preloadBulb } from "./BulbModel";
-import { ringCardProgress } from "./graphicDesignProjects";
+import { HOME_GD_PARAM, isGdDirect, ringCardProgress } from "./graphicDesignProjects";
 
 const SANS = "'Neue Montreal', system-ui, sans-serif";
 
@@ -28,7 +28,7 @@ const CORD_VH = 1200;
 // ArcCarousel turns that into a ring rotation that runs from -ARC_LEAD to
 // ARC_CARD_COUNT - 1 + ARC_LEAD. Card 0 is square to the lens when that
 // rotation reaches 0. If either constant is retuned, this follows.
-const ARC_CARD_COUNT = 9;
+const ARC_CARD_COUNT = 8;
 /** Where card `k` is square to the lens, as a share of the track. */
 const cardAt = ringCardProgress;
 const OPEN_AT = cardAt(0);
@@ -59,6 +59,24 @@ export default function GraphicDesignCategoryView() {
     const k = Number(new URLSearchParams(window.location.search).get("card"));
     return Number.isInteger(k) && k > 0 && k < ARC_CARD_COUNT ? cardAt(k) : OPEN_AT;
   });
+
+  // ONLY A DIRECT ENTRY STAYS HERE. Opened from the homepage's links, this
+  // is Graphic Design on its own, ending in Back. Arrived at any other way,
+  // Graphic Design is a stretch of the homepage journey, and that is where
+  // the reader is taken — at the same card — so scrolling on carries into
+  // the bulb, the iris and Art instead of stopping at Back.
+  const [direct, setDirect] = useState(false);
+  useEffect(() => {
+    if (isGdDirect()) {
+      const id = requestAnimationFrame(() => setDirect(true));
+      return () => cancelAnimationFrame(id);
+    }
+    const k = Number(new URLSearchParams(window.location.search).get("card"));
+    const card = Number.isInteger(k) && k >= 0 && k < ARC_CARD_COUNT ? k : 0;
+    window.location.replace(`/?${HOME_GD_PARAM}=${card}`);
+  }, []);
+
+  if (!direct) return <div style={{ minHeight: "100dvh", background: "#000" }} />;
 
   return (
     <CategoryStage lengthVh={CORD_VH} startProgress={openAt}>

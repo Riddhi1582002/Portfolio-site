@@ -55,7 +55,7 @@ export default function ProjectRail({
       data-project-rail={variant}
       style={{ fontFamily: SANS }}
     >
-      <TransitionLink href={href} className="pr-back">
+      <TransitionLink href={href} className="pr-back" historyBack={!!gd}>
         <span aria-hidden>←</span> Back
       </TransitionLink>
       <div>
