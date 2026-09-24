@@ -27,6 +27,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
+        {/* R2 HOSTS EVERY VIDEO ON THE SITE, on its own origin — a fresh
+            DNS lookup, TCP connection and TLS handshake, none of which
+            the browser has a reason to start until the exact moment a
+            <video> element first asks for a byte from it. That is
+            100-300ms of pure connection setup sitting in front of the
+            first frame of whichever reel opens first, on every visit.
+            Preconnecting from the head does that work in parallel with
+            everything else the page is already loading, so by the time a
+            video is actually requested the connection is already open. */}
+        <link rel="preconnect" href="https://pub-0ddc522dfc834a90ab7c556775e1dd6f.r2.dev" crossOrigin="anonymous" />
         {/* The moth's GLB is ~7.5MB and MothLayer only starts fetching it
             once its own effect runs post-hydration. Preloading from the
             head starts the download the instant the browser has the HTML,

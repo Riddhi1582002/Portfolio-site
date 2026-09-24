@@ -2170,7 +2170,24 @@ export default function HeroSection() {
         {/* And the cord beat, same pane again. */}
         {scrollP > REELS_SPAN_END - 0.012 &&
           (scrollP < CORD_SPAN_END + 0.003 || pencilBulbPending) && (
-          <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 3,
+              // NOT INTERACTIVE DURING THE WARM-UP LEAD. This pane sits on
+              // top of the still-active reel strip for the ~36vh it is
+              // mounted-but-invisible in, and a plain wrapper div takes
+              // the whole viewport (`inset: 0`) regardless of what it
+              // paints. Without this, the strip's own last card stopped
+              // answering hover a little before the reader ever reached
+              // it — not because the card changed, but because an
+              // invisible pane was already standing in front of it,
+              // catching the pointer first. Auto the instant CordSection
+              // itself has anything to answer to.
+              pointerEvents: cordP > 0 ? "auto" : "none",
+            }}
+          >
             <CordSection
               progress={cordP}
               sans={SANS}
@@ -2191,7 +2208,21 @@ export default function HeroSection() {
 
         {/* The descent past the bulb and the match cut into the iris. */}
         {scrollP > CORD_SPAN_END - PENCIL_WARM_LEAD && scrollP < PENCIL_SPAN_END + 0.002 && (
-          <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 3,
+              // NOT INTERACTIVE UNTIL SHOWN — see the same guard on
+              // CordSection's own wrapper above. CordSection is still the
+              // thing on screen (and hoverable — the ring's own cards)
+              // for the whole PENCIL_WARM_LEAD this is mounted-but-hidden
+              // for; a plain full-viewport div ahead of it in paint order
+              // would otherwise take its pointer events regardless of
+              // what it draws.
+              pointerEvents: pencilP > 0 && !pencilBulbPending ? "auto" : "none",
+            }}
+          >
             <PencilSection
               progress={pencilP}
               sans={SANS}
@@ -2248,7 +2279,23 @@ export default function HeroSection() {
 
         {/* The pull-back out of the iris, and the gallery it opens on. */}
         {scrollP > IRIS_HANDOFF_SCROLL_P - 0.015 && (
-          <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 3,
+              // NOT INTERACTIVE UNTIL SHOWN — the same guard as
+              // CordSection's and PencilSection's own wrappers above, and
+              // the widest lead-in of the three (0.015, ~45vh): for that
+              // whole stretch PencilSection is still the thing on screen,
+              // and this plain full-viewport div sat ahead of it in paint
+              // order the entire time, catching every hover and click
+              // meant for it — the iris/pencil beat's own scroll stops and
+              // hover states going unresponsive well before the gallery
+              // ever appeared.
+              pointerEvents: scrollP > IRIS_HANDOFF_SCROLL_P ? "auto" : "none",
+            }}
+          >
             <InfiniteCanvas
               progress={canvasP}
               sans={SANS}
