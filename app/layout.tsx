@@ -15,10 +15,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
+export const metadata = {
   title: "Riddhi Thakkar",
-  description: "Riddhi Thakkar — portfolio",
-};
+  description: "Portfolio of Riddhi Thakkar — artist, video editor, and graphic designer.",
+  openGraph: {
+    title: "Riddhi Thakkar",
+    description: "Portfolio of Riddhi Thakkar — artist, video editor, and graphic designer.",
+    url: "https://riddhithakkarportfolio.pages.dev",
+    images: ["https://riddhithakkarportfolio.pages.dev/og-image.jpg"],
+  },
+}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
