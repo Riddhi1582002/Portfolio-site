@@ -18,6 +18,9 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "Riddhi Thakkar",
   description: "Portfolio of Riddhi Thakkar — artist, video editor, and graphic designer.",
+  verification: {
+    google: "<meta name="google-site-verification" content="Fyzvq0HqRNZbqh6cLru-smljTNBQj0-tSVW8lKelNtE" />",
+  },
   openGraph: {
     title: "Riddhi Thakkar",
     description: "Portfolio of Riddhi Thakkar — artist, video editor, and graphic designer.",
